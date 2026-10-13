@@ -1,4 +1,5 @@
 import { checkCompliance } from '../compliance';
+import { authorView } from '../board';
 import { contactsFor } from '../contacts';
 import { opinionFor } from '../knowledge';
 import { planFromCommand, rankPerformance, mostSimilar } from '../marketing';
@@ -243,5 +244,38 @@ describe('주소록·대시보드', () => {
     const id = actions.openDirect('u_staff');
     expect(id).toBe('r_direct');
     expect(actions.openDirect('u_lawyer')).not.toBe('r_direct');
+  });
+});
+
+describe('익명 게시판', () => {
+  beforeEach(() => resetState());
+
+  it('모든 계정이 글과 댓글을 쓰고, 다른 이용자에게는 익명으로 보인다', () => {
+    as('staff');
+    const res = actions.createPost('질문', '내용');
+    expect(res.ok).toBe(true);
+    as('client');
+    expect(actions.commentPost(res.postId!, '저도 궁금해요').ok).toBe(true);
+    as('lawyer');
+    expect(actions.commentPost(res.postId!, '답변드립니다').ok).toBe(true);
+    const post = getState().posts.find((p) => p.id === res.postId)!;
+    const users = getState().users;
+    const viewer = me();
+    expect(authorView(viewer, post, 'u_staff', users)).toEqual({ alias: '글쓴이', lawyer: false, real: undefined });
+    expect(authorView(viewer, post, 'u_client', users).alias).toBe('익명 1');
+    const lawyer = authorView(viewer, post, 'u_lawyer', users);
+    expect(lawyer).toEqual({ alias: '익명 2', lawyer: true, real: undefined });
+  });
+
+  it('어드민만 실제 작성자를 본다', () => {
+    as('admin');
+    const post = getState().posts[0];
+    expect(authorView(me(), post, post.authorId, getState().users).real).toBe('하늘 · 의뢰인');
+  });
+
+  it('빈 글·댓글은 거절한다', () => {
+    as('client');
+    expect(actions.createPost(' ', '내용').ok).toBe(false);
+    expect(actions.commentPost('p1', '').ok).toBe(false);
   });
 });

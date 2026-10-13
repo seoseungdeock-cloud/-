@@ -79,3 +79,17 @@ export type Message = {
 
 export const AI_SENDER = 'ai';
 export const SYSTEM_SENDER = 'system';
+
+// ---- 익명 게시판 ----
+// 다른 이용자에게는 '익명 N'으로만 보이고, 실제 작성자는 어드민만 봅니다.
+
+export type BoardComment = { id: string; authorId: string; text: string; at: string };
+
+export type BoardPost = {
+  id: string;
+  authorId: string;
+  title: string;
+  body: string;
+  at: string;
+  comments: BoardComment[];
+};

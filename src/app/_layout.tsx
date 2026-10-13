@@ -42,6 +42,9 @@ export default function RootLayout() {
           <Stack.Screen name="backoffice" />
           <Stack.Screen name="recommend" />
           <Stack.Screen name="service/[name]" />
+          <Stack.Screen name="board/index" />
+          <Stack.Screen name="board/[id]" />
+          <Stack.Screen name="board/new" />
         </Stack.Protected>
         <Stack.Protected guard={!signedIn}>
           <Stack.Screen name="login" />

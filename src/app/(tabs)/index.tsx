@@ -22,12 +22,12 @@ const FILTERS: { key: string; label: string; test: (r: Room) => boolean }[] = [
   { key: 'ai', label: 'AI', test: (r) => r.mode === 'ai' },
 ];
 
-// 메신저: 상단 검색, 대화방 / 주소록 두 탭 (네이버 웍스 메신저 구성 참고)
+// 메신저: 상단 검색, 주소록 / 대화방 두 탭 (네이버 웍스 메신저 구성 참고)
 export default function MessengerScreen() {
   const s = useApp();
   const user = useMe();
   const c = useColors();
-  const [tab, setTab] = useState<'rooms' | 'contacts'>('rooms');
+  const [tab, setTab] = useState<'rooms' | 'contacts'>('contacts');
   const [filter, setFilter] = useState('all');
   const [q, setQ] = useState('');
   const query = q.trim();
@@ -60,13 +60,16 @@ export default function MessengerScreen() {
               style={{ flex: 1, paddingVertical: space.sm + 2, fontSize: font.body, fontFamily: family.regular, color: c.text }}
             />
           </View>
+          <Pressable accessibilityLabel="익명 게시판" onPress={() => router.push('/board')} hitSlop={12}>
+            <Icon name="board" color={c.text} size={24} />
+          </Pressable>
           <Pressable accessibilityLabel="새 대화" onPress={() => router.push('/room/new')} hitSlop={12}>
             <Icon name="plus" color={c.text} size={26} />
           </Pressable>
         </View>
 
         <View style={{ flexDirection: 'row', paddingHorizontal: space.lg, marginTop: space.md, borderBottomWidth: 1, borderBottomColor: c.line }}>
-          {(['rooms', 'contacts'] as const).map((t) => (
+          {(['contacts', 'rooms'] as const).map((t) => (
             <Pressable key={t} onPress={() => setTab(t)} style={{ paddingVertical: space.sm + 2, marginRight: space.xl, borderBottomWidth: 2.5, borderBottomColor: tab === t ? c.accent : 'transparent', marginBottom: -1 }}>
               <Text style={{ fontFamily: tab === t ? family.bold : family.regular, fontSize: font.body + 1, color: tab === t ? c.accent : c.sub }}>
                 {t === 'rooms' ? '대화방' : '주소록'}

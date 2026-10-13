@@ -28,6 +28,7 @@ import {
   AI_SENDER,
   SYSTEM_SENDER,
   type Account,
+  type BoardPost,
   type CaseInfo,
   type Message,
   type Room,
@@ -54,6 +55,7 @@ export type State = {
   performance: Performance[];
   /** 라잇나우 변호사 id → 앱 사용자 id (변호사가 가입하면 연결) */
   lawyerAccounts: Record<string, string>;
+  posts: BoardPost[];
 };
 
 const T0 = '2026-10-13T09:00:00.000Z';
@@ -112,6 +114,14 @@ export function initialState(): State {
       { channel: 'meta_ads', topic: '상속', spend: 500000, clicks: 1200, inquiries: 18 },
     ],
     lawyerAccounts: { lw_1: 'u_lawyer' },
+    posts: [
+      {
+        id: 'p1', authorId: 'u_client', at: T0,
+        title: '전세 보증금을 못 돌려받고 있어요',
+        body: '계약 만료가 지났는데 집주인이 새 세입자가 들어와야 준다고 합니다. 이사는 가야 하는데 어떻게 해야 하나요?',
+        comments: [{ id: 'pc1', authorId: 'u_lawyer', at: T0, text: '이사 전에 임차권등기명령부터 신청해 두세요. 그래야 이사 후에도 대항력과 우선변제권이 유지됩니다.' }],
+      },
+    ],
   };
 }
 
@@ -553,6 +563,22 @@ export const actions = {
 
   rejectPlan(planId: string) {
     set((s) => ({ plans: s.plans.map((p) => (p.id === planId ? { ...p, status: '반려' } : p)) }));
+  },
+
+  // ---- 익명 게시판 (모든 계정 이용 가능) ----
+
+  createPost(title: string, body: string): RoomCheck & { postId?: string } {
+    if (!title.trim() || !body.trim()) return { ok: false, reason: '제목과 내용을 입력해 주세요.' };
+    const post: BoardPost = { id: newId('p'), authorId: me().id, title: title.trim(), body: body.trim(), at: nowIso(), comments: [] };
+    set((s) => ({ posts: [post, ...s.posts] }));
+    return { ok: true, postId: post.id };
+  },
+
+  commentPost(postId: string, text: string): RoomCheck {
+    if (!text.trim()) return { ok: false, reason: '댓글을 입력해 주세요.' };
+    const c = { id: newId('pc'), authorId: me().id, text: text.trim(), at: nowIso() };
+    set((s) => ({ posts: s.posts.map((p) => (p.id === postId ? { ...p, comments: [...p.comments, c] } : p)) }));
+    return { ok: true };
   },
 
   approveContent(id: string) {

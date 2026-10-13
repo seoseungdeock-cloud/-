@@ -7,10 +7,12 @@ import home from '@/data/home.json';
 import { Icon } from '@/ui/icons';
 import { Badge, T } from '@/ui/kit';
 import { family, MAX_WIDTH, radius, space, useColors } from '@/ui/theme';
+import { useApp } from '@/ui/use-app';
 
 // 의뢰인 첫 화면 (홈 대시보드)
 export default function HomeScreen() {
   const c = useColors();
+  const s = useApp();
   const { width } = useWindowDimensions();
   const inner = Math.min(width, MAX_WIDTH) - space.lg * 2;
   const [slide, setSlide] = useState(0);
@@ -51,6 +53,22 @@ export default function HomeScreen() {
               </Pressable>
             ))}
           </View>
+
+          <Pressable onPress={() => router.push('/board')} style={({ pressed }) => ({ marginTop: space.lg, borderRadius: radius.lg, backgroundColor: c.accent, padding: space.xl, opacity: pressed ? 0.85 : 1 })}>
+            <View style={{ flexDirection: 'row', gap: space.xs, marginBottom: space.sm }}>
+              {['100% 익명', '변호사 참여'].map((t) => (
+                <Text key={t} style={{ fontFamily: family.bold, fontSize: 12, color: c.accent, backgroundColor: '#FFFFFF', borderRadius: radius.pill, paddingHorizontal: space.sm, paddingVertical: 2, overflow: 'hidden' }}>{t}</Text>
+              ))}
+            </View>
+            <Text style={{ fontFamily: family.heavy, fontSize: 24, lineHeight: 32, color: '#FFFFFF' }}>이름은 지우고,{'\n'}변호사와 터놓고.</Text>
+            <Text style={{ fontFamily: family.semibold, fontSize: 15, lineHeight: 22, color: '#FFFFFF', opacity: 0.9, marginTop: space.sm }}>완전 익명으로 묻고, 변호사와 격의 없이 나누는 대화</Text>
+            {s.posts.slice(0, 2).map((p) => (
+              <Text key={p.id} numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 14, color: '#FFFFFF', marginTop: space.sm, opacity: 0.95 }}>
+                Q. {p.title} · 댓글 {p.comments.length}
+              </Text>
+            ))}
+            <Text style={{ fontFamily: family.bold, fontSize: 16, color: '#FFFFFF', marginTop: space.lg }}>익명 게시판 입장 →</Text>
+          </Pressable>
 
           <ScrollView
             horizontal
@@ -117,14 +135,6 @@ export default function HomeScreen() {
               </View>
             ))}
           </ScrollView>
-
-          <SectionTitle>전문가가 직접 답하는 신속 Q&amp;A</SectionTitle>
-          <View style={[card, { padding: space.xl, alignItems: 'center', gap: space.md }]}>
-            <T color={c.sub}>등록된 콘텐츠가 없습니다</T>
-            <Pressable onPress={() => router.push('/recommend')} style={{ borderWidth: 1.5, borderColor: c.accent, borderRadius: radius.pill, paddingHorizontal: space.xl, paddingVertical: space.sm }}>
-              <Text style={{ fontFamily: family.semibold, color: c.accent, fontSize: 16 }}>상담글 작성하기</Text>
-            </Pressable>
-          </View>
 
           <SectionTitle>변호사가 설명하는 분야별 법률정보</SectionTitle>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.md }}>
