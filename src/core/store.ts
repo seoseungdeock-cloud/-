@@ -4,7 +4,6 @@ import { getAi } from './ai';
 import type { DecisionRecord } from './knowledge';
 import { opinionFor } from './knowledge';
 import { titleFrom, type ProgramRequest } from './builder';
-import { AI_DISCLOSURE } from './compliance';
 import { newId, nowIso } from './ids';
 import {
   applyBudget,
@@ -23,17 +22,21 @@ import { refreshTemplate, type DataRow, type ImageTemplate } from './templates';
 import {
   AI_SENDER,
   SYSTEM_SENDER,
+  type Account,
   type CaseInfo,
   type Message,
   type Room,
   type RoomKind,
   type RoomMode,
   type User,
+  type Role,
 } from './types';
 
 export type State = {
-  currentUserId: string;
+  /** 로그인 전에는 null */
+  currentUserId: string | null;
   users: User[];
+  accounts: Account[];
   rooms: Room[];
   messages: Message[];
   meetingNotes: Record<string, MeetingNotes>;
@@ -52,25 +55,33 @@ const T0 = '2026-10-13T09:00:00.000Z';
 
 export function initialState(): State {
   const users: User[] = [
-    { id: 'u_admin', nickname: '승덕', role: 'admin', identityVerified: true, adultVerified: true, agentAccess: true, membership: 'basic' },
-    { id: 'u_staff', nickname: '사무국 직원', role: 'staff', officeId: 'of_seoul', identityVerified: true, adultVerified: true, agentAccess: false, membership: 'basic' },
-    { id: 'u_lawyer', nickname: '샘플 변호사 A', role: 'lawyer', officeId: 'of_seoul', identityVerified: true, adultVerified: true, agentAccess: false, membership: 'basic' },
-    { id: 'u_client', nickname: '하늘', role: 'client', identityVerified: false, adultVerified: false, agentAccess: false, membership: 'basic' },
+    { id: 'u_admin', nickname: '승덕', role: 'admin', agentAccess: true, membership: 'basic' },
+    { id: 'u_staff', nickname: '사무국 직원', role: 'staff', officeId: 'of_seoul', agentAccess: false, membership: 'basic' },
+    { id: 'u_lawyer', nickname: '샘플 변호사 A', role: 'lawyer', officeId: 'of_seoul', agentAccess: false, membership: 'basic' },
+    { id: 'u_client', nickname: '하늘', role: 'client', agentAccess: false, membership: 'basic' },
+  ];
+  // 개발용 계정 (서버 연결 시 백오피스에서 실제 계정으로 교체)
+  const accounts: Account[] = [
+    { userId: 'u_admin', loginId: 'admin', password: 'admin1234', active: true, createdAt: T0 },
+    { userId: 'u_staff', loginId: 'staff', password: 'staff1234', active: true, createdAt: T0 },
+    { userId: 'u_lawyer', loginId: 'lawyer', password: 'lawyer1234', active: true, createdAt: T0 },
+    { userId: 'u_client', loginId: 'client', password: 'client1234', active: true, createdAt: T0 },
   ];
   const rooms: Room[] = [
     { id: 'r_office', kind: 'office', mode: 'ai', title: '서울 사무소', memberIds: ['u_admin', 'u_staff', 'u_lawyer'], createdBy: 'u_admin', createdAt: T0, officeId: 'of_seoul' },
-    { id: 'r_direct', kind: 'direct', mode: 'e2ee', title: '사무국 직원', memberIds: ['u_admin', 'u_staff'], createdBy: 'u_admin', createdAt: T0 },
+    { id: 'r_direct', kind: 'direct', mode: 'private', title: '사무국 직원', memberIds: ['u_admin', 'u_staff'], createdBy: 'u_admin', createdAt: T0 },
     { id: 'r_meeting', kind: 'meeting', mode: 'ai', title: '주간 경영회의', memberIds: ['u_admin', 'u_lawyer'], createdBy: 'u_admin', createdAt: T0 },
     { id: 'r_marketing', kind: 'marketing', mode: 'ai', title: '마케팅 작업방', memberIds: ['u_admin'], createdBy: 'u_admin', createdAt: T0 },
   ];
   const messages: Message[] = [
     { id: 'm1', roomId: 'r_office', senderId: SYSTEM_SENDER, kind: 'system', text: 'AI 참여방입니다. @AI 로 부르면 AI가 답합니다.', at: T0 },
     { id: 'm2', roomId: 'r_office', senderId: 'u_staff', kind: 'text', text: '내일 오전 기일 서류 준비 완료했습니다.', at: T0 },
-    { id: 'm3', roomId: 'r_direct', senderId: SYSTEM_SENDER, kind: 'system', text: '종단간 암호화방입니다. 대화 내용은 참여자 기기에서만 열립니다.', at: T0 },
+    { id: 'm3', roomId: 'r_direct', senderId: SYSTEM_SENDER, kind: 'system', text: '사건수행방입니다. 참여자끼리만 대화하고 AI는 참여하지 않습니다.', at: T0 },
   ];
   return {
-    currentUserId: 'u_admin',
+    currentUserId: null,
     users,
+    accounts,
     rooms,
     messages,
     meetingNotes: {},
@@ -123,8 +134,15 @@ export function resetState() {
   listeners.forEach((l) => l());
 }
 
+/** 로그인한 사용자. 로그인 화면을 지난 뒤에만 부릅니다. */
 export function me(s: State = state): User {
-  return s.users.find((u) => u.id === s.currentUserId)!;
+  const u = s.users.find((x) => x.id === s.currentUserId);
+  if (!u) throw new Error('로그인이 필요합니다');
+  return u;
+}
+
+export function loggedIn(s: State = state): boolean {
+  return s.users.some((x) => x.id === s.currentUserId);
 }
 
 function userById(id: string) {
@@ -143,18 +161,53 @@ function updateRoom(roomId: string, fn: (r: Room) => Room) {
 
 // ---- 사용자 ----
 export const actions = {
-  switchUser(id: string) {
-    set({ currentUserId: id });
+  // ---- 로그인 ----
+  login(loginId: string, password: string): RoomCheck {
+    const acc = state.accounts.find((a) => a.loginId === loginId.trim());
+    if (!acc || acc.password !== password) return { ok: false, reason: '아이디 또는 비밀번호가 맞지 않습니다.' };
+    if (!acc.active) return { ok: false, reason: '사용이 중지된 계정입니다. 관리자에게 문의하세요.' };
+    const at = nowIso();
+    set((s) => ({ currentUserId: acc.userId, accounts: s.accounts.map((a) => (a.userId === acc.userId ? { ...a, lastLoginAt: at } : a)) }));
+    return { ok: true };
   },
 
-  /** 본인확인·성인인증. 지금은 연결 전이라 버튼으로 완료 처리합니다(PASS 등은 요청 시 연결). */
-  verify(kind: 'identity' | 'adult') {
-    const id = state.currentUserId;
-    set((s) => ({
-      users: s.users.map((u) =>
-        u.id === id ? { ...u, ...(kind === 'identity' ? { identityVerified: true, adultVerified: true } : { adultVerified: true }) } : u,
-      ),
-    }));
+  logout() {
+    set({ currentUserId: null });
+  },
+
+  // ---- 백오피스: 계정 관리 (어드민 전용) ----
+  createAccount(input: { loginId: string; password: string; nickname: string; role: Role; officeId?: string }): RoomCheck {
+    if (me().role !== 'admin') return { ok: false, reason: '어드민만 계정을 만들 수 있습니다.' };
+    const loginId = input.loginId.trim();
+    if (!/^[a-zA-Z0-9._-]{3,30}$/.test(loginId)) return { ok: false, reason: '아이디는 영문·숫자 3~30자로 정해 주세요.' };
+    if (state.accounts.some((a) => a.loginId === loginId)) return { ok: false, reason: '이미 쓰는 아이디입니다.' };
+    if (input.password.length < 8) return { ok: false, reason: '비밀번호는 8자 이상이어야 합니다.' };
+    if (!input.nickname.trim()) return { ok: false, reason: '이름을 입력해 주세요.' };
+    const user: User = { id: newId('u'), nickname: input.nickname.trim(), role: input.role, officeId: input.officeId, agentAccess: false, membership: 'basic' };
+    const acc: Account = { userId: user.id, loginId, password: input.password, active: true, createdAt: nowIso() };
+    set((s) => ({ users: [...s.users, user], accounts: [...s.accounts, acc] }));
+    return { ok: true };
+  },
+
+  resetPassword(userId: string, password: string): RoomCheck {
+    if (me().role !== 'admin') return { ok: false, reason: '어드민만 바꿀 수 있습니다.' };
+    if (password.length < 8) return { ok: false, reason: '비밀번호는 8자 이상이어야 합니다.' };
+    set((s) => ({ accounts: s.accounts.map((a) => (a.userId === userId ? { ...a, password } : a)) }));
+    return { ok: true };
+  },
+
+  setAccountActive(userId: string, active: boolean): RoomCheck {
+    if (me().role !== 'admin') return { ok: false, reason: '어드민만 바꿀 수 있습니다.' };
+    if (userId === state.currentUserId) return { ok: false, reason: '내 계정은 중지할 수 없습니다.' };
+    set((s) => ({ accounts: s.accounts.map((a) => (a.userId === userId ? { ...a, active } : a)) }));
+    return { ok: true };
+  },
+
+  setRole(userId: string, role: Role): RoomCheck {
+    if (me().role !== 'admin') return { ok: false, reason: '어드민만 바꿀 수 있습니다.' };
+    if (userId === state.currentUserId) return { ok: false, reason: '내 역할은 바꿀 수 없습니다.' };
+    set((s) => ({ users: s.users.map((u) => (u.id === userId ? { ...u, role, agentAccess: role === 'client' ? false : u.agentAccess } : u)) }));
+    return { ok: true };
   },
 
   setAgentAccess(userId: string, allowed: boolean): RoomCheck {
@@ -166,7 +219,7 @@ export const actions = {
   },
 
   setMembership(level: User['membership']) {
-    const id = state.currentUserId;
+    const id = me().id;
     set((s) => ({ users: s.users.map((u) => (u.id === id ? { ...u, membership: level } : u)) }));
   },
 
@@ -190,8 +243,8 @@ export const actions = {
       room.id,
       SYSTEM_SENDER,
       'system',
-      room.mode === 'e2ee'
-        ? '종단간 암호화방이 만들어졌습니다. 운영자와 AI 모두 내용을 읽을 수 없습니다.'
+      room.mode === 'private'
+        ? '사건수행방이 만들어졌습니다. 참여자끼리만 대화하고 AI는 참여하지 않습니다.'
         : 'AI 참여방이 만들어졌습니다. AI가 대화를 읽고 @AI 로 부르면 답합니다.',
     );
     return { ok: true, roomId: room.id };
@@ -200,12 +253,12 @@ export const actions = {
   async sendMessage(roomId: string, text: string) {
     const room = state.rooms.find((r) => r.id === roomId);
     if (!room || !text.trim()) return;
-    pushMessage(roomId, state.currentUserId, 'text', text.trim());
+    pushMessage(roomId, me().id, 'text', text.trim());
     if (!/@ai\b|@AI/i.test(text)) return;
     const members = room.memberIds.map(userById).filter((u): u is User => !!u);
     const level = aiAnswerLevel(room, members);
     if (level === 'none') {
-      pushMessage(roomId, SYSTEM_SENDER, 'system', '암호화방이라 AI가 참여할 수 없습니다. AI가 필요하면 AI 참여방을 따로 만들어 주세요.');
+      pushMessage(roomId, SYSTEM_SENDER, 'system', '사건수행방에는 AI가 참여하지 않습니다. AI가 필요하면 AI 참여방을 따로 만들어 주세요.');
       return;
     }
     const recent = state.messages.filter((m) => m.roomId === roomId).slice(-20).map((m) => `${m.senderId}: ${m.text}`).join('\n');
@@ -243,14 +296,12 @@ export const actions = {
     return { ok: true, roomId: room.id };
   },
 
-  /** 상담방을 사건방으로 올립니다. 참여자 모두 본인확인이 필요하고 변호사가 있어야 합니다. */
+  /** 상담방을 사건방으로 올립니다. 담당 변호사가 방에 있어야 합니다. */
   promoteToCase(roomId: string, title: string, field: string): RoomCheck {
     const room = state.rooms.find((r) => r.id === roomId);
     if (!room || room.kind !== 'consult') return { ok: false, reason: '상담방만 사건방으로 올릴 수 있습니다.' };
     const members = room.memberIds.map(userById).filter((u): u is User => !!u);
     if (!members.some((u) => u.role === 'lawyer')) return { ok: false, reason: '담당 변호사가 방에 있어야 수임할 수 있습니다.' };
-    const unverified = members.filter((u) => !u.identityVerified);
-    if (unverified.length) return { ok: false, reason: `본인확인이 필요합니다: ${unverified.map((u) => u.nickname).join(', ')}` };
     const caseInfo: CaseInfo = { title: title || room.title, field, stage: '수임', deadlines: [], documents: [], costs: [], progress: [{ id: newId('p'), at: nowIso(), note: '수임' }] };
     updateRoom(roomId, (r) => ({ ...r, kind: 'case', title: caseInfo.title, caseInfo }));
     pushMessage(roomId, SYSTEM_SENDER, 'system', '사건방으로 전환되었습니다. 진행 상황·기일·서류가 이 방에서 공유됩니다.');
@@ -321,7 +372,7 @@ export const actions = {
       id: newId('pg'),
       title: titleFrom(description),
       description,
-      requestedBy: state.currentUserId,
+      requestedBy: me().id,
       at: nowIso(),
       status: ai.connected ? '생성 중' : 'AI 연결 대기',
     };
@@ -350,7 +401,7 @@ export const actions = {
             id: newId('c'),
             channel: step.channel,
             title: `${step.topic} ${i}`,
-            body: `[초안 · ${CHANNEL_LABEL[step.channel]}] ${step.topic} 관련 콘텐츠 ${i}. AI가 연결되면 본문이 자동 작성됩니다.\n\n${AI_DISCLOSURE}`,
+            body: `[초안 · ${CHANNEL_LABEL[step.channel]}] ${step.topic} 관련 콘텐츠 ${i}. AI가 연결되면 본문이 자동 작성됩니다.`,
             status: '초안',
           });
         }

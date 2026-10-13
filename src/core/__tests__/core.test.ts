@@ -1,8 +1,7 @@
 import { checkCompliance } from '../compliance';
 import { opinionFor } from '../knowledge';
 import { planFromCommand, rankPerformance, mostSimilar } from '../marketing';
-import { canStartRecording, summarizeMeeting } from '../meeting';
-import { benefitAllowed, MEMBERSHIP_BENEFITS } from '../membership';
+import { summarizeMeeting } from '../meeting';
 import { officeCountByRegion, searchLawyers } from '../offices';
 import { aiAnswerLevel, canCreateRoom, canUseAgents } from '../rooms';
 import { actions, getState, me, resetState } from '../store';
@@ -12,23 +11,29 @@ import type { Room, User } from '../types';
 import { KOREA_REGIONS } from '../../data/korea-map';
 
 const user = (p: Partial<User>): User => ({
-  id: 'x', nickname: 'x', role: 'client', identityVerified: false, adultVerified: false, agentAccess: false, membership: 'basic', ...p,
+  id: 'x', nickname: 'x', role: 'client', agentAccess: false, membership: 'basic', ...p,
 });
 
-beforeEach(() => resetState());
+const as = (id: string) => {
+  const pw = `${id}1234`;
+  expect(actions.login(id, pw).ok).toBe(true);
+};
+
+beforeEach(() => {
+  resetState();
+  as('admin');
+});
 
 describe('방 규칙', () => {
-  it('모르는 사람과의 대화는 성인인증이 필요하다', () => {
-    const a = user({ id: 'a' });
-    const b = user({ id: 'b', adultVerified: true });
-    expect(canCreateRoom('stranger', 'e2ee', a, [b]).ok).toBe(false);
-    expect(canCreateRoom('stranger', 'e2ee', { ...a, adultVerified: true }, [b]).ok).toBe(true);
+  it('의뢰인은 업무용 방을 만들 수 없다', () => {
+    expect(canCreateRoom('office', 'ai', user({}), []).ok).toBe(false);
+    expect(canCreateRoom('stranger', 'private', user({}), []).ok).toBe(true);
   });
 
   it('회의방은 AI 참여방으로만, 허용된 사용자만 만든다', () => {
     const admin = user({ role: 'admin' });
     const staff = user({ role: 'staff' });
-    expect(canCreateRoom('meeting', 'e2ee', admin, []).ok).toBe(false);
+    expect(canCreateRoom('meeting', 'private', admin, []).ok).toBe(false);
     expect(canCreateRoom('meeting', 'ai', admin, []).ok).toBe(true);
     expect(canCreateRoom('meeting', 'ai', staff, []).ok).toBe(false);
     expect(canUseAgents({ ...staff, agentAccess: true })).toBe(true);
@@ -37,18 +42,18 @@ describe('방 규칙', () => {
 
   it('AI 답변 수준: 암호화방 불가, 변호사 없는 방은 일반 정보만', () => {
     const room = (mode: Room['mode']): Room => ({ id: 'r', kind: 'consult', mode, title: '', memberIds: [], createdBy: '', createdAt: '' });
-    expect(aiAnswerLevel(room('e2ee'), [])).toBe('none');
+    expect(aiAnswerLevel(room('private'), [])).toBe('none');
     expect(aiAnswerLevel(room('ai'), [user({})])).toBe('general-info');
     expect(aiAnswerLevel(room('ai'), [user({ role: 'lawyer' })])).toBe('lawyer-assist');
   });
 });
 
 describe('메신저 흐름', () => {
-  it('암호화방에서 @AI 를 부르면 안내만 나온다', async () => {
+  it('사건수행방에서 @AI 를 부르면 안내만 나온다', async () => {
     await actions.sendMessage('r_direct', '@AI 요약해줘');
     const last = getState().messages.at(-1)!;
     expect(last.kind).toBe('system');
-    expect(last.text).toContain('AI가 참여할 수 없습니다');
+    expect(last.text).toContain('AI가 참여하지 않습니다');
   });
 
   it('AI 참여방에서는 AI가 답한다(미연결 표시)', async () => {
@@ -58,13 +63,11 @@ describe('메신저 흐름', () => {
     expect(last.text).toContain('AI 미연결');
   });
 
-  it('상담방 → 사건방 전환은 본인확인 후에만 된다', () => {
-    actions.switchUser('u_client');
+  it('상담 신청 → 사건방 전환', () => {
+    as('client');
     const res = actions.requestConsult('lw_1', '이혼 상담 원합니다', 'ai');
     expect(res.ok).toBe(true);
     const roomId = res.roomId!;
-    expect(actions.promoteToCase(roomId, '이혼 사건', '이혼').ok).toBe(false);
-    actions.verify('identity');
     expect(actions.promoteToCase(roomId, '이혼 사건', '이혼').ok).toBe(true);
     const room = getState().rooms.find((r) => r.id === roomId)!;
     expect(room.kind).toBe('case');
@@ -73,12 +76,12 @@ describe('메신저 흐름', () => {
   });
 
   it('어드민만 에이전트 권한을 준다', () => {
-    actions.switchUser('u_staff');
+    as('staff');
     expect(actions.setAgentAccess('u_staff', true).ok).toBe(false);
-    actions.switchUser('u_admin');
+    as('admin');
     expect(actions.setAgentAccess('u_staff', true).ok).toBe(true);
     expect(actions.setAgentAccess('u_client', true).ok).toBe(false);
-    actions.switchUser('u_staff');
+    as('staff');
     expect(canUseAgents(me())).toBe(true);
   });
 });
@@ -105,11 +108,6 @@ describe('경영 에이전트', () => {
     const n = summarizeMeeting(transcript);
     expect(n.decisions).toHaveLength(1);
     expect(n.actions[0]).toMatchObject({ owner: '김대리', due: '다음 주' });
-  });
-
-  it('녹음은 전원 동의 후에만', () => {
-    expect(canStartRecording(['a', 'b'], { a: true })).toBe(false);
-    expect(canStartRecording(['a', 'b'], { a: true, b: true })).toBe(true);
   });
 
   it('과거 결정 결과로 의견을 낸다', () => {
@@ -142,7 +140,6 @@ describe('마케팅 AI', () => {
     const s = getState();
     expect(s.budgets.meta_ads).toBe(88000);
     expect(s.contents.filter((c) => c.channel === 'instagram')).toHaveLength(2);
-    expect(s.contents[0].body).toContain('AI의 도움');
   });
 
   it('광고 규정 위반 표현을 잡는다', () => {
@@ -162,9 +159,26 @@ describe('마케팅 AI', () => {
   });
 });
 
-describe('라잇나우 멤버십', () => {
-  it('혜택에 변호사 할인·우선배정이 없다', () => {
-    expect(MEMBERSHIP_BENEFITS.every(benefitAllowed)).toBe(true);
-    expect(benefitAllowed({ title: '수임료 10% 할인', detail: '' })).toBe(false);
+describe('로그인·백오피스', () => {
+  it('틀린 비밀번호와 중지된 계정은 막힌다', () => {
+    actions.logout();
+    expect(actions.login('admin', 'nope').ok).toBe(false);
+    as('admin');
+    expect(actions.setAccountActive('u_staff', false).ok).toBe(true);
+    expect(actions.setAccountActive('u_admin', false).ok).toBe(false);
+    actions.logout();
+    expect(actions.login('staff', 'staff1234')).toEqual({ ok: false, reason: expect.stringContaining('중지') });
+  });
+
+  it('어드민이 계정을 만들고 비밀번호를 초기화한다', () => {
+    expect(actions.createAccount({ loginId: 'kim', password: 'short', nickname: '김', role: 'lawyer' }).ok).toBe(false);
+    expect(actions.createAccount({ loginId: 'kim', password: 'password1', nickname: '김', role: 'lawyer' }).ok).toBe(true);
+    expect(actions.createAccount({ loginId: 'kim', password: 'password1', nickname: '김2', role: 'client' }).ok).toBe(false);
+    const kim = getState().accounts.find((a) => a.loginId === 'kim')!;
+    expect(actions.resetPassword(kim.userId, 'newpass123').ok).toBe(true);
+    actions.logout();
+    expect(actions.login('kim', 'newpass123').ok).toBe(true);
+    expect(me().nickname).toBe('김');
+    expect(actions.createAccount({ loginId: 'lee', password: 'password1', nickname: '이', role: 'client' }).ok).toBe(false);
   });
 });

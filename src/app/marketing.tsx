@@ -96,7 +96,7 @@ function Contents() {
   const s = useApp();
   return (
     <>
-      <Sub>AI가 쓴 초안은 담당자가 확인·승인해야 발행 대기로 넘어갑니다. AI 생성 표시가 자동으로 붙습니다.</Sub>
+      <Sub>AI가 쓴 초안은 담당자가 확인·승인해야 발행 대기로 넘어갑니다.</Sub>
       {s.contents.map((ct) => {
         const issues = checkCompliance(ct.body);
         return (

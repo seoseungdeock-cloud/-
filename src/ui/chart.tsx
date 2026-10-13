@@ -1,7 +1,7 @@
 import Svg, { Line, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 
 import { layoutChart, type DataRow } from '@/core/templates';
-import { useColors } from './theme';
+import { family, useColors } from './theme';
 
 export function Chart({ rows, chart, unit }: { rows: DataRow[]; chart: 'bar' | 'line'; unit: string }) {
   const c = useColors();
@@ -14,10 +14,10 @@ export function Chart({ rows, chart, unit }: { rows: DataRow[]; chart: 'bar' | '
         ? pts.map((p) => <Rect key={p.label} x={p.x} y={p.y} width={p.w} height={p.h} rx={4} fill={c.accent} />)
         : <Polyline points={pts.map((p) => `${p.cx},${p.y}`).join(' ')} fill="none" stroke={c.accent} strokeWidth={2.5} />}
       {pts.map((p) => (
-        <SvgText key={`v${p.label}`} x={p.cx} y={p.y - 6} fontSize={11} fill={c.text} textAnchor="middle">{`${p.value}${unit}`}</SvgText>
+        <SvgText key={`v${p.label}`} x={p.cx} y={p.y - 6} fontSize={11} fontFamily={family.regular} fill={c.text} textAnchor="middle">{`${p.value}${unit}`}</SvgText>
       ))}
       {pts.map((p) => (
-        <SvgText key={`l${p.label}`} x={p.cx} y={H - 12} fontSize={11} fill={c.sub} textAnchor="middle">{p.label}</SvgText>
+        <SvgText key={`l${p.label}`} x={p.cx} y={H - 12} fontSize={11} fontFamily={family.regular} fill={c.sub} textAnchor="middle">{p.label}</SvgText>
       ))}
     </Svg>
   );

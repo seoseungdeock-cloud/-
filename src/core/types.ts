@@ -7,10 +7,6 @@ export type User = {
   nickname: string; // 평소에는 닉네임(익명)으로만 보입니다
   role: Role;
   officeId?: string; // 변호사·직원이 소속된 사무소
-  /** 사건방 입장 등에 필요한 본인확인. 실명은 플랫폼이 아니라 해당 로펌 쪽에만 남깁니다. */
-  identityVerified: boolean;
-  /** 모르는 사람과의 대화(랜덤채팅 규제)에 필요한 성인인증 */
-  adultVerified: boolean;
   /** 경영 에이전트 접근 권한. 어드민이 허용합니다. */
   agentAccess: boolean;
   membership: 'basic' | 'rightnow';
@@ -28,11 +24,22 @@ export type RoomKind =
   | 'marketing'; // 마케팅 작업방
 
 /**
- * 방의 보안 방식. 생성할 때 정하고 이후 바꿀 수 없습니다.
- * - e2ee: 종단간 암호화. 운영자도 AI도 내용을 읽지 못합니다.
+ * 방의 방식. 생성할 때 정하고 이후 바꿀 수 없습니다.
+ * - private: 사건수행방. 참여자끼리만 대화하고 AI는 참여하지 않습니다.
  * - ai: AI가 참여해 내용을 읽고 답합니다. 방 상단에 항상 표시됩니다.
  */
-export type RoomMode = 'e2ee' | 'ai';
+export type RoomMode = 'private' | 'ai';
+
+/** 로그인 계정. 백오피스에서 만들고 관리합니다. */
+export type Account = {
+  userId: string;
+  loginId: string;
+  /** 서버 연결 전 임시 저장. 서버가 붙으면 서버에서 암호화해 보관합니다. */
+  password: string;
+  active: boolean;
+  createdAt: string;
+  lastLoginAt?: string;
+};
 
 export type CaseStage = '상담' | '수임' | '진행' | '종결';
 

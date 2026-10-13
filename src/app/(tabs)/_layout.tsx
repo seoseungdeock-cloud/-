@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 
 import { isWorkUser } from '@/core/rooms';
 import { Icon, type IconName } from '@/ui/icons';
-import { useColors } from '@/ui/theme';
+import { family, useColors } from '@/ui/theme';
 import { useMe } from '@/ui/use-app';
 
 // 하단 탭 다섯 개: 대화 / 사건 / 찾기 / 업무 / 나 (의뢰인에게는 업무 탭을 숨깁니다)
@@ -18,7 +18,7 @@ export default function TabLayout() {
         tabBarActiveTintColor: c.text,
         tabBarInactiveTintColor: c.faint,
         tabBarStyle: { backgroundColor: c.bg, borderTopColor: c.line, ...(Platform.OS === 'web' ? { height: 64, paddingBottom: 8 } : null) },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarLabelStyle: { fontSize: 11, fontFamily: family.semibold },
       }}>
       <Tabs.Screen name="index" options={{ title: '대화', tabBarIcon: icon('chat') }} />
       <Tabs.Screen name="cases" options={{ title: '사건', tabBarIcon: icon('case') }} />

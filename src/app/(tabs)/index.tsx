@@ -5,21 +5,22 @@ import { Icon } from '@/ui/icons';
 import { Chip, Chips, Empty, Screen } from '@/ui/kit';
 import { RoomRow } from '@/ui/room-row';
 import { useColors } from '@/ui/theme';
-import { useApp } from '@/ui/use-app';
+import { useApp, useMe } from '@/ui/use-app';
 import { useState } from 'react';
 
 const FILTERS = [
   { key: 'all', label: '전체' },
-  { key: 'e2ee', label: '🔒 암호화방' },
+  { key: 'private', label: '사건수행방' },
   { key: 'ai', label: '✦ AI 참여방' },
 ] as const;
 
 export default function ChatsScreen() {
   const s = useApp();
+  const user = useMe();
   const c = useColors();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]['key']>('all');
   const rooms = s.rooms.filter(
-    (r) => r.memberIds.includes(s.currentUserId) && r.kind !== 'case' && r.kind !== 'consult' && (filter === 'all' || r.mode === filter),
+    (r) => r.memberIds.includes(user.id) && r.kind !== 'case' && r.kind !== 'consult' && (filter === 'all' || r.mode === filter),
   );
   return (
     <Screen

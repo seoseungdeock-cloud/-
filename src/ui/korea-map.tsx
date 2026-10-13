@@ -1,7 +1,7 @@
 import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
 
 import { KOREA_MAP_VIEWBOX, KOREA_REGIONS } from '@/data/korea-map';
-import { useColors } from './theme';
+import { family, useColors } from './theme';
 
 // scripts/build-korea-map.mjs 와 같은 투영
 const lon0 = 124.5, lat0 = 33.0, lat1 = 38.7, lon1 = 131.0;
@@ -38,7 +38,7 @@ export function KoreaMap({ counts, selected, onSelect, pins = [] }: Props) {
       })}
       {pins.map((p) => {
         const { x, y } = project(p.lon, p.lat);
-        return <Circle key={p.id} cx={x} cy={y} r={4} fill={c.warn} stroke={c.bg} strokeWidth={1.5} />;
+        return <Circle key={p.id} cx={x} cy={y} r={4} fill={c.text} stroke={c.bg} strokeWidth={1.5} />;
       })}
       {/* 광역시처럼 작은 지역은 지도 아래 칩으로 고릅니다 */}
       {KOREA_REGIONS.filter((r) => r.d && Number(r.code) >= 31).map((r) => {
@@ -46,11 +46,11 @@ export function KoreaMap({ counts, selected, onSelect, pins = [] }: Props) {
         const active = selected === r.code;
         return (
           <G key={`l${r.code}`} onPress={() => onSelect(active ? undefined : r.code)}>
-            <SvgText x={r.cx} y={r.cy} fontSize={11} fontWeight="700" fill={active ? '#FFFFFF' : c.text} textAnchor="middle">
+            <SvgText x={r.cx} y={r.cy} fontSize={11} fontFamily={family.bold} fill={active ? '#FFFFFF' : c.text} textAnchor="middle">
               {r.short}
             </SvgText>
             {n > 0 ? (
-              <SvgText x={r.cx} y={r.cy + 13} fontSize={10} fill={active ? '#FFFFFF' : c.accent} textAnchor="middle">
+              <SvgText x={r.cx} y={r.cy + 13} fontSize={10} fontFamily={family.regular} fill={active ? '#FFFFFF' : c.accent} textAnchor="middle">
                 {n}곳
               </SvgText>
             ) : null}

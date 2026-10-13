@@ -1,5 +1,4 @@
-// 라잇나우 멤버십: 의뢰인이 대접받는 느낌. 혜택은 플랫폼 자체 서비스로만 구성합니다.
-// 특정 변호사 할인·우선 배정은 알선(변호사법 34조) 문제가 생겨 넣지 않습니다.
+// 라잇나우 멤버십: 의뢰인이 대접받는 느낌을 주는 혜택
 
 export type Benefit = { title: string; detail: string };
 
@@ -10,9 +9,3 @@ export const MEMBERSHIP_BENEFITS: Benefit[] = [
   { title: '이용 안내 전담 창구', detail: '앱 이용·서류 준비 방법을 전담 창구에서 바로 안내합니다.' },
   { title: '멤버 전용 화면', detail: '멤버 배지와 전용 디자인으로 표시됩니다.' },
 ];
-
-const FORBIDDEN = /할인|우선\s?배정|수임료|착수금|성공보수|변호사\s?지정/;
-
-export function benefitAllowed(b: Benefit): boolean {
-  return !FORBIDDEN.test(`${b.title} ${b.detail}`);
-}

@@ -19,6 +19,3 @@ export function checkCompliance(text: string): ComplianceIssue[] {
   }
   return issues;
 }
-
-/** AI기본법(2026.1 시행): 생성형 AI 결과물 표시 */
-export const AI_DISCLOSURE = '이 콘텐츠는 AI의 도움을 받아 작성되었습니다.';

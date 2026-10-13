@@ -8,7 +8,7 @@ import { AI_SENDER, SYSTEM_SENDER, type Message } from '@/core/types';
 import { CasePanel } from '@/ui/case-panel';
 import { Icon } from '@/ui/icons';
 import { Button, Empty, Input, ModeBadge, ModeBanner, Notice, Screen, Sub, T } from '@/ui/kit';
-import { font, radius, space, useColors } from '@/ui/theme';
+import { family, font, radius, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 
 export default function RoomScreen() {
@@ -81,7 +81,7 @@ export default function RoomScreen() {
               placeholderTextColor={c.faint}
               multiline
               onSubmitEditing={send}
-              style={{ flex: 1, backgroundColor: c.surface, color: c.text, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, fontSize: font.body, maxHeight: 120 }}
+              style={{ flex: 1, backgroundColor: c.surface, color: c.text, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, fontSize: font.body, fontFamily: family.regular, maxHeight: 120 }}
             />
             <Pressable accessibilityLabel="보내기" onPress={send} style={{ backgroundColor: c.accent, borderRadius: 22, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="send" color="#FFFFFF" size={20} />

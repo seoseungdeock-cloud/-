@@ -8,7 +8,7 @@ import { useApp } from './use-app';
 export function RoomRow({ room }: { room: Room }) {
   const s = useApp();
   const last = [...s.messages].reverse().find((m) => m.roomId === room.id);
-  const preview = room.mode === 'e2ee' && last?.kind !== 'system' ? '암호화된 메시지' : (last?.text.split('\n')[0] ?? '');
+  const preview = last?.text.split('\n')[0] ?? '';
   return (
     <Row
       left={<Avatar name={room.title} />}

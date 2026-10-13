@@ -33,7 +33,7 @@ export default function MembershipScreen() {
         )}
       </View>
       <View style={{ marginTop: space.sm }}>
-        <Sub>결제는 아직 연결되지 않았습니다. 멤버십 혜택은 라잇나우 자체 서비스이며, 특정 변호사 할인·배정과는 무관합니다.</Sub>
+        <Sub>결제는 아직 연결되지 않았습니다.</Sub>
       </View>
     </Screen>
   );

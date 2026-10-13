@@ -44,9 +44,9 @@ export default function WorkScreen() {
       </Section>
       {user.role === 'admin' ? (
         <Section title="관리">
-          <Card onPress={() => router.push('/admin')}>
-            <T bold>사용자 권한</T>
-            <Sub>경영 에이전트·마케팅 AI 사용을 허용할 사람을 정합니다</Sub>
+          <Card onPress={() => router.push('/backoffice')}>
+            <T bold>백오피스</T>
+            <Sub>계정 발급·관리, 업무 AI 사용 허용</Sub>
           </Card>
         </Section>
       ) : null}

@@ -6,7 +6,6 @@ export type Lawyer = {
   name: string;
   fields: string[];
   careerYears: number;
-  /** 상담료만 표시합니다. 수임료 사전 표시는 법무부 가이드라인상 금지라 필드 자체를 두지 않습니다. */
   consultFee: number;
   intro: string;
 };
@@ -43,7 +42,6 @@ export type LawyerFilter = {
   regionCode?: string;
   field?: string;
   keyword?: string;
-  /** 정렬은 고객이 고릅니다. AI 추천·광고비 순위는 쓰지 않습니다(알선 금지). */
   sort: 'career' | 'name' | 'consultFee';
 };
 

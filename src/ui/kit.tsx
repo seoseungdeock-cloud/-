@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ROOM_MODE_INFO } from '@/core/rooms';
 import type { RoomMode } from '@/core/types';
 import { Icon } from './icons';
-import { font, MAX_WIDTH, radius, space, useColors } from './theme';
+import { family, font, MAX_WIDTH, radius, space, useColors } from './theme';
 
 export function Screen({ title, children, right, back, scroll = true }: { title?: string; children: ReactNode; right?: ReactNode; back?: boolean; scroll?: boolean }) {
   const c = useColors();
@@ -44,7 +44,7 @@ export function Screen({ title, children, right, back, scroll = true }: { title?
 
 export function T({ children, size = 'body', color, bold, style }: { children: ReactNode; size?: keyof typeof font; color?: string; bold?: boolean; style?: object }) {
   const c = useColors();
-  return <Text style={[{ fontSize: font[size], color: color ?? c.text, fontWeight: bold ? '700' : '400', lineHeight: font[size] * 1.45 }, style]}>{children}</Text>;
+  return <Text style={[{ fontSize: font[size], color: color ?? c.text, fontFamily: bold ? family.bold : family.regular, lineHeight: font[size] * 1.45 }, style]}>{children}</Text>;
 }
 
 export function Sub({ children }: { children: ReactNode }) {
@@ -93,7 +93,7 @@ export function Button({ label, onPress, kind = 'primary', disabled, small }: { 
         alignItems: 'center',
         opacity: disabled ? 0.4 : pressed ? 0.75 : 1,
       })}>
-      <Text style={{ color: fg, fontSize: small ? font.small : font.body, fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color: fg, fontSize: small ? font.small : font.body, fontFamily: family.bold }}>{label}</Text>
     </Pressable>
   );
 }
@@ -107,7 +107,7 @@ export function Input(props: TextInputProps & { label?: string }) {
         placeholderTextColor={c.faint}
         {...props}
         style={[
-          { backgroundColor: c.surface, color: c.text, borderRadius: radius.md, padding: space.md, fontSize: font.body, marginTop: props.label ? space.xs : 0, minHeight: props.multiline ? 96 : undefined, textAlignVertical: props.multiline ? 'top' : 'center' },
+          { backgroundColor: c.surface, color: c.text, borderRadius: radius.md, padding: space.md, fontSize: font.body, fontFamily: family.regular, marginTop: props.label ? space.xs : 0, minHeight: props.multiline ? 96 : undefined, textAlignVertical: props.multiline ? 'top' : 'center' },
           props.style,
         ]}
       />
@@ -121,7 +121,7 @@ export function Chip({ label, active, onPress }: { label: string; active?: boole
     <Pressable
       onPress={onPress}
       style={{ backgroundColor: active ? c.text : c.surface, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: space.sm - 2, marginRight: space.sm, marginBottom: space.sm }}>
-      <Text style={{ color: active ? c.bg : c.text, fontSize: font.small, fontWeight: active ? '700' : '400' }}>{label}</Text>
+      <Text style={{ color: active ? c.bg : c.text, fontSize: font.small, fontFamily: active ? family.semibold : family.regular }}>{label}</Text>
     </Pressable>
   );
 }
@@ -143,23 +143,23 @@ export function Badge({ label, tone = 'accent' }: { label: string; tone?: 'accen
   const [bg, fg] = map[tone];
   return (
     <View style={{ backgroundColor: bg, borderRadius: radius.pill, paddingHorizontal: space.sm, paddingVertical: 2, alignSelf: 'flex-start' }}>
-      <Text style={{ color: fg, fontSize: font.tiny, fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color: fg, fontSize: font.tiny, fontFamily: family.semibold }}>{label}</Text>
     </View>
   );
 }
 
-/** 방의 보안 방식 표시. 만들 때부터 운영 중까지 같은 모양으로 보입니다. */
+/** 방의 방식 표시. 만들 때부터 운영 중까지 같은 모양으로 보입니다. */
 export function ModeBadge({ mode }: { mode: RoomMode }) {
-  return <Badge label={mode === 'e2ee' ? '🔒 암호화' : '✦ AI 참여 중'} tone={mode === 'e2ee' ? 'secure' : 'ai'} />;
+  return <Badge label={mode === 'private' ? '사건수행' : '✦ AI 참여 중'} tone={mode === 'private' ? 'secure' : 'ai'} />;
 }
 
 export function ModeBanner({ mode }: { mode: RoomMode }) {
   const c = useColors();
   const info = ROOM_MODE_INFO[mode];
-  const [bg, fg] = mode === 'e2ee' ? [c.secureSoft, c.secure] : [c.aiSoft, c.ai];
+  const [bg, fg] = mode === 'private' ? [c.secureSoft, c.secure] : [c.aiSoft, c.ai];
   return (
     <View style={{ backgroundColor: bg, borderRadius: radius.md, padding: space.md, flexDirection: 'row', gap: space.sm, alignItems: 'flex-start' }}>
-      <Icon name={mode === 'e2ee' ? 'lock' : 'spark'} color={fg} size={20} />
+      <Icon name={mode === 'private' ? 'case' : 'spark'} color={fg} size={20} />
       <View style={{ flex: 1 }}>
         <T size="small" bold color={fg}>{info.label}</T>
         <T size="tiny" color={fg}>{info.description}</T>
@@ -184,7 +184,7 @@ export function Row({ title, sub, right, onPress, left }: { title: string; sub?:
       {left}
       <View style={{ flex: 1 }}>
         <T bold>{title}</T>
-        {sub ? <Text numberOfLines={1} style={{ fontSize: font.small, color: c.sub, lineHeight: font.small * 1.45 }}>{sub}</Text> : null}
+        {sub ? <Text numberOfLines={1} style={{ fontSize: font.small, fontFamily: family.regular, color: c.sub, lineHeight: font.small * 1.45 }}>{sub}</Text> : null}
       </View>
       {right}
       {onPress ? <Icon name="chevron" color={c.faint} size={18} /> : null}
@@ -205,7 +205,7 @@ export function Avatar({ name, tone }: { name: string; tone?: string }) {
   const c = useColors();
   return (
     <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: tone ?? c.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ color: c.accent, fontWeight: '700', fontSize: font.body }}>{name.slice(0, 1)}</Text>
+      <Text style={{ color: c.accent, fontFamily: family.bold, fontSize: font.body }}>{name.slice(0, 1)}</Text>
     </View>
   );
 }
@@ -213,5 +213,5 @@ export function Avatar({ name, tone }: { name: string; tone?: string }) {
 const styles = StyleSheet.create({
   inner: { width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', paddingHorizontal: space.lg, flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', paddingTop: space.lg, paddingBottom: space.sm },
-  title: { fontSize: font.title, fontWeight: '800', flexShrink: 1 },
+  title: { fontSize: font.title, fontFamily: family.heavy, flexShrink: 1 },
 });

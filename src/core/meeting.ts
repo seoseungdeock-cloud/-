@@ -48,8 +48,3 @@ export function summarizeMeeting(raw: string): MeetingNotes {
   ];
   return { summary, decisions, actions };
 }
-
-/** 통신비밀보호법: 녹음은 참석자 모두에게 알리고 동의를 받은 뒤에만 시작합니다. */
-export function canStartRecording(participants: string[], consents: Record<string, boolean>): boolean {
-  return participants.length > 0 && participants.every((p) => consents[p]);
-}

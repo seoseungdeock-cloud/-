@@ -42,7 +42,7 @@ export default function LawyerScreen() {
         <Input label="어떤 일인지 짧게 적어 주세요 (선택)" multiline value={summary} onChangeText={setSummary} placeholder="예: 이혼 소송을 준비 중입니다" />
         <Sub>상담방 방식</Sub>
         <Chips>
-          {(['ai', 'e2ee'] as RoomMode[]).map((m) => (
+          {(['ai', 'private'] as RoomMode[]).map((m) => (
             <Chip key={m} label={ROOM_MODE_INFO[m].label} active={mode === m} onPress={() => setMode(m)} />
           ))}
         </Chips>
@@ -50,9 +50,6 @@ export default function LawyerScreen() {
         <View style={{ height: space.md }} />
         {error ? <Notice text={error} /> : null}
         <Button label="상담 신청하기" onPress={submit} />
-        <View style={{ marginTop: space.sm }}>
-          <Sub>수임료는 상담 후 변호사와 직접 정합니다. 라잇나우는 수임료를 받거나 정하지 않습니다.</Sub>
-        </View>
       </Section>
     </Screen>
   );

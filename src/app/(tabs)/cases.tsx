@@ -3,11 +3,12 @@ import { View } from 'react-native';
 
 import { Badge, Button, Card, Empty, ModeBadge, Screen, Section, Sub, T } from '@/ui/kit';
 import { space } from '@/ui/theme';
-import { useApp } from '@/ui/use-app';
+import { useApp, useMe } from '@/ui/use-app';
 
 export default function CasesScreen() {
   const s = useApp();
-  const mine = s.rooms.filter((r) => r.memberIds.includes(s.currentUserId));
+  const user = useMe();
+  const mine = s.rooms.filter((r) => r.memberIds.includes(user.id));
   const cases = mine.filter((r) => r.kind === 'case');
   const consults = mine.filter((r) => r.kind === 'consult');
   const open = (id: string) => router.push({ pathname: '/room/[id]', params: { id } });

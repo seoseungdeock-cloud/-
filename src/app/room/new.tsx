@@ -15,7 +15,7 @@ export default function NewRoomScreen() {
   const s = useApp();
   const user = useMe();
   const [kind, setKind] = useState<RoomKind>('direct');
-  const [mode, setMode] = useState<RoomMode>('e2ee');
+  const [mode, setMode] = useState<RoomMode>('private');
   const [title, setTitle] = useState('');
   const [members, setMembers] = useState<string[]>([]);
   const [error, setError] = useState<string>();
@@ -43,13 +43,13 @@ export default function NewRoomScreen() {
             <Chip key={k} label={ROOM_KIND_LABEL[k]} active={kind === k} onPress={() => pickKind(k)} />
           ))}
         </Chips>
-        {kind === 'stranger' ? <Sub>닉네임으로 새로운 사람과 대화합니다. 성인인증이 필요합니다.</Sub> : null}
+        {kind === 'stranger' ? <Sub>닉네임으로 새로운 사람과 대화합니다.</Sub> : null}
       </Section>
-      <Section title="보안 방식">
+      <Section title="방 방식">
         <Sub>만든 뒤에는 바꿀 수 없고, 방 안에서 항상 표시됩니다.</Sub>
         <View style={{ height: space.sm }} />
         <Chips>
-          {(['e2ee', 'ai'] as RoomMode[]).map((m) => (
+          {(['private', 'ai'] as RoomMode[]).map((m) => (
             <Chip key={m} label={ROOM_MODE_INFO[m].label + (modes.includes(m) ? '' : ' (불가)')} active={mode === m} onPress={() => modes.includes(m) && setMode(m)} />
           ))}
         </Chips>
