@@ -21,7 +21,7 @@ import {
   type Plan,
 } from './marketing';
 import { summarizeMeeting, type MeetingNotes } from './meeting';
-import { toggleVote } from './board';
+import { formatUntil, reportTarget, restrictedUntil, toggleVote } from './board';
 import { findLawyer } from './offices';
 import { aiAnswerLevel, canCreateRoom, canUseAgents, type RoomCheck } from './rooms';
 import { latest, parseRows, refreshTemplate, type DataRow, type ImageTemplate } from './templates';
@@ -31,6 +31,7 @@ import {
   type Account,
   type BoardPost,
   type NoteThread,
+  type BoardReport,
   type CaseInfo,
   type Message,
   type Room,
@@ -59,6 +60,9 @@ export type State = {
   lawyerAccounts: Record<string, string>;
   posts: BoardPost[];
   notes: NoteThread[];
+  reports: BoardReport[];
+  /** 게시판 이용 제한: 사용자 id → 해제 시각 */
+  boardBans: Record<string, string>;
 };
 
 const T0 = '2026-10-13T09:00:00.000Z';
@@ -136,8 +140,17 @@ export function initialState(): State {
         votes: { u_client: 1 },
         comments: [],
       },
+      {
+        id: 'p3', authorId: 'u_lawyer', at: ago(48), field: '이혼·가사',
+        title: '협의이혼 전에 꼭 정리해 둘 세 가지',
+        body: '양육권과 양육비, 재산분할 목록, 위자료 여부입니다. 이혼 숙려기간 동안 이 세 가지를 서면으로 남겨 두면 나중에 다툼이 크게 줄어듭니다.',
+        votes: Object.fromEntries(Array.from({ length: 23 }, (_, i) => [`seed_${i}`, 1 as const])),
+        comments: [],
+      },
     ],
     notes: [],
+    reports: [{ id: 'rp1', postId: 'p2', reporterId: 'u_lawyer', reason: '개인정보 노출', at: ago(1), status: 'open' }],
+    boardBans: {},
   };
 }
 
@@ -174,6 +187,16 @@ export function me(s: State = state): User {
 
 export function loggedIn(s: State = state): boolean {
   return s.users.some((x) => x.id === s.currentUserId);
+}
+
+/** 게시판 이용 제한 중이면 거절 사유 */
+function boardBlocked(): RoomCheck | undefined {
+  const until = restrictedUntil(state.boardBans, me().id);
+  return until ? { ok: false, reason: `게시판 이용이 제한되었습니다. (${formatUntil(until)}까지)` } : undefined;
+}
+
+function closeReports(reports: BoardReport[], match: (r: BoardReport) => boolean, resolution: string): BoardReport[] {
+  return reports.map((r) => (r.status === 'open' && match(r) ? { ...r, status: 'resolved' as const, resolution } : r));
 }
 
 function userById(id: string) {
@@ -584,6 +607,8 @@ export const actions = {
   // ---- 익명 게시판 (모든 계정 이용 가능) ----
 
   createPost(input: { title: string; body: string; field: string }): RoomCheck & { postId?: string } {
+    const blocked = boardBlocked();
+    if (blocked) return blocked;
     if (!input.title.trim() || !input.body.trim()) return { ok: false, reason: '제목과 내용을 입력해 주세요.' };
     if (!input.field) return { ok: false, reason: '분야를 골라 주세요.' };
     const post: BoardPost = { id: newId('p'), authorId: me().id, field: input.field, title: input.title.trim(), body: input.body.trim(), at: nowIso(), votes: {}, comments: [] };
@@ -592,24 +617,32 @@ export const actions = {
   },
 
   commentPost(postId: string, text: string, parentId?: string): RoomCheck {
+    const blocked = boardBlocked();
+    if (blocked) return blocked;
     if (!text.trim()) return { ok: false, reason: '댓글을 입력해 주세요.' };
     const c = { id: newId('pc'), authorId: me().id, parentId, text: text.trim(), at: nowIso(), votes: {} };
     set((s) => ({ posts: s.posts.map((p) => (p.id === postId ? { ...p, comments: [...p.comments, c] } : p)) }));
     return { ok: true };
   },
 
-  votePost(postId: string, v: 1 | -1) {
+  votePost(postId: string, v: 1 | -1): RoomCheck {
+    const blocked = boardBlocked();
+    if (blocked) return blocked;
     const uid = me().id;
     set((s) => ({ posts: s.posts.map((p) => (p.id === postId ? { ...p, votes: toggleVote(p.votes, uid, v) } : p)) }));
+    return { ok: true };
   },
 
-  voteComment(postId: string, commentId: string, v: 1 | -1) {
+  voteComment(postId: string, commentId: string, v: 1 | -1): RoomCheck {
+    const blocked = boardBlocked();
+    if (blocked) return blocked;
     const uid = me().id;
     set((s) => ({
       posts: s.posts.map((p) =>
         p.id === postId ? { ...p, comments: p.comments.map((c) => (c.id === commentId ? { ...c, votes: toggleVote(c.votes, uid, v) } : c)) } : p,
       ),
     }));
+    return { ok: true };
   },
 
   /** 게시판 글·댓글 작성자에게 익명 쪽지. 같은 글에서 같은 상대와의 쪽지는 이어서 씁니다. */
@@ -624,6 +657,8 @@ export const actions = {
   },
 
   sendNote(noteId: string, text: string): RoomCheck {
+    const blocked = boardBlocked();
+    if (blocked) return blocked;
     if (!text.trim()) return { ok: false, reason: '쪽지 내용을 입력해 주세요.' };
     const uid = me().id;
     const at = nowIso();
@@ -638,6 +673,67 @@ export const actions = {
     const last = n?.messages.at(-1)?.at;
     if (!n || !last || (n.readAt[uid] ?? '') >= last) return;
     set((s) => ({ notes: s.notes.map((x) => (x.id === noteId ? { ...x, readAt: { ...x.readAt, [uid]: last } } : x)) }));
+  },
+
+  /** 글(commentId 없음) 또는 댓글 신고. 같은 대상은 한 번만 신고할 수 있습니다. */
+  report(postId: string, reason: string, commentId?: string): RoomCheck {
+    const uid = me().id;
+    const target = reportTarget({ id: '', postId, commentId, reporterId: uid, reason, at: '', status: 'open' }, state.posts);
+    if (!target) return { ok: false, reason: '신고할 글을 찾을 수 없습니다.' };
+    if (target.authorId === uid) return { ok: false, reason: '내 글은 신고할 수 없습니다.' };
+    if (!reason) return { ok: false, reason: '신고 사유를 골라 주세요.' };
+    if (state.reports.some((r) => r.postId === postId && r.commentId === commentId && r.reporterId === uid)) {
+      return { ok: false, reason: '이미 신고했습니다.' };
+    }
+    const r: BoardReport = { id: newId('rp'), postId, commentId, reporterId: uid, reason, at: nowIso(), status: 'open' };
+    set((s) => ({ reports: [r, ...s.reports] }));
+    return { ok: true };
+  },
+
+  // ---- 어드민: 신고 처리 ----
+
+  deletePost(postId: string): RoomCheck {
+    if (me().role !== 'admin') return { ok: false, reason: '어드민만 삭제할 수 있습니다.' };
+    set((s) => ({
+      posts: s.posts.filter((p) => p.id !== postId),
+      reports: closeReports(s.reports, (r) => r.postId === postId, '글 삭제'),
+    }));
+    return { ok: true };
+  },
+
+  /** 답글 흐름이 끊기지 않도록 댓글은 '삭제된 댓글'로 남깁니다. */
+  deleteComment(postId: string, commentId: string): RoomCheck {
+    if (me().role !== 'admin') return { ok: false, reason: '어드민만 삭제할 수 있습니다.' };
+    set((s) => ({
+      posts: s.posts.map((p) => (p.id === postId ? { ...p, comments: p.comments.map((c) => (c.id === commentId ? { ...c, text: '', deleted: true } : c)) } : p)),
+      reports: closeReports(s.reports, (r) => r.postId === postId && r.commentId === commentId, '댓글 삭제'),
+    }));
+    return { ok: true };
+  },
+
+  restrictUser(userId: string, hours: number): RoomCheck {
+    if (me().role !== 'admin') return { ok: false, reason: '어드민만 제한할 수 있습니다.' };
+    if (userId === me().id) return { ok: false, reason: '자기 계정은 제한할 수 없습니다.' };
+    const until = new Date(Date.now() + hours * 3_600_000).toISOString();
+    set((s) => ({ boardBans: { ...s.boardBans, [userId]: until } }));
+    return { ok: true };
+  },
+
+  liftRestriction(userId: string): RoomCheck {
+    if (me().role !== 'admin') return { ok: false, reason: '어드민만 해제할 수 있습니다.' };
+    set((s) => {
+      const boardBans = { ...s.boardBans };
+      delete boardBans[userId];
+      return { boardBans };
+    });
+    return { ok: true };
+  },
+
+  /** 신고 처리 기록: 이용 제한을 걸었거나, 문제없다고 기각 */
+  closeReport(reportId: string, status: 'resolved' | 'dismissed', resolution: string): RoomCheck {
+    if (me().role !== 'admin') return { ok: false, reason: '어드민만 처리할 수 있습니다.' };
+    set((s) => ({ reports: s.reports.map((r) => (r.id === reportId ? { ...r, status, resolution } : r)) }));
+    return { ok: true };
   },
 
   approveContent(id: string) {

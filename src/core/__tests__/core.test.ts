@@ -1,5 +1,5 @@
 import { checkCompliance } from '../compliance';
-import { authorView, commentTree, score, unreadIn } from '../board';
+import { authorView, commentTree, score, searchPosts, sortPosts, unreadIn } from '../board';
 import { contactsFor } from '../contacts';
 import { opinionFor } from '../knowledge';
 import { planFromCommand, rankPerformance, mostSimilar } from '../marketing';
@@ -306,5 +306,64 @@ describe('익명 게시판', () => {
     expect(unreadIn(note, 'u_lawyer')).toBe(1);
     actions.readNote(note.id);
     expect(unreadIn(getState().notes.find((n) => n.id === res.noteId)!, 'u_lawyer')).toBe(0);
+  });
+});
+
+describe('게시판 베스트·검색·신고', () => {
+  beforeEach(() => resetState());
+
+  it('베스트 탭에는 추천 20개 이상인 글만 나온다', () => {
+    const best = sortPosts(getState().posts, 'best');
+    expect(best.map((p) => p.id)).toEqual(['p3']);
+  });
+
+  it('제목·내용·분야로 검색한다', () => {
+    const posts = getState().posts;
+    expect(searchPosts(posts, '보증금').map((p) => p.id)).toEqual(['p1']);
+    expect(searchPosts(posts, '이혼 양육비').map((p) => p.id)).toEqual(['p3']);
+    expect(searchPosts(posts, '없는단어')).toHaveLength(0);
+  });
+
+  it('글 작성자에게도 쪽지를 보낼 수 있다', () => {
+    as('lawyer');
+    const res = actions.openNote('p1', 'u_client');
+    expect(res.ok).toBe(true);
+    expect(actions.sendNote(res.noteId!, '자세히 알려주시면 답드릴게요').ok).toBe(true);
+  });
+
+  it('신고는 한 대상에 한 번, 내 글은 신고할 수 없다', () => {
+    as('staff');
+    expect(actions.report('p1', '욕설·비방').ok).toBe(true);
+    expect(actions.report('p1', '욕설·비방').ok).toBe(false);
+    expect(actions.report('p2', '기타').ok).toBe(false);
+    expect(actions.report('p1', '광고·수임 유도', 'pc1').ok).toBe(true);
+  });
+
+  it('어드민이 삭제하면 관련 신고가 처리되고, 댓글은 삭제 표시로 남는다', () => {
+    as('admin');
+    expect(actions.deletePost('p2').ok).toBe(true);
+    expect(getState().posts.some((p) => p.id === 'p2')).toBe(false);
+    expect(getState().reports.find((r) => r.id === 'rp1')!.status).toBe('resolved');
+    expect(actions.deleteComment('p1', 'pc1').ok).toBe(true);
+    expect(getState().posts.find((p) => p.id === 'p1')!.comments.find((c) => c.id === 'pc1')!.deleted).toBe(true);
+  });
+
+  it('어드민만 삭제·제한할 수 있다', () => {
+    as('lawyer');
+    expect(actions.deletePost('p1').ok).toBe(false);
+    expect(actions.restrictUser('u_client', 1).ok).toBe(false);
+  });
+
+  it('이용 제한된 사람은 글·댓글·추천·쪽지를 쓸 수 없고, 해제하면 다시 쓴다', () => {
+    as('admin');
+    expect(actions.restrictUser('u_client', 24).ok).toBe(true);
+    as('client');
+    expect(actions.createPost({ title: '제목', body: '내용', field: '민사' }).ok).toBe(false);
+    expect(actions.commentPost('p2', '댓글').ok).toBe(false);
+    expect(actions.votePost('p2', 1).ok).toBe(false);
+    as('admin');
+    actions.liftRestriction('u_client');
+    as('client');
+    expect(actions.commentPost('p2', '댓글').ok).toBe(true);
   });
 });

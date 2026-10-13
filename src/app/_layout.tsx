@@ -45,6 +45,7 @@ export default function RootLayout() {
           <Stack.Screen name="board/[id]" />
           <Stack.Screen name="board/new" />
           <Stack.Screen name="board/notes" />
+          <Stack.Screen name="board/reports" />
           <Stack.Screen name="board/note/[id]" />
         </Stack.Protected>
         <Stack.Protected guard={!signedIn}>

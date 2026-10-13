@@ -1,4 +1,4 @@
-import type { BoardComment, BoardPost, NoteThread, Role, User, Votes } from './types';
+import type { BoardComment, BoardPost, BoardReport, NoteThread, Role, User, Votes } from './types';
 
 const ROLE_LABEL: Record<Role, string> = { client: '의뢰인', lawyer: '변호사', staff: '직원', admin: '어드민' };
 
@@ -33,8 +33,25 @@ export function toggleVote(votes: Votes, userId: string, v: 1 | -1): Votes {
   return next;
 }
 
-export type BoardSort = 'hot' | 'new' | 'top';
-export const BOARD_SORT_LABEL: Record<BoardSort, string> = { hot: '인기', new: '최신', top: '추천순' };
+export type BoardSort = 'hot' | 'new' | 'best';
+export const BOARD_SORT_LABEL: Record<BoardSort, string> = { hot: '인기', new: '최신', best: '베스트' };
+
+/** 베스트 게시판에 오르는 추천 점수 */
+export const BEST_MIN = 20;
+
+export function isBest(p: BoardPost): boolean {
+  return score(p.votes) >= BEST_MIN;
+}
+
+/** 제목·내용·분야에서 찾습니다. 띄어쓴 단어는 모두 들어 있어야 합니다. */
+export function searchPosts(posts: BoardPost[], query: string): BoardPost[] {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return posts;
+  return posts.filter((p) => {
+    const hay = `${p.title} ${p.body} ${p.field}`.toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+}
 
 /** 인기: 추천과 댓글이 많을수록, 최근 글일수록 위로 */
 export function sortPosts(posts: BoardPost[], sort: BoardSort, now = Date.now()): BoardPost[] {
@@ -45,9 +62,9 @@ export function sortPosts(posts: BoardPost[], sort: BoardSort, now = Date.now())
   const by = {
     hot: (a: BoardPost, b: BoardPost) => hot(b) - hot(a),
     new: (a: BoardPost, b: BoardPost) => b.at.localeCompare(a.at),
-    top: (a: BoardPost, b: BoardPost) => score(b.votes) - score(a.votes) || b.at.localeCompare(a.at),
+    best: (a: BoardPost, b: BoardPost) => score(b.votes) - score(a.votes) || b.at.localeCompare(a.at),
   }[sort];
-  return [...posts].sort(by);
+  return (sort === 'best' ? posts.filter(isBest) : [...posts]).sort(by);
 }
 
 /** 답글을 부모 아래에 들여쓰기 깊이와 함께 펼칩니다. 같은 부모 안에서는 추천순. */
@@ -87,4 +104,36 @@ export function unreadIn(n: NoteThread, userId: string): number {
 
 export function otherIn(n: NoteThread, userId: string): string {
   return n.memberIds[0] === userId ? n.memberIds[1] : n.memberIds[0];
+}
+
+// ---- 신고·이용 제한 ----
+
+export const REPORT_REASONS = ['욕설·비방', '광고·수임 유도', '개인정보 노출', '음란·불법', '도배', '기타'];
+
+export const RESTRICT_OPTIONS: { label: string; hours: number }[] = [
+  { label: '1시간', hours: 1 },
+  { label: '1일', hours: 24 },
+  { label: '7일', hours: 24 * 7 },
+  { label: '30일', hours: 24 * 30 },
+];
+
+/** 이용 제한 중이면 해제 시각, 아니면 undefined */
+export function restrictedUntil(bans: Record<string, string>, userId: string, now = Date.now()): string | undefined {
+  const until = bans[userId];
+  return until && Date.parse(until) > now ? until : undefined;
+}
+
+export function formatUntil(iso: string): string {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** 신고 대상의 작성자와 내용 */
+export function reportTarget(r: BoardReport, posts: BoardPost[]): { authorId: string; text: string; kind: '글' | '댓글' } | undefined {
+  const post = posts.find((p) => p.id === r.postId);
+  if (!post) return undefined;
+  if (!r.commentId) return { authorId: post.authorId, text: `${post.title}\n${post.body}`, kind: '글' };
+  const c = post.comments.find((x) => x.id === r.commentId);
+  return c ? { authorId: c.authorId, text: c.text, kind: '댓글' } : undefined;
 }

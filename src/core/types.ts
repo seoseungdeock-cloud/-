@@ -86,7 +86,7 @@ export const SYSTEM_SENDER = 'system';
 /** 사용자 id → +1(추천) / -1(비추천) */
 export type Votes = Record<string, 1 | -1>;
 
-export type BoardComment = { id: string; authorId: string; parentId?: string; text: string; at: string; votes: Votes };
+export type BoardComment = { id: string; authorId: string; parentId?: string; text: string; at: string; votes: Votes; deleted?: boolean };
 
 export type BoardPost = {
   id: string;
@@ -107,4 +107,19 @@ export type NoteThread = {
   messages: { id: string; senderId: string; text: string; at: string }[];
   /** 사용자 id → 마지막으로 읽은 시각 */
   readAt: Record<string, string>;
+};
+
+export type ReportStatus = 'open' | 'resolved' | 'dismissed';
+
+/** 게시판 신고. commentId가 없으면 글 신고 */
+export type BoardReport = {
+  id: string;
+  postId: string;
+  commentId?: string;
+  reporterId: string;
+  reason: string;
+  at: string;
+  status: ReportStatus;
+  /** 어드민 처리 내용 (삭제, 이용 제한 등) */
+  resolution?: string;
 };
