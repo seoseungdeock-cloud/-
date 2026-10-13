@@ -1,5 +1,5 @@
 import { checkCompliance } from '../compliance';
-import { authorView } from '../board';
+import { authorView, commentTree, score, unreadIn } from '../board';
 import { contactsFor } from '../contacts';
 import { opinionFor } from '../knowledge';
 import { planFromCommand, rankPerformance, mostSimilar } from '../marketing';
@@ -250,9 +250,9 @@ describe('주소록·대시보드', () => {
 describe('익명 게시판', () => {
   beforeEach(() => resetState());
 
-  it('모든 계정이 글과 댓글을 쓰고, 다른 이용자에게는 익명으로 보인다', () => {
+  it('모든 계정이 쓰고, 의뢰인·변호사 구분 없이 익명 1, 2…로만 보인다', () => {
     as('staff');
-    const res = actions.createPost('질문', '내용');
+    const res = actions.createPost({ title: '질문', body: '내용', field: '민사' });
     expect(res.ok).toBe(true);
     as('client');
     expect(actions.commentPost(res.postId!, '저도 궁금해요').ok).toBe(true);
@@ -260,22 +260,51 @@ describe('익명 게시판', () => {
     expect(actions.commentPost(res.postId!, '답변드립니다').ok).toBe(true);
     const post = getState().posts.find((p) => p.id === res.postId)!;
     const users = getState().users;
-    const viewer = me();
-    expect(authorView(viewer, post, 'u_staff', users)).toEqual({ alias: '글쓴이', lawyer: false, real: undefined });
-    expect(authorView(viewer, post, 'u_client', users).alias).toBe('익명 1');
-    const lawyer = authorView(viewer, post, 'u_lawyer', users);
-    expect(lawyer).toEqual({ alias: '익명 2', lawyer: true, real: undefined });
+    expect(authorView(me(), post, 'u_staff', users)).toEqual({ alias: '익명 1', real: undefined });
+    expect(authorView(me(), post, 'u_client', users)).toEqual({ alias: '익명 2', real: undefined });
+    expect(authorView(me(), post, 'u_lawyer', users)).toEqual({ alias: '익명 3', real: undefined });
   });
 
   it('어드민만 실제 작성자를 본다', () => {
     as('admin');
-    const post = getState().posts[0];
+    const post = getState().posts.find((p) => p.id === 'p1')!;
     expect(authorView(me(), post, post.authorId, getState().users).real).toBe('하늘 · 의뢰인');
   });
 
-  it('빈 글·댓글은 거절한다', () => {
+  it('빈 글·댓글, 분야 없는 글은 거절한다', () => {
     as('client');
-    expect(actions.createPost(' ', '내용').ok).toBe(false);
+    expect(actions.createPost({ title: ' ', body: '내용', field: '민사' }).ok).toBe(false);
+    expect(actions.createPost({ title: '제목', body: '내용', field: '' }).ok).toBe(false);
     expect(actions.commentPost('p1', '').ok).toBe(false);
+  });
+
+  it('추천은 한 사람 한 표, 다시 누르면 취소, 반대로 누르면 바뀐다', () => {
+    as('lawyer');
+    const before = score(getState().posts.find((p) => p.id === 'p2')!.votes);
+    actions.votePost('p2', 1);
+    expect(score(getState().posts.find((p) => p.id === 'p2')!.votes)).toBe(before + 1);
+    actions.votePost('p2', -1);
+    expect(score(getState().posts.find((p) => p.id === 'p2')!.votes)).toBe(before - 1);
+    actions.votePost('p2', -1);
+    expect(score(getState().posts.find((p) => p.id === 'p2')!.votes)).toBe(before);
+  });
+
+  it('답글은 부모 댓글 아래에 들여쓰기된다', () => {
+    const tree = commentTree(getState().posts.find((p) => p.id === 'p1')!);
+    expect(tree.map((x) => [x.c.id, x.depth])).toEqual([['pc1', 0], ['pc2', 1]]);
+  });
+
+  it('익명 쪽지: 보내고 받고, 읽으면 안 읽은 수가 사라진다', () => {
+    as('staff');
+    const res = actions.openNote('p1', 'u_lawyer');
+    expect(res.ok).toBe(true);
+    expect(actions.openNote('p1', 'u_lawyer').noteId).toBe(res.noteId);
+    expect(actions.openNote('p2', 'u_staff').ok).toBe(false);
+    expect(actions.sendNote(res.noteId!, '자세히 여쭤봐도 될까요?').ok).toBe(true);
+    as('lawyer');
+    const note = getState().notes.find((n) => n.id === res.noteId)!;
+    expect(unreadIn(note, 'u_lawyer')).toBe(1);
+    actions.readNote(note.id);
+    expect(unreadIn(getState().notes.find((n) => n.id === res.noteId)!, 'u_lawyer')).toBe(0);
   });
 });

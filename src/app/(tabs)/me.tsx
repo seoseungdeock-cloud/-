@@ -27,11 +27,6 @@ export default function MeScreen() {
           </View>
         </View>
       </Card>
-      <Section title="익명 게시판">
-        <Card onPress={() => router.push('/board')}>
-          <T bold>익명 게시판 가기</T>
-        </Card>
-      </Section>
       <Section title="라잇나우 멤버십">
         <Card onPress={() => router.push('/membership')}>
           <T bold>{user.membership === 'rightnow' ? '멤버 혜택 보기' : '멤버십 알아보기'}</T>

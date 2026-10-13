@@ -60,9 +60,6 @@ export default function MessengerScreen() {
               style={{ flex: 1, paddingVertical: space.sm + 2, fontSize: font.body, fontFamily: family.regular, color: c.text }}
             />
           </View>
-          <Pressable accessibilityLabel="익명 게시판" onPress={() => router.push('/board')} hitSlop={12}>
-            <Icon name="board" color={c.text} size={24} />
-          </Pressable>
           <Pressable accessibilityLabel="새 대화" onPress={() => router.push('/room/new')} hitSlop={12}>
             <Icon name="plus" color={c.text} size={26} />
           </Pressable>

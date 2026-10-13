@@ -2,7 +2,7 @@
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
 type Props = { name: IconName; color: string; size?: number };
-export type IconName = 'home' | 'search' | 'chat' | 'case' | 'map' | 'work' | 'me' | 'plus' | 'lock' | 'spark' | 'back' | 'send' | 'chevron' | 'board';
+export type IconName = 'home' | 'search' | 'chat' | 'case' | 'map' | 'work' | 'me' | 'plus' | 'lock' | 'spark' | 'back' | 'send' | 'chevron' | 'board' | 'up' | 'down' | 'mail';
 
 export function Icon({ name, color, size = 24 }: Props) {
   const p = { stroke: color, strokeWidth: 1.8, fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -31,6 +31,14 @@ export function Icon({ name, color, size = 24 }: Props) {
         </>
       )}
       {name === 'board' && <Path {...p} d="M5 4h14v16H5zM8 9h8M8 13h8M8 17h5" />}
+      {name === 'up' && <Path {...p} d="M12 5l7 8h-4v6H9v-6H5z" />}
+      {name === 'down' && <Path {...p} d="M12 19l7-8h-4V5H9v6H5z" />}
+      {name === 'mail' && (
+        <>
+          <Rect {...p} x={3} y={5} width={18} height={14} rx={2} />
+          <Path {...p} d="M3.5 6.5 12 13l8.5-6.5" />
+        </>
+      )}
       {name === 'plus' && <Path {...p} d="M12 5v14M5 12h14" />}
       {name === 'lock' && (
         <>

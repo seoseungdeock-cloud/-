@@ -81,15 +81,30 @@ export const AI_SENDER = 'ai';
 export const SYSTEM_SENDER = 'system';
 
 // ---- 익명 게시판 ----
-// 다른 이용자에게는 '익명 N'으로만 보이고, 실제 작성자는 어드민만 봅니다.
+// 이용자 구분 없이 글마다 '익명 1, 2…'로만 보이고, 실제 작성자는 어드민만 봅니다.
 
-export type BoardComment = { id: string; authorId: string; text: string; at: string };
+/** 사용자 id → +1(추천) / -1(비추천) */
+export type Votes = Record<string, 1 | -1>;
+
+export type BoardComment = { id: string; authorId: string; parentId?: string; text: string; at: string; votes: Votes };
 
 export type BoardPost = {
   id: string;
   authorId: string;
+  field: string;
   title: string;
   body: string;
   at: string;
+  votes: Votes;
   comments: BoardComment[];
+};
+
+/** 익명 쪽지: 게시판 글에서 시작한 두 사람의 대화. 서로 그 글의 '익명 N'으로만 보입니다. */
+export type NoteThread = {
+  id: string;
+  postId: string;
+  memberIds: [string, string];
+  messages: { id: string; senderId: string; text: string; at: string }[];
+  /** 사용자 id → 마지막으로 읽은 시각 */
+  readAt: Record<string, string>;
 };

@@ -21,6 +21,7 @@ import {
   type Plan,
 } from './marketing';
 import { summarizeMeeting, type MeetingNotes } from './meeting';
+import { toggleVote } from './board';
 import { findLawyer } from './offices';
 import { aiAnswerLevel, canCreateRoom, canUseAgents, type RoomCheck } from './rooms';
 import { latest, parseRows, refreshTemplate, type DataRow, type ImageTemplate } from './templates';
@@ -29,6 +30,7 @@ import {
   SYSTEM_SENDER,
   type Account,
   type BoardPost,
+  type NoteThread,
   type CaseInfo,
   type Message,
   type Room,
@@ -56,9 +58,11 @@ export type State = {
   /** 라잇나우 변호사 id → 앱 사용자 id (변호사가 가입하면 연결) */
   lawyerAccounts: Record<string, string>;
   posts: BoardPost[];
+  notes: NoteThread[];
 };
 
 const T0 = '2026-10-13T09:00:00.000Z';
+const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
 
 export function initialState(): State {
   const users: User[] = [
@@ -116,12 +120,24 @@ export function initialState(): State {
     lawyerAccounts: { lw_1: 'u_lawyer' },
     posts: [
       {
-        id: 'p1', authorId: 'u_client', at: T0,
+        id: 'p1', authorId: 'u_client', at: ago(3), field: '부동산·임대차',
         title: '전세 보증금을 못 돌려받고 있어요',
         body: '계약 만료가 지났는데 집주인이 새 세입자가 들어와야 준다고 합니다. 이사는 가야 하는데 어떻게 해야 하나요?',
-        comments: [{ id: 'pc1', authorId: 'u_lawyer', at: T0, text: '이사 전에 임차권등기명령부터 신청해 두세요. 그래야 이사 후에도 대항력과 우선변제권이 유지됩니다.' }],
+        votes: { u_staff: 1, u_admin: 1 },
+        comments: [
+          { id: 'pc1', authorId: 'u_lawyer', at: ago(2), votes: { u_client: 1 }, text: '이사 전에 임차권등기명령부터 신청해 두세요. 그래야 이사 후에도 대항력과 우선변제권이 유지됩니다.' },
+          { id: 'pc2', authorId: 'u_client', parentId: 'pc1', at: ago(1), votes: {}, text: '등기 나오기 전에 이사하면 안 되는 거죠?' },
+        ],
+      },
+      {
+        id: 'p2', authorId: 'u_staff', at: ago(20), field: '명예훼손·모욕',
+        title: '단톡방에서 저를 저격하는 글이 올라왔습니다',
+        body: '실명은 없지만 누가 봐도 저라는 걸 알 수 있게 썼어요. 이것도 명예훼손이 되나요?',
+        votes: { u_client: 1 },
+        comments: [],
       },
     ],
+    notes: [],
   };
 }
 
@@ -567,18 +583,61 @@ export const actions = {
 
   // ---- 익명 게시판 (모든 계정 이용 가능) ----
 
-  createPost(title: string, body: string): RoomCheck & { postId?: string } {
-    if (!title.trim() || !body.trim()) return { ok: false, reason: '제목과 내용을 입력해 주세요.' };
-    const post: BoardPost = { id: newId('p'), authorId: me().id, title: title.trim(), body: body.trim(), at: nowIso(), comments: [] };
+  createPost(input: { title: string; body: string; field: string }): RoomCheck & { postId?: string } {
+    if (!input.title.trim() || !input.body.trim()) return { ok: false, reason: '제목과 내용을 입력해 주세요.' };
+    if (!input.field) return { ok: false, reason: '분야를 골라 주세요.' };
+    const post: BoardPost = { id: newId('p'), authorId: me().id, field: input.field, title: input.title.trim(), body: input.body.trim(), at: nowIso(), votes: {}, comments: [] };
     set((s) => ({ posts: [post, ...s.posts] }));
     return { ok: true, postId: post.id };
   },
 
-  commentPost(postId: string, text: string): RoomCheck {
+  commentPost(postId: string, text: string, parentId?: string): RoomCheck {
     if (!text.trim()) return { ok: false, reason: '댓글을 입력해 주세요.' };
-    const c = { id: newId('pc'), authorId: me().id, text: text.trim(), at: nowIso() };
+    const c = { id: newId('pc'), authorId: me().id, parentId, text: text.trim(), at: nowIso(), votes: {} };
     set((s) => ({ posts: s.posts.map((p) => (p.id === postId ? { ...p, comments: [...p.comments, c] } : p)) }));
     return { ok: true };
+  },
+
+  votePost(postId: string, v: 1 | -1) {
+    const uid = me().id;
+    set((s) => ({ posts: s.posts.map((p) => (p.id === postId ? { ...p, votes: toggleVote(p.votes, uid, v) } : p)) }));
+  },
+
+  voteComment(postId: string, commentId: string, v: 1 | -1) {
+    const uid = me().id;
+    set((s) => ({
+      posts: s.posts.map((p) =>
+        p.id === postId ? { ...p, comments: p.comments.map((c) => (c.id === commentId ? { ...c, votes: toggleVote(c.votes, uid, v) } : c)) } : p,
+      ),
+    }));
+  },
+
+  /** 게시판 글·댓글 작성자에게 익명 쪽지. 같은 글에서 같은 상대와의 쪽지는 이어서 씁니다. */
+  openNote(postId: string, toUserId: string): RoomCheck & { noteId?: string } {
+    const uid = me().id;
+    if (toUserId === uid) return { ok: false, reason: '내 글에는 쪽지를 보낼 수 없습니다.' };
+    const found = state.notes.find((n) => n.postId === postId && n.memberIds.includes(uid) && n.memberIds.includes(toUserId));
+    if (found) return { ok: true, noteId: found.id };
+    const note: NoteThread = { id: newId('n'), postId, memberIds: [uid, toUserId], messages: [], readAt: {} };
+    set((s) => ({ notes: [note, ...s.notes] }));
+    return { ok: true, noteId: note.id };
+  },
+
+  sendNote(noteId: string, text: string): RoomCheck {
+    if (!text.trim()) return { ok: false, reason: '쪽지 내용을 입력해 주세요.' };
+    const uid = me().id;
+    const at = nowIso();
+    const msg = { id: newId('nm'), senderId: uid, text: text.trim(), at };
+    set((s) => ({ notes: s.notes.map((n) => (n.id === noteId ? { ...n, messages: [...n.messages, msg], readAt: { ...n.readAt, [uid]: at } } : n)) }));
+    return { ok: true };
+  },
+
+  readNote(noteId: string) {
+    const uid = me().id;
+    const n = state.notes.find((x) => x.id === noteId);
+    const last = n?.messages.at(-1)?.at;
+    if (!n || !last || (n.readAt[uid] ?? '') >= last) return;
+    set((s) => ({ notes: s.notes.map((x) => (x.id === noteId ? { ...x, readAt: { ...x.readAt, [uid]: last } } : x)) }));
   },
 
   approveContent(id: string) {
