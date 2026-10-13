@@ -8,13 +8,17 @@ import { Avatar, ModeBadge } from './kit';
 import { family, space, useColors } from './theme';
 import { useApp, useMe } from './use-app';
 
+/** '오후 8:47' */
+export function clockTime(iso: string): string {
+  const d = new Date(iso);
+  const h = d.getHours();
+  return `${h < 12 ? '오전' : '오후'} ${h % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 /** 오늘이면 '오후 8:47', 아니면 '10월 8일' */
 export function chatTime(iso: string, now = new Date()): string {
   const d = new Date(iso);
-  if (d.toDateString() === now.toDateString()) {
-    const h = d.getHours();
-    return `${h < 12 ? '오전' : '오후'} ${h % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`;
-  }
+  if (d.toDateString() === now.toDateString()) return clockTime(iso);
   return `${d.getMonth() + 1}월 ${d.getDate()}일`;
 }
 

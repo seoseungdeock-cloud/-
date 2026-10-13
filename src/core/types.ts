@@ -101,6 +101,8 @@ export type Message = {
   replyTo?: string;
   /** 다른 방에서 전달된 메시지의 원래 보낸 사람·내용 */
   forwardOf?: { senderId: string; text: string };
+  /** 여러 말풍선을 묶어 전달한 메시지 ('메시지 상세보기'로 펼침) */
+  bundle?: ForwardBundle;
   /** 보낸 사람이 회수한 메시지 */
   recalled?: boolean;
   /** 사용자 id → 공감 이모지 */
@@ -161,3 +163,5 @@ export type BoardReport = {
   /** 어드민 처리 내용 (삭제, 이용 제한 등) */
   resolution?: string;
 };
+
+export type ForwardBundle = { title: string; items: { senderId: string; text: string; at: string }[] };

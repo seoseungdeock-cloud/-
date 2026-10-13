@@ -3,12 +3,12 @@ import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 
-import { displayName, notifyLevel, readCount, roomLinks, splitMentions, type Reads } from '@/core/messenger';
+import { dayLabel, displayName, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
 import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
 import { Icon, type IconName } from './icons';
 import { Avatar } from './kit';
-import { chatTime, roomTitle } from './room-row';
+import { chatTime, clockTime, roomTitle } from './room-row';
 import { family, radius, space, useColors } from './theme';
 
 export const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -41,6 +41,11 @@ export function Bubble({
   messages,
   onLongPress,
   highlight,
+  onReads,
+  onReactions,
+  picking,
+  picked,
+  onPick,
 }: {
   m: Message;
   me: User;
@@ -50,6 +55,12 @@ export function Bubble({
   messages: Message[];
   onLongPress: () => void;
   highlight?: boolean;
+  onReads?: () => void;
+  onReactions?: () => void;
+  /** 전달할 말풍선 고르는 중 */
+  picking?: boolean;
+  picked?: boolean;
+  onPick?: () => void;
 }) {
   const c = useColors();
   if (m.senderId === SYSTEM_SENDER) {
@@ -81,13 +92,18 @@ export function Bubble({
 
   const meta = (
     <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', justifyContent: 'flex-end', paddingHorizontal: 4 }}>
-      {read > 0 ? <Text style={{ fontFamily: family.semibold, fontSize: 11, color: c.accent }}>읽음 {read}</Text> : null}
-      <Text style={{ fontFamily: family.regular, fontSize: 11, color: c.faint }}>{chatTime(m.at)}</Text>
+      {read > 0 ? (
+        <Pressable accessibilityLabel="읽은 사람 보기" disabled={!onReads} onPress={onReads} hitSlop={6}>
+          <Text style={{ fontFamily: family.semibold, fontSize: 11, color: c.accent }}>읽음 {read}</Text>
+        </Pressable>
+      ) : null}
+      <Text style={{ fontFamily: family.regular, fontSize: 11, color: c.faint }}>{clockTime(m.at)}</Text>
     </View>
   );
 
-  return (
-    <View style={{ flexDirection: 'row', justifyContent: mine ? 'flex-end' : 'flex-start', gap: space.sm, marginVertical: space.xs, backgroundColor: highlight ? c.accentSoft : 'transparent', borderRadius: radius.sm }}>
+  const card = !!(contact || m.forwardOf || m.bundle);
+  const row = (
+    <View style={{ flex: 1, flexDirection: 'row', justifyContent: mine ? 'flex-end' : 'flex-start', gap: space.sm, marginVertical: space.xs, backgroundColor: highlight ? c.accentSoft : 'transparent', borderRadius: radius.sm }}>
       {!mine ? <Avatar name={isAi || isBot ? 'AI' : sender?.nickname ?? '?'} size={36} tone={isAi ? c.aiSoft : undefined} /> : null}
       <View style={{ maxWidth: '78%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
         {!mine ? (
@@ -98,12 +114,14 @@ export function Bubble({
         <View style={{ flexDirection: mine ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 2 }}>
           <Pressable
             accessibilityLabel="메시지"
-            onLongPress={onLongPress}
+            onPress={picking ? onPick : undefined}
+            onLongPress={picking ? undefined : onLongPress}
             delayLongPress={350}
             style={{
               flexShrink: 1,
-              backgroundColor: contact || m.forwardOf ? c.bg : mine ? c.bubbleMine : isAi ? c.aiSoft : isBot ? c.accentSoft : c.bubbleOther,
-              borderWidth: contact || m.forwardOf ? 1 : 0,
+              width: m.bundle ? 250 : undefined,
+              backgroundColor: card ? c.bg : mine ? c.bubbleMine : isAi ? c.aiSoft : isBot ? c.accentSoft : c.bubbleOther,
+              borderWidth: card ? 1 : 0,
               borderColor: c.line,
               borderRadius: radius.lg,
               paddingHorizontal: space.md,
@@ -118,7 +136,9 @@ export function Bubble({
                 </Text>
               </View>
             ) : null}
-            {m.forwardOf ? (
+            {m.bundle ? (
+              <BundleCard m={m} users={users} />
+            ) : m.forwardOf ? (
               <>
                 <Text style={{ fontFamily: family.semibold, fontSize: 12, color: c.sub }}>전달 · {nameOf(users, m.forwardOf.senderId)}</Text>
                 <Body text={m.forwardOf.text} names={names} color={c.text} mention={c.accent} />
@@ -143,7 +163,8 @@ export function Bubble({
             {Object.entries(reactions).map(([e, n]) => (
               <Pressable
                 key={e}
-                onPress={() => actions.react(m.id, e)}
+                accessibilityLabel={`공감한 사람 ${e}`}
+                onPress={onReactions}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill, borderWidth: 1, borderColor: myReaction === e ? c.accent : c.line, backgroundColor: c.bg }}>
                 <Text style={{ fontSize: 13 }}>{e}</Text>
                 <Text style={{ fontFamily: family.semibold, fontSize: 12, color: myReaction === e ? c.accent : c.sub }}>{n}</Text>
@@ -153,6 +174,131 @@ export function Bubble({
         ) : null}
       </View>
     </View>
+  );
+  if (!picking) return row;
+  return (
+    <Pressable accessibilityLabel="말풍선 선택" onPress={onPick} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+      <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: picked ? c.accent : c.faint, backgroundColor: picked ? c.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+        {picked ? <Icon name="check" color="#FFFFFF" size={13} /> : null}
+      </View>
+      {row}
+    </Pressable>
+  );
+}
+
+/** 묶어서 전달한 메시지: 미리보기 2줄 + '메시지 상세보기' */
+function BundleCard({ m, users }: { m: Message; users: User[] }) {
+  const c = useColors();
+  const b = m.bundle!;
+  return (
+    <View style={{ gap: space.sm }}>
+      <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.accent }}>전달</Text>
+      <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 13, color: c.sub }}>{b.title}</Text>
+      <View style={{ height: 1, backgroundColor: c.line }} />
+      {b.items.slice(0, 2).map((i, k) => (
+        <Text key={k} numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 14, color: c.text }}>
+          {nameOf(users, i.senderId)}: {i.text.split('\n')[0]}
+        </Text>
+      ))}
+      {b.items.length > 2 ? <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>외 {b.items.length - 2}개</Text> : null}
+      <Pressable
+        accessibilityLabel="메시지 상세보기"
+        onPress={() => router.push({ pathname: '/room/bundle/[id]', params: { id: m.id } })}
+        style={({ pressed }) => ({ alignItems: 'center', paddingVertical: space.sm, borderRadius: radius.sm, backgroundColor: c.surface, opacity: pressed ? 0.6 : 1 })}>
+        <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.accent }}>메시지 상세보기</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/** 날짜 구분선 */
+export function DayDivider({ at }: { at: string }) {
+  const c = useColors();
+  return (
+    <View style={{ alignItems: 'center', marginVertical: space.md }}>
+      <View style={{ backgroundColor: c.surface, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 4 }}>
+        <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{dayLabel(at)}</Text>
+      </View>
+    </View>
+  );
+}
+
+function PersonRow({ u, right }: { u: User; right?: ReactNode }) {
+  const c = useColors();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm }}>
+      <Avatar name={u.nickname} size={36} />
+      <View style={{ flex: 1 }}>
+        <Text numberOfLines={1} style={{ fontFamily: family.semibold, fontSize: 15, color: c.text }}>{displayName(u)}</Text>
+        {u.dept ? <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{u.dept}</Text> : null}
+      </View>
+      {right}
+    </View>
+  );
+}
+
+function SheetTabs<K extends string>({ tabs, value, onChange }: { tabs: [K, string][]; value: K; onChange: (k: K) => void }) {
+  const c = useColors();
+  return (
+    <View style={{ flexDirection: 'row', gap: space.lg, borderBottomWidth: 1, borderBottomColor: c.line }}>
+      {tabs.map(([k, label]) => (
+        <Pressable key={k} onPress={() => onChange(k)} style={{ paddingVertical: space.sm, borderBottomWidth: 2, borderBottomColor: value === k ? c.accent : 'transparent', marginBottom: -1 }}>
+          <Text style={{ fontFamily: family.semibold, fontSize: 15, color: value === k ? c.accent : c.sub }}>{label}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+/** 읽음 상세: 읽은 사람 / 안 읽은 사람 */
+export function ReadersSheet({ m, room, reads, users, onClose }: { m?: Message; room: Room; reads: Reads; users: User[]; onClose: () => void }) {
+  const [tab, setTab] = useState<'read' | 'unread'>('read');
+  const r = m ? readers(m, room, reads, users) : { read: [], unread: [] };
+  const list = tab === 'read' ? r.read : r.unread;
+  return (
+    <Sheet open={!!m} onClose={onClose}>
+      <SheetTabs tabs={[['read', `읽음 ${r.read.length}`], ['unread', `안 읽음 ${r.unread.length}`]]} value={tab} onChange={setTab} />
+      <ScrollView>
+        {list.map((u) => (
+          <PersonRow key={u.id} u={u} />
+        ))}
+      </ScrollView>
+    </Sheet>
+  );
+}
+
+/** 공감 상세: 누가 어떤 공감을 했는지 */
+export function ReactionsSheet({ m, me, users, onClose }: { m?: Message; me: User; users: User[]; onClose: () => void }) {
+  const c = useColors();
+  const [tab, setTab] = useState('all');
+  const groups = m ? reactionGroups(m) : [];
+  const entries = Object.entries(m?.reactions ?? {}).filter(([, e]) => tab === 'all' || e === tab);
+  const mine = m?.reactions?.[me.id];
+  return (
+    <Sheet
+      open={!!m}
+      onClose={() => {
+        setTab('all');
+        onClose();
+      }}>
+      <SheetTabs tabs={[['all', `전체 ${Object.keys(m?.reactions ?? {}).length}`], ...groups.map(([e, ids]) => [e, `${e} ${ids.length}`] as [string, string])]} value={tab} onChange={setTab} />
+      <ScrollView>
+        {entries.map(([uid, e]) => {
+          const u = users.find((x) => x.id === uid);
+          return u ? <PersonRow key={uid} u={u} right={<Text style={{ fontSize: 22 }}>{e}</Text>} /> : null;
+        })}
+      </ScrollView>
+      {m && mine ? (
+        <Pressable
+          onPress={() => {
+            actions.react(m.id, mine);
+            onClose();
+          }}
+          style={{ alignItems: 'center', paddingVertical: space.sm }}>
+          <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.faint }}>내 공감 {mine} 취소</Text>
+        </Pressable>
+      ) : null}
+    </Sheet>
   );
 }
 
@@ -231,17 +377,17 @@ export function MessageMenu({
 }
 
 /** 전달할 방 고르기 */
-export function ForwardSheet({ m, rooms, onClose, onDone }: { m?: Message; rooms: Room[]; onClose: () => void; onDone: (room: Room) => void }) {
+export function ForwardSheet({ ids, rooms, onClose, onDone }: { ids?: string[]; rooms: Room[]; onClose: () => void; onDone: (room: Room) => void }) {
   const c = useColors();
   return (
-    <Sheet open={!!m} onClose={onClose}>
+    <Sheet open={!!ids?.length} onClose={onClose}>
       <Text style={{ fontFamily: family.bold, fontSize: 18, color: c.text }}>전달할 대화방</Text>
       <ScrollView>
         {rooms.map((r) => (
           <Pressable
             key={r.id}
             onPress={() => {
-              if (m && actions.forward(m.id, r.id).ok) onDone(r);
+              if (ids && actions.forwardMany(ids, r.id).ok) onDone(r);
               onClose();
             }}
             style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm, opacity: pressed ? 0.5 : 1 })}>

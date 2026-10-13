@@ -103,16 +103,16 @@ export function initialState(): State {
     {
       id: 'r_team', kind: 'group', mode: 'private', title: '부산총괄본부 상담팀', memberIds: ['u_admin', 'u_staff', 'u_lawyer', 'u_m1', 'u_l2'], createdBy: 'u_lawyer', createdAt: T0,
       pinnedBy: ['u_lawyer'],
-      notices: [{ id: 'nt1', messageId: 'mt1', text: '[리마인드 공지] 상담 변호사는 내방 안내 전화를 상담 전날까지 꼭 해 주세요.', by: 'u_m1', at: ago(5) }],
+      notices: [{ id: 'nt1', messageId: 'mt1', text: '[리마인드 공지] 상담 변호사는 내방 안내 전화를 상담 전날까지 꼭 해 주세요.', by: 'u_m1', at: ago(50) }],
     },
   ];
   const messages: Message[] = [
     { id: 'm1', roomId: 'r_office', senderId: SYSTEM_SENDER, kind: 'system', text: 'AI 참여방입니다. @AI 로 부르면 AI가 답합니다.', at: T0 },
     { id: 'm2', roomId: 'r_office', senderId: 'u_staff', kind: 'text', text: '내일 오전 기일 서류 준비 완료했습니다.', at: T0 },
     { id: 'm3', roomId: 'r_direct', senderId: SYSTEM_SENDER, kind: 'system', text: '사건수행방입니다. 참여자끼리만 대화하고 AI는 참여하지 않습니다.', at: T0 },
-    { id: 'mt1', roomId: 'r_team', senderId: 'u_m1', kind: 'text', text: '[리마인드 공지] 상담 변호사는 내방 안내 전화를 상담 전날까지 꼭 해 주세요.', at: ago(5) },
-    { id: 'mt2', roomId: 'r_team', senderId: 'u_lawyer', kind: 'text', text: '@샘플 매니저 @사무국 직원 내일 상담 일정 공유 부탁드립니다.', at: ago(3), mentions: ['u_m1', 'u_staff'], reactions: { u_m1: '👍' } },
-    { id: 'mt3', roomId: 'r_team', senderId: 'u_staff', kind: 'text', text: '네, 오전 중에 올리겠습니다.', at: ago(2.9), replyTo: 'mt2' },
+    { id: 'mt1', roomId: 'r_team', senderId: 'u_m1', kind: 'text', text: '[리마인드 공지] 상담 변호사는 내방 안내 전화를 상담 전날까지 꼭 해 주세요.', at: ago(50) },
+    { id: 'mt2', roomId: 'r_team', senderId: 'u_lawyer', kind: 'text', text: '@샘플 매니저 @사무국 직원 내일 상담 일정 공유 부탁드립니다.', at: ago(27), mentions: ['u_m1', 'u_staff'], reactions: { u_m1: '👍' } },
+    { id: 'mt3', roomId: 'r_team', senderId: 'u_staff', kind: 'text', text: '네, 오전 중에 올리겠습니다.', at: ago(26.9), replyTo: 'mt2' },
     { id: 'mt4', roomId: 'r_team', senderId: 'u_m1', kind: 'text', text: '상담 일정표 링크입니다 https://example.com/schedule', at: ago(1) },
     { id: 'mt5', roomId: 'r_team', senderId: 'u_l2', kind: 'text', text: '@승덕 대표님 확인 부탁드립니다.', at: ago(0.5), mentions: ['u_admin'] },
   ];
@@ -174,7 +174,7 @@ export function initialState(): State {
     notes: [],
     reports: [{ id: 'rp1', postId: 'p2', reporterId: 'u_lawyer', reason: '개인정보 노출', at: ago(1), status: 'open' }],
     boardBans: {},
-    reads: { r_team: { u_lawyer: ago(2.95), u_staff: ago(2.9), u_m1: ago(1), u_l2: ago(0.5), u_admin: ago(4) } },
+    reads: { r_team: { u_lawyer: ago(26.95), u_staff: ago(26.9), u_m1: ago(1), u_l2: ago(0.5), u_admin: ago(28) } },
     favorites: { u_lawyer: ['u_staff'], u_admin: ['u_lawyer'] },
   };
 }
@@ -579,8 +579,29 @@ export const actions = {
     const to = state.rooms.find((r) => r.id === toRoomId);
     if (!m || m.recalled) return { ok: false, reason: '전달할 메시지를 찾을 수 없습니다.' };
     if (!to || !to.memberIds.includes(me().id)) return { ok: false, reason: '참여 중인 방으로만 전달할 수 있습니다.' };
+    if (m.bundle) {
+      pushMessage(toRoomId, me().id, 'text', m.text, { bundle: m.bundle });
+      return { ok: true };
+    }
     const origin = m.forwardOf ?? { senderId: m.senderId, text: m.text };
     pushMessage(toRoomId, me().id, 'text', origin.text, { forwardOf: origin });
+    return { ok: true };
+  },
+
+  /** 여러 말풍선을 골라 한 번에 전달. 하나면 일반 전달, 여럿이면 묶음으로 보냅니다. */
+  forwardMany(messageIds: string[], toRoomId: string): RoomCheck {
+    const picked = state.messages.filter((m) => messageIds.includes(m.id) && !m.recalled && m.senderId !== SYSTEM_SENDER);
+    if (!picked.length) return { ok: false, reason: '전달할 메시지를 골라 주세요.' };
+    if (picked.length === 1) return actions.forward(picked[0].id, toRoomId);
+    const to = state.rooms.find((r) => r.id === toRoomId);
+    if (!to || !to.memberIds.includes(me().id)) return { ok: false, reason: '참여 중인 방으로만 전달할 수 있습니다.' };
+    const source = state.rooms.find((r) => r.id === picked[0].roomId);
+    // 묶음 안의 묶음·전달은 펼쳐서 원래 보낸 사람으로 넣습니다.
+    const items = picked.flatMap((m) =>
+      m.bundle ? m.bundle.items : [{ senderId: m.forwardOf?.senderId ?? m.senderId, text: m.forwardOf?.text ?? m.text, at: m.at }],
+    );
+    const bundle = { title: source ? (source.kind === 'direct' ? userById(source.memberIds.find((x) => x !== me().id) ?? '')?.nickname ?? source.title : source.title) : '대화', items };
+    pushMessage(toRoomId, me().id, 'text', items.map((i) => i.text).join('\n'), { bundle });
     return { ok: true };
   },
 

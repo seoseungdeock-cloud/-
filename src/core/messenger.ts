@@ -147,3 +147,65 @@ export function searchDirectory(query: string, contacts: User[], myRooms: Room[]
   const rooms: DirectoryHit[] = myRooms.filter((r) => r.title.includes(q) && r.memberIds.length > 2).map((room) => ({ type: 'room', room }));
   return [...members, ...depts, ...rooms];
 }
+
+// ---- 읽은 사람·공감한 사람 ----
+
+/** 읽음 상세: 보낸 사람을 뺀 방 멤버를 읽음/안 읽음으로 나눕니다. */
+export function readers(m: Message, room: Room, reads: Reads, users: User[]): { read: User[]; unread: User[] } {
+  const others = room.memberIds.filter((id) => id !== m.senderId).map((id) => users.find((u) => u.id === id)).filter((u): u is User => !!u);
+  return {
+    read: others.filter((u) => lastReadAt(reads, room.id, u.id) >= m.at),
+    unread: others.filter((u) => lastReadAt(reads, room.id, u.id) < m.at),
+  };
+}
+
+/** 공감 상세: 이모지별 누른 사람 (많은 순) */
+export function reactionGroups(m: Message): [string, string[]][] {
+  const map = new Map<string, string[]>();
+  for (const [uid, e] of Object.entries(m.reactions ?? {})) map.set(e, [...(map.get(e) ?? []), uid]);
+  return [...map.entries()].sort((a, b) => b[1].length - a[1].length);
+}
+
+// ---- 날짜 ----
+
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/** 기기 시간 기준 날짜 키 'YYYY-MM-DD' */
+export function dayKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** 날짜 구분선: '2026년 10월 8일 목요일' */
+export function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 ${WEEKDAYS[d.getDay()]}요일`;
+}
+
+/** 검색어가 날짜면 날짜 키로: '10월 8일', '10/8', '10.8', '2026-10-08', '2026년 10월 8일', '오늘', '어제' */
+export function parseDateQuery(q: string, now = new Date()): string | undefined {
+  const t = q.trim();
+  if (t === '오늘') return dayKey(now.toISOString());
+  if (t === '어제') return dayKey(new Date(now.getTime() - 86_400_000).toISOString());
+  let m = /^(\d{4})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})\s*일?$/.exec(t);
+  if (m) return valid(+m[1], +m[2], +m[3]);
+  m = /^(\d{1,2})\s*[./월]\s*(\d{1,2})\s*일?$/.exec(t);
+  if (m) return valid(now.getFullYear(), +m[1], +m[2]);
+  return undefined;
+}
+
+function valid(y: number, mo: number, d: number): string | undefined {
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return undefined;
+  return `${y}-${pad(mo)}-${pad(d)}`;
+}
+
+/** 대화 검색: 날짜면 그날의 대화, 아니면 내용 */
+export function searchMessages(messages: Message[], q: string, now = new Date()): Message[] {
+  const query = q.trim();
+  if (!query) return [];
+  const day = parseDateQuery(query, now);
+  return messages.filter(
+    (m) => !m.recalled && m.senderId !== SYSTEM_SENDER && (day ? dayKey(m.at) === day : m.text.includes(query) || !!m.bundle?.items.some((i) => i.text.includes(query))),
+  );
+}

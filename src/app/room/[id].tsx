@@ -3,20 +3,35 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 
-import { displayName, lastReadAt, mentionQuery, notifyLevel, visibleMessages } from '@/core/messenger';
+import { dayKey, displayName, lastReadAt, mentionQuery, notifyLevel, searchMessages, visibleMessages } from '@/core/messenger';
 import { aiCanJoin, ROOM_KIND_LABEL } from '@/core/rooms';
 import { contactsFor } from '@/core/contacts';
 import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Message, type User } from '@/core/types';
 import { CasePanel } from '@/ui/case-panel';
-import { Bubble, ContactSheet, ForwardSheet, MessageMenu, NoticeBar, RoomDrawer } from '@/ui/chat';
+import { Bubble, ContactSheet, DayDivider, ForwardSheet, MessageMenu, NoticeBar, ReactionsSheet, ReadersSheet, RoomDrawer } from '@/ui/chat';
 import { Icon } from '@/ui/icons';
 import { Avatar, Button, Empty, Input, ModeBadge, ModeBanner, Notice, Screen, Sub } from '@/ui/kit';
 import { roomTitle } from '@/ui/room-row';
 import { family, font, radius, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 
-type Item = Message | { id: '__unread'; divider: true };
+type Item = Message | { id: string; divider: 'unread' } | { id: string; divider: 'day'; at: string };
+
+/** 날이 바뀌는 곳에 날짜 구분선을 넣습니다. */
+function withDays(list: Item[]): Item[] {
+  const out: Item[] = [];
+  let last = '';
+  for (const it of list) {
+    if (!('divider' in it)) {
+      const k = dayKey(it.at);
+      if (k !== last) out.push({ id: `__day_${k}`, divider: 'day', at: it.at });
+      last = k;
+    }
+    out.push(it);
+  }
+  return out;
+}
 
 export default function RoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -30,7 +45,10 @@ export default function RoomScreen() {
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState<Message>();
   const [menuFor, setMenuFor] = useState<Message>();
-  const [forwardFor, setForwardFor] = useState<Message>();
+  const [forwardIds, setForwardIds] = useState<string[]>();
+  const [picking, setPicking] = useState<string[]>();
+  const [readsFor, setReadsFor] = useState<Message>();
+  const [reactFor, setReactFor] = useState<Message>();
   const [drawer, setDrawer] = useState(false);
   const [plus, setPlus] = useState(false);
   const [contactPick, setContactPick] = useState(false);
@@ -52,10 +70,10 @@ export default function RoomScreen() {
   }, [toast]);
 
   const items = useMemo<Item[]>(() => {
-    if (search?.trim()) return messages.filter((m) => !m.recalled && m.senderId !== SYSTEM_SENDER && m.text.includes(search.trim()));
+    if (search?.trim()) return withDays(searchMessages(messages, search));
     const first = readSnapshot ? messages.findIndex((m) => m.at > readSnapshot && m.senderId !== user.id && m.senderId !== SYSTEM_SENDER) : -1;
-    if (first <= 0) return messages;
-    return [...messages.slice(0, first), { id: '__unread', divider: true }, ...messages.slice(first)];
+    if (first <= 0) return withDays(messages);
+    return withDays([...messages.slice(0, first), { id: '__unread', divider: 'unread' }, ...messages.slice(first)]);
   }, [messages, readSnapshot, search, user.id]);
 
   if (!room) return <Screen title="대화" back><Empty text="방을 찾을 수 없습니다." /></Screen>;
@@ -119,7 +137,14 @@ export default function RoomScreen() {
     </View>
   );
 
-  const right = (
+  const results = items.filter((i) => !('divider' in i)).length;
+  const togglePick = (mid: string) => setPicking((cur) => (cur ? (cur.includes(mid) ? cur.filter((x) => x !== mid) : [...cur, mid]) : cur));
+
+  const right = picking ? (
+    <Pressable accessibilityLabel="선택 취소" hitSlop={8} onPress={() => setPicking(undefined)}>
+      <Text style={{ fontFamily: family.semibold, fontSize: 16, color: c.text }}>취소</Text>
+    </Pressable>
+  ) : (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
       {muted ? <Icon name="mute" color={c.faint} size={18} /> : null}
       <Pressable accessibilityLabel="대화 검색" hitSlop={8} onPress={() => setSearch((q) => (q === undefined ? '' : undefined))}>
@@ -138,8 +163,8 @@ export default function RoomScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={80}>
         {search !== undefined ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm }}>
-            <TextInput autoFocus value={search} onChangeText={setSearch} placeholder="대화 내용 검색" placeholderTextColor={c.faint} style={[inputStyle, { paddingVertical: space.sm }]} />
-            {search.trim() ? <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.sub, flexShrink: 0 }}>{items.length}건</Text> : null}
+            <TextInput autoFocus value={search} onChangeText={setSearch} placeholder="내용 또는 날짜 (10월 8일)" placeholderTextColor={c.faint} style={[inputStyle, { paddingVertical: space.sm }]} />
+            {search.trim() ? <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.sub, flexShrink: 0 }}>{results}건</Text> : null}
           </View>
         ) : (
           <NoticeBar room={room} me={user} users={s.users} onJump={jump} />
@@ -155,14 +180,16 @@ export default function RoomScreen() {
           }}
           onScrollToIndexFailed={({ averageItemLength, index }) => list.current?.scrollToOffset({ offset: averageItemLength * index, animated: true })}
           renderItem={({ item }) =>
-            'divider' in item ? (
+            'divider' in item && item.divider === 'day' ? (
+              <DayDivider at={item.at} />
+            ) : 'divider' in item ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginVertical: space.md }}>
                 <View style={{ flex: 1, height: 1, backgroundColor: c.accent, opacity: 0.4 }} />
                 <Text style={{ fontFamily: family.semibold, fontSize: 12, color: c.accent }}>읽지 않은 메시지</Text>
                 <View style={{ flex: 1, height: 1, backgroundColor: c.accent, opacity: 0.4 }} />
               </View>
             ) : (
-              <Pressable disabled={search === undefined} onPress={() => jump(item.id)}>
+              <Pressable disabled={search === undefined || !!picking} onPress={() => jump(item.id)}>
                 <Bubble
                   m={item}
                   me={user}
@@ -171,6 +198,11 @@ export default function RoomScreen() {
                   reads={s.reads}
                   messages={s.messages}
                   highlight={highlight === item.id}
+                  onReads={() => setReadsFor(item)}
+                  onReactions={() => setReactFor(item)}
+                  picking={!!picking && !item.recalled && item.senderId !== SYSTEM_SENDER}
+                  picked={picking?.includes(item.id)}
+                  onPick={() => togglePick(item.id)}
                   onLongPress={() => (isMember && item.senderId !== AI_SENDER && item.senderId !== BOT_SENDER ? setMenuFor(item) : undefined)}
                 />
               </Pressable>
@@ -182,7 +214,19 @@ export default function RoomScreen() {
             <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.bg }}>{toast}</Text>
           </View>
         ) : null}
-        {isMember ? (
+        {picking ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: space.md, borderTopWidth: 1, borderTopColor: c.line }}>
+            <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.text }}>{picking.length}개 선택</Text>
+            <Pressable
+              accessibilityLabel="선택한 메시지 전달"
+              disabled={!picking.length}
+              onPress={() => setForwardIds(picking)}
+              style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: picking.length ? c.accent : c.line, borderRadius: radius.pill, paddingHorizontal: space.lg, paddingVertical: space.sm }}>
+              <Icon name="forward" color="#FFFFFF" size={18} />
+              <Text style={{ fontFamily: family.bold, fontSize: 15, color: '#FFFFFF' }}>전달</Text>
+            </Pressable>
+          </View>
+        ) : isMember ? (
           <View>
             {replyTo ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, borderTopWidth: 1, borderTopColor: c.line, paddingTop: space.sm }}>
@@ -258,14 +302,24 @@ export default function RoomScreen() {
           setToast('복사했습니다.');
         }}
         onReply={() => setReplyTo(menuFor)}
-        onForward={() => setForwardFor(menuFor)}
+        onForward={() => menuFor && setPicking([menuFor.id])}
         onNotice={() => {
           if (!menuFor) return;
           const res = actions.setNotice(menuFor.id);
           if (!res.ok) setToast(res.reason);
         }}
       />
-      <ForwardSheet m={forwardFor} rooms={myRooms} onClose={() => setForwardFor(undefined)} onDone={(r) => setToast(`${r.title}에 전달했습니다.`)} />
+      <ForwardSheet
+        ids={forwardIds}
+        rooms={myRooms}
+        onClose={() => setForwardIds(undefined)}
+        onDone={(r) => {
+          setPicking(undefined);
+          setToast(`${r.title}에 전달했습니다.`);
+        }}
+      />
+      <ReadersSheet m={readsFor} room={room} reads={s.reads} users={s.users} onClose={() => setReadsFor(undefined)} />
+      <ReactionsSheet m={reactFor ? s.messages.find((x) => x.id === reactFor.id) : undefined} me={user} users={s.users} onClose={() => setReactFor(undefined)} />
       <ContactSheet open={contactPick} contacts={shareable} onClose={() => setContactPick(false)} onPick={(u) => actions.shareContact(room.id, u.id)} />
       <RoomDrawer open={drawer} onClose={() => setDrawer(false)} room={room} me={user} users={s.users} messages={messages} onError={setToast} />
     </Screen>

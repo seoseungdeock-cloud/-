@@ -33,6 +33,7 @@ export default function RootLayout() {
           <Stack.Screen name="room/[id]" />
           <Stack.Screen name="room/new" />
           <Stack.Screen name="room/create" />
+          <Stack.Screen name="room/bundle/[id]" />
           <Stack.Screen name="contact/[id]" />
           <Stack.Screen name="lawyer/[id]" />
           <Stack.Screen name="agent/meeting" />

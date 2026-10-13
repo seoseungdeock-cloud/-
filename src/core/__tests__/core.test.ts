@@ -2,7 +2,7 @@ import { checkCompliance } from '../compliance';
 import { PROCEDURE_MENU, procedureReply } from '../procedures';
 import { authorView, commentTree, score, searchPosts, sortPosts, unreadIn } from '../board';
 import { contactsFor } from '../contacts';
-import { isHidden, mentionQuery, orgGroups, parseMentions, readCount, searchDirectory, sortRooms, splitMentions, unreadCount } from '../messenger';
+import { dayLabel, isHidden, mentionQuery, orgGroups, parseDateQuery, parseMentions, reactionGroups, readCount, readers, searchDirectory, searchMessages, sortRooms, splitMentions, unreadCount } from '../messenger';
 import { opinionFor } from '../knowledge';
 import { planFromCommand, rankPerformance, mostSimilar } from '../marketing';
 import { summarizeMeeting } from '../meeting';
@@ -529,5 +529,48 @@ describe('메신저 (웍스식 주소록·대화)', () => {
     expect(hits.some((h) => h.type === 'room' && h.room.id === 'r_team')).toBe(true);
     expect(actions.shareContact('r_team', 'u_l2').ok).toBe(true);
     expect(last('r_team')).toMatchObject({ kind: 'contact', contactId: 'u_l2' });
+  });
+
+  it('읽음을 누르면 읽은 사람·안 읽은 사람, 공감은 누가 무엇을 눌렀는지', () => {
+    as('staff');
+    actions.react('mt2', '❤️');
+    const m = msg('mt2');
+    const r = readers(m, room('r_team'), st().reads, st().users);
+    expect(r.read.map((u) => u.id).sort()).toEqual(['u_l2', 'u_m1', 'u_staff']);
+    expect(r.unread.map((u) => u.id)).toEqual(['u_admin']);
+    expect(reactionGroups(m)).toEqual([['👍', ['u_m1']], ['❤️', ['u_staff']]]);
+  });
+
+  it('여러 말풍선을 골라 전달하면 한 묶음으로 가고, 원래 보낸 사람·시간이 남는다', () => {
+    as('lawyer');
+    const to = actions.startChat(['u_staff']).roomId!;
+    expect(actions.forwardMany(['mt3', 'mt1', 'mt4'], to).ok).toBe(true);
+    const b = last(to).bundle!;
+    expect(b.title).toBe('부산총괄본부 상담팀');
+    expect(b.items.map((i) => i.senderId)).toEqual(['u_m1', 'u_staff', 'u_m1']); // 대화 순서대로
+    expect(b.items[0].at).toBe(msg('mt1').at);
+    // 묶음을 다시 여러 개와 함께 전달하면 펼쳐서 넣는다
+    expect(actions.forwardMany([last(to).id, 'mt5'], 'r_team').ok).toBe(true);
+    expect(last('r_team').bundle!.items.map((i) => i.senderId)).toEqual(['u_l2', 'u_m1', 'u_staff', 'u_m1']); // 대화 순서대로 (mt5가 묶음보다 먼저)
+    expect(actions.forwardMany([], to).ok).toBe(false);
+  });
+
+  it('날짜 구분선과 날짜 검색', () => {
+    const now = new Date(2026, 9, 13, 15);
+    expect(dayLabel(new Date(2026, 9, 8, 10).toISOString())).toBe('2026년 10월 8일 목요일');
+    expect(parseDateQuery('10월 8일', now)).toBe('2026-10-08');
+    expect(parseDateQuery('10/8', now)).toBe('2026-10-08');
+    expect(parseDateQuery('2026.10.08', now)).toBe('2026-10-08');
+    expect(parseDateQuery('2025년 1월 3일', now)).toBe('2025-01-03');
+    expect(parseDateQuery('오늘', now)).toBe('2026-10-13');
+    expect(parseDateQuery('어제', now)).toBe('2026-10-12');
+    expect(parseDateQuery('13월 1일', now)).toBeUndefined();
+    expect(parseDateQuery('일정', now)).toBeUndefined();
+    const list = st().messages.filter((m) => m.roomId === 'r_team');
+    const day = new Date(msg('mt1').at);
+    const hits = searchMessages(list, `${day.getMonth() + 1}월 ${day.getDate()}일`, day);
+    expect(hits.map((m) => m.id)).toContain('mt1');
+    expect(hits.map((m) => m.id)).not.toContain('mt5');
+    expect(searchMessages(list, '일정').map((m) => m.id)).toEqual(['mt2', 'mt4']);
   });
 });
