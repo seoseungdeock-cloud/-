@@ -2,6 +2,7 @@ import { checkCompliance } from '../compliance';
 import { PROCEDURE_MENU, procedureReply } from '../procedures';
 import { authorView, commentTree, score, searchPosts, sortPosts, unreadIn } from '../board';
 import { contactsFor } from '../contacts';
+import { isHidden, mentionQuery, orgGroups, parseMentions, readCount, searchDirectory, sortRooms, splitMentions, unreadCount } from '../messenger';
 import { opinionFor } from '../knowledge';
 import { planFromCommand, rankPerformance, mostSimilar } from '../marketing';
 import { summarizeMeeting } from '../meeting';
@@ -230,7 +231,7 @@ describe('대화방 @AI 명령', () => {
 describe('주소록·대시보드', () => {
   it('변호사는 같은 법무법인, 의뢰인은 자기 사건의 의뢰인만 본다', () => {
     as('lawyer');
-    expect(contactsFor(me(), getState()).map((u) => u.id).sort()).toEqual(['u_admin', 'u_staff']);
+    expect(contactsFor(me(), getState()).map((u) => u.id).sort()).toEqual(['u_admin', 'u_l2', 'u_l3', 'u_m1', 'u_staff']);
     as('client');
     expect(contactsFor(me(), getState())).toHaveLength(0);
   });
@@ -418,5 +419,115 @@ describe('사건수행방 알림·절차 안내', () => {
     as('lawyer');
     await actions.sendMessage(roomId, '다음 절차는 제가 설명드릴게요');
     expect(msgs(roomId).at(-1)!.senderId).toBe('u_lawyer');
+  });
+});
+
+describe('메신저 (웍스식 주소록·대화)', () => {
+  const st = () => getState();
+  const room = (id: string) => st().rooms.find((r) => r.id === id)!;
+  const msg = (id: string) => st().messages.find((m) => m.id === id)!;
+  const last = (roomId: string) => st().messages.filter((m) => m.roomId === roomId).at(-1)!;
+
+  it('읽음 수와 안 읽은 수: 방을 열면 읽음 처리된다', () => {
+    as('lawyer');
+    const r = room('r_team');
+    expect(readCount(msg('mt2'), r, st().reads)).toBe(3); // staff, m1, l2 (admin은 아직)
+    expect(unreadCount(r, 'u_lawyer', st().messages, st().reads)).toBeGreaterThan(0);
+    actions.markRead('r_team');
+    expect(unreadCount(room('r_team'), 'u_lawyer', st().messages, st().reads)).toBe(0);
+    expect(readCount(msg('mt5'), room('r_team'), st().reads)).toBe(1);
+  });
+
+  it('멘션: 긴 이름 우선, @전체는 모두, 입력 중 검색어', () => {
+    const members = st().users;
+    expect(parseMentions('@샘플 변호사 B 확인 부탁', members)).toEqual(['u_l2']);
+    expect(parseMentions('@전체 공지입니다', members)).toEqual(['all']);
+    expect(splitMentions('안녕 @승덕 님', ['승덕']).filter((p) => p.mention).map((p) => p.text)).toEqual(['@승덕']);
+    expect(mentionQuery('부탁 @샘플')).toBe('샘플');
+    expect(mentionQuery('메일 a@b.com 보냄 ')).toBeUndefined();
+  });
+
+  it('답장·회수·공감·나에게서 삭제', async () => {
+    as('lawyer');
+    await actions.sendMessage('r_team', '@샘플 매니저 확인했습니다', { replyTo: 'mt4' });
+    const m = last('r_team');
+    expect(m.replyTo).toBe('mt4');
+    expect(m.mentions).toEqual(['u_m1']);
+    actions.react(m.id, '👍');
+    expect(msg(m.id).reactions).toEqual({ u_lawyer: '👍' });
+    actions.react(m.id, '👍');
+    expect(msg(m.id).reactions).toEqual({});
+    expect(actions.recall('mt4').ok).toBe(false); // 남의 메시지
+    expect(actions.recall(m.id).ok).toBe(true);
+    expect(msg(m.id).recalled).toBe(true);
+    actions.deleteForMe('mt1');
+    expect(msg('mt1').deletedFor).toEqual(['u_lawyer']);
+  });
+
+  it('전달은 원래 보낸 사람을 유지하고, 참여 중인 방으로만 간다', () => {
+    as('lawyer');
+    const to = actions.startChat(['u_staff']).roomId!;
+    expect(actions.forward('mt4', to).ok).toBe(true);
+    const f = last(to);
+    expect(f.forwardOf).toEqual({ senderId: 'u_m1', text: msg('mt4').text });
+    expect(actions.forward(f.id, 'r_team').ok).toBe(true);
+    expect(last('r_team').forwardOf!.senderId).toBe('u_m1');
+    as('client');
+    expect(actions.forward('mt4', 'r_team').ok).toBe(false);
+  });
+
+  it('공지: 등록하면 맨 위로, 다시 보지 않기는 나에게만, 새 공지는 다시 보인다', () => {
+    as('lawyer');
+    expect(actions.setNotice('mt4').ok).toBe(true);
+    expect(room('r_team').notices![0].messageId).toBe('mt4');
+    actions.hideNotices('r_team');
+    expect(room('r_team').noticeHiddenBy).toEqual(['u_lawyer']);
+    expect(actions.setNotice('mt3').ok).toBe(true);
+    expect(room('r_team').noticeHiddenBy).toEqual([]);
+    actions.removeNotice('r_team', room('r_team').notices![0].id);
+    expect(room('r_team').notices!.map((n) => n.messageId)).not.toContain('mt3');
+  });
+
+  it('고정한 방이 위, 숨긴 방은 새 메시지가 오면 다시 보인다', async () => {
+    as('staff');
+    actions.togglePin('r_office');
+    const mine = st().rooms.filter((r) => r.memberIds.includes('u_staff'));
+    expect(sortRooms(mine, 'u_staff', st().messages)[0].id).toBe('r_office');
+    actions.hideRoom('r_team');
+    expect(isHidden(room('r_team'), 'u_staff', st().messages)).toBe(true);
+    await new Promise((r) => setTimeout(r, 5));
+    as('lawyer');
+    await actions.sendMessage('r_team', '새 소식');
+    expect(isHidden(room('r_team'), 'u_staff', st().messages)).toBe(false);
+  });
+
+  it('나가기·초대·새 대화: 1:1에서 초대하면 새 그룹방', () => {
+    as('lawyer');
+    const direct = actions.startChat(['u_staff']).roomId!;
+    expect(room(direct).kind).toBe('direct');
+    const res = actions.invite(direct, ['u_m1']);
+    expect(res.roomId).not.toBe(direct);
+    expect(room(res.roomId!).memberIds.sort()).toEqual(['u_lawyer', 'u_m1', 'u_staff']);
+    expect(actions.invite('r_team', ['u_l3']).ok).toBe(true);
+    expect(room('r_team').memberIds).toContain('u_l3');
+    expect(actions.leaveRoom('r_team').ok).toBe(true);
+    expect(room('r_team').memberIds).not.toContain('u_lawyer');
+    as('client');
+    const consult = actions.requestConsult('lw_1', '').roomId!;
+    expect(actions.leaveRoom(consult).ok).toBe(false);
+  });
+
+  it('즐겨찾기, 조직도 묶음, 주소록 검색', () => {
+    as('lawyer');
+    actions.toggleFavorite('u_m1');
+    expect(st().favorites.u_lawyer).toEqual(['u_staff', 'u_m1']);
+    const people = contactsFor(me(), st());
+    const groups = orgGroups(people);
+    expect(groups.find((g) => g.dept === '실무수습변호사')!.members.map((u) => u.id)).toEqual(['u_l2', 'u_l3']);
+    const hits = searchDirectory('부산', people, st().rooms.filter((r) => r.memberIds.includes('u_lawyer')));
+    expect(hits.some((h) => h.type === 'dept' && h.dept === '부산총괄본부')).toBe(true);
+    expect(hits.some((h) => h.type === 'room' && h.room.id === 'r_team')).toBe(true);
+    expect(actions.shareContact('r_team', 'u_l2').ok).toBe(true);
+    expect(last('r_team')).toMatchObject({ kind: 'contact', contactId: 'u_l2' });
   });
 });

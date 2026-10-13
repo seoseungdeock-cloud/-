@@ -11,6 +11,14 @@ export type User = {
   /** 경영 에이전트 접근 권한. 어드민이 허용합니다. */
   agentAccess: boolean;
   membership: 'basic' | 'rightnow';
+  // ---- 주소록 프로필 (조직도·연락처 상세) ----
+  title?: string; // 직책 (예: Junior Associate Attorney)
+  dept?: string; // 부서 (조직도 단위)
+  branch?: string; // 지점 (이름 옆 괄호에 표시)
+  phone?: string;
+  email?: string;
+  birthday?: string; // YYYY-MM-DD
+  joinedAt?: string; // YYYY-MM-DD
 };
 
 /** 방의 종류. 메신저·사건·업무·에이전트가 모두 같은 "방" 구조를 씁니다. */
@@ -65,9 +73,22 @@ export type Room = {
   caseInfo?: CaseInfo;
   officeId?: string; // 상담·사건방의 담당 사무소
   lawyerId?: string; // 찾기에서 고른 담당 변호사 (배당 정보 안내용)
+  // ---- 메신저 설정 (사용자별) ----
+  pinnedBy?: string[];
+  /** 알림: 전체 / 멘션만 / 끄기. 없으면 전체 */
+  notify?: Record<string, NotifyLevel>;
+  /** 사용자 id → 숨긴 시각. 그 뒤로 새 메시지가 오면 다시 보입니다. */
+  hiddenAt?: Record<string, string>;
+  notices?: RoomNotice[];
+  /** 공지 '다시 보지 않기' 한 사람 (새 공지가 올라오면 초기화) */
+  noticeHiddenBy?: string[];
 };
 
-export type MessageKind = 'text' | 'ai' | 'system' | 'bot';
+export type NotifyLevel = 'all' | 'mention' | 'off';
+
+export type RoomNotice = { id: string; messageId: string; text: string; by: string; at: string };
+
+export type MessageKind = 'text' | 'ai' | 'system' | 'bot' | 'contact';
 
 export type Message = {
   id: string;
@@ -76,6 +97,20 @@ export type Message = {
   kind: MessageKind;
   text: string;
   at: string;
+  /** 답장한 원래 메시지 */
+  replyTo?: string;
+  /** 다른 방에서 전달된 메시지의 원래 보낸 사람·내용 */
+  forwardOf?: { senderId: string; text: string };
+  /** 보낸 사람이 회수한 메시지 */
+  recalled?: boolean;
+  /** 사용자 id → 공감 이모지 */
+  reactions?: Record<string, string>;
+  /** @멘션된 사용자 id ('all'은 전체) */
+  mentions?: string[];
+  /** 연락처 공유 메시지의 대상 */
+  contactId?: string;
+  /** '나에게서 삭제'한 사용자 */
+  deletedFor?: string[];
 };
 
 export const AI_SENDER = 'ai';

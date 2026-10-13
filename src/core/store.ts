@@ -23,6 +23,7 @@ import {
 import { summarizeMeeting, type MeetingNotes } from './meeting';
 import { asksCaseInfo, assignmentText, caseStatusText } from './case-bot';
 import { formatUntil, reportTarget, restrictedUntil, toggleVote } from './board';
+import { displayName, parseMentions, type Reads } from './messenger';
 import { findLawyer } from './offices';
 import { procedureReply } from './procedures';
 import { aiAnswerLevel, canCreateRoom, canUseAgents, type RoomCheck } from './rooms';
@@ -37,6 +38,7 @@ import {
   type BoardReport,
   type CaseInfo,
   type Message,
+  type NotifyLevel,
   type Room,
   type RoomKind,
   type RoomMode,
@@ -66,6 +68,10 @@ export type State = {
   reports: BoardReport[];
   /** 게시판 이용 제한: 사용자 id → 해제 시각 */
   boardBans: Record<string, string>;
+  /** 방 id → 사용자 id → 마지막으로 읽은 시각 (읽음 수·안 읽은 수) */
+  reads: Reads;
+  /** 사용자 id → 즐겨찾기한 사람 */
+  favorites: Record<string, string[]>;
 };
 
 const T0 = '2026-10-13T09:00:00.000Z';
@@ -73,10 +79,14 @@ const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOStr
 
 export function initialState(): State {
   const users: User[] = [
-    { id: 'u_admin', nickname: '승덕', role: 'admin', firm: '대륜', agentAccess: true, membership: 'basic' },
-    { id: 'u_staff', nickname: '사무국 직원', role: 'staff', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic' },
-    { id: 'u_lawyer', nickname: '샘플 변호사 A', role: 'lawyer', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic' },
+    { id: 'u_admin', nickname: '승덕', role: 'admin', firm: '대륜', agentAccess: true, membership: 'basic', title: 'Admin', dept: '경영지원본부', branch: '본사', phone: '010-0000-0001', email: 'admin@example.com', joinedAt: '2026-06-15' },
+    { id: 'u_staff', nickname: '사무국 직원', role: 'staff', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Staff', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0002', email: 'staff@example.com', joinedAt: '2025-03-02' },
+    { id: 'u_lawyer', nickname: '샘플 변호사 A', role: 'lawyer', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Partner Attorney', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0003', email: 'lawyer@example.com', joinedAt: '2020-09-01' },
     { id: 'u_client', nickname: '하늘', role: 'client', agentAccess: false, membership: 'basic' },
+    // 조직도 확인용 샘플 구성원 (로그인 계정 없음)
+    { id: 'u_l2', nickname: '샘플 변호사 B', role: 'lawyer', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Junior Associate Attorney', dept: '실무수습변호사', branch: '서울강남', phone: '010-0000-0004', email: 'lawyer-b@example.com', joinedAt: '2026-06-15' },
+    { id: 'u_l3', nickname: '샘플 변호사 C', role: 'lawyer', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Junior Associate Attorney', dept: '실무수습변호사', branch: '군산', phone: '010-0000-0005', email: 'lawyer-c@example.com', joinedAt: '2026-06-15' },
+    { id: 'u_m1', nickname: '샘플 매니저', role: 'staff', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Manager', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0006', email: 'manager@example.com', joinedAt: '2024-01-08' },
   ];
   // 개발용 계정 (서버 연결 시 백오피스에서 실제 계정으로 교체)
   const accounts: Account[] = [
@@ -90,11 +100,21 @@ export function initialState(): State {
     { id: 'r_direct', kind: 'direct', mode: 'private', title: '사무국 직원', memberIds: ['u_admin', 'u_staff'], createdBy: 'u_admin', createdAt: T0 },
     { id: 'r_meeting', kind: 'meeting', mode: 'ai', title: '주간 경영회의', memberIds: ['u_admin', 'u_lawyer'], createdBy: 'u_admin', createdAt: T0 },
     { id: 'r_marketing', kind: 'marketing', mode: 'ai', title: '마케팅 작업방', memberIds: ['u_admin'], createdBy: 'u_admin', createdAt: T0 },
+    {
+      id: 'r_team', kind: 'group', mode: 'private', title: '부산총괄본부 상담팀', memberIds: ['u_admin', 'u_staff', 'u_lawyer', 'u_m1', 'u_l2'], createdBy: 'u_lawyer', createdAt: T0,
+      pinnedBy: ['u_lawyer'],
+      notices: [{ id: 'nt1', messageId: 'mt1', text: '[리마인드 공지] 상담 변호사는 내방 안내 전화를 상담 전날까지 꼭 해 주세요.', by: 'u_m1', at: ago(5) }],
+    },
   ];
   const messages: Message[] = [
     { id: 'm1', roomId: 'r_office', senderId: SYSTEM_SENDER, kind: 'system', text: 'AI 참여방입니다. @AI 로 부르면 AI가 답합니다.', at: T0 },
     { id: 'm2', roomId: 'r_office', senderId: 'u_staff', kind: 'text', text: '내일 오전 기일 서류 준비 완료했습니다.', at: T0 },
     { id: 'm3', roomId: 'r_direct', senderId: SYSTEM_SENDER, kind: 'system', text: '사건수행방입니다. 참여자끼리만 대화하고 AI는 참여하지 않습니다.', at: T0 },
+    { id: 'mt1', roomId: 'r_team', senderId: 'u_m1', kind: 'text', text: '[리마인드 공지] 상담 변호사는 내방 안내 전화를 상담 전날까지 꼭 해 주세요.', at: ago(5) },
+    { id: 'mt2', roomId: 'r_team', senderId: 'u_lawyer', kind: 'text', text: '@샘플 매니저 @사무국 직원 내일 상담 일정 공유 부탁드립니다.', at: ago(3), mentions: ['u_m1', 'u_staff'], reactions: { u_m1: '👍' } },
+    { id: 'mt3', roomId: 'r_team', senderId: 'u_staff', kind: 'text', text: '네, 오전 중에 올리겠습니다.', at: ago(2.9), replyTo: 'mt2' },
+    { id: 'mt4', roomId: 'r_team', senderId: 'u_m1', kind: 'text', text: '상담 일정표 링크입니다 https://example.com/schedule', at: ago(1) },
+    { id: 'mt5', roomId: 'r_team', senderId: 'u_l2', kind: 'text', text: '@승덕 대표님 확인 부탁드립니다.', at: ago(0.5), mentions: ['u_admin'] },
   ];
   return {
     currentUserId: null,
@@ -154,6 +174,8 @@ export function initialState(): State {
     notes: [],
     reports: [{ id: 'rp1', postId: 'p2', reporterId: 'u_lawyer', reason: '개인정보 노출', at: ago(1), status: 'open' }],
     boardBans: {},
+    reads: { r_team: { u_lawyer: ago(2.95), u_staff: ago(2.9), u_m1: ago(1), u_l2: ago(0.5), u_admin: ago(4) } },
+    favorites: { u_lawyer: ['u_staff'], u_admin: ['u_lawyer'] },
   };
 }
 
@@ -208,10 +230,20 @@ function userById(id: string) {
   return state.users.find((u) => u.id === id);
 }
 
-function pushMessage(roomId: string, senderId: string, kind: Message['kind'], text: string) {
-  const msg: Message = { id: newId('m'), roomId, senderId, kind, text, at: nowIso() };
+function pushMessage(roomId: string, senderId: string, kind: Message['kind'], text: string, extra: Partial<Message> = {}) {
+  const msg: Message = { id: newId('m'), roomId, senderId, kind, text, at: nowIso(), ...extra };
   set((s) => ({ messages: [...s.messages, msg] }));
+  if (senderId !== SYSTEM_SENDER && senderId !== AI_SENDER && senderId !== BOT_SENDER) markReadAt(roomId, senderId, msg.at);
   return msg;
+}
+
+function markReadAt(roomId: string, userId: string, at: string) {
+  if ((state.reads[roomId]?.[userId] ?? '') >= at) return;
+  set((s) => ({ reads: { ...s.reads, [roomId]: { ...s.reads[roomId], [userId]: at } } }));
+}
+
+function updateMessage(id: string, fn: (m: Message) => Message) {
+  set((s) => ({ messages: s.messages.map((m) => (m.id === id ? fn(m) : m)) }));
 }
 
 function updateRoom(roomId: string, fn: (r: Room) => Room) {
@@ -409,10 +441,12 @@ export const actions = {
     return { ok: true, roomId: room.id };
   },
 
-  async sendMessage(roomId: string, text: string) {
+  async sendMessage(roomId: string, text: string, opts: { replyTo?: string } = {}) {
     const room = state.rooms.find((r) => r.id === roomId);
     if (!room || !text.trim()) return;
-    pushMessage(roomId, me().id, 'text', text.trim());
+    const members = room.memberIds.map(userById).filter((u): u is User => !!u);
+    const mentions = parseMentions(text, members);
+    pushMessage(roomId, me().id, 'text', text.trim(), { replyTo: opts.replyTo, ...(mentions.length ? { mentions } : {}) });
     // 의뢰인이 절차를 물으면 방 종류와 관계없이 정해진 절차 안내문을 보냅니다.
     if (me().role === 'client') {
       const guide = procedureReply(text, room.caseInfo?.field);
@@ -422,7 +456,6 @@ export const actions = {
       }
     }
     if (!/@ai\b/i.test(text)) return;
-    const members = room.memberIds.map(userById).filter((u): u is User => !!u);
     const level = aiAnswerLevel(room, members);
     if (level === 'none') {
       // 사건수행방: AI는 대화에 참여하지 않고 사건 기록에서 진행·배당 정보만 알려 줍니다.
@@ -509,11 +542,135 @@ export const actions = {
     return { ok: true, roomId: room.id };
   },
 
+  // ---- 메신저 (웍스식 대화 기능) ----
+
+  markRead(roomId: string) {
+    const last = [...state.messages].reverse().find((m) => m.roomId === roomId);
+    if (last) markReadAt(roomId, me().id, last.at);
+  },
+
+  /** 같은 이모지를 다시 누르면 취소 */
+  react(messageId: string, emoji: string) {
+    const uid = me().id;
+    updateMessage(messageId, (m) => {
+      const reactions = { ...m.reactions };
+      if (reactions[uid] === emoji) delete reactions[uid];
+      else reactions[uid] = emoji;
+      return { ...m, reactions };
+    });
+  },
+
+  /** 내가 보낸 메시지를 모두에게서 회수 */
+  recall(messageId: string): RoomCheck {
+    const m = state.messages.find((x) => x.id === messageId);
+    if (!m || m.senderId !== me().id) return { ok: false, reason: '내가 보낸 메시지만 회수할 수 있습니다.' };
+    updateMessage(messageId, (x) => ({ ...x, text: '', recalled: true, reactions: {}, mentions: [] }));
+    return { ok: true };
+  },
+
+  /** 나에게서만 삭제 */
+  deleteForMe(messageId: string) {
+    const uid = me().id;
+    updateMessage(messageId, (m) => ({ ...m, deletedFor: [...(m.deletedFor ?? []), uid] }));
+  },
+
+  forward(messageId: string, toRoomId: string): RoomCheck {
+    const m = state.messages.find((x) => x.id === messageId);
+    const to = state.rooms.find((r) => r.id === toRoomId);
+    if (!m || m.recalled) return { ok: false, reason: '전달할 메시지를 찾을 수 없습니다.' };
+    if (!to || !to.memberIds.includes(me().id)) return { ok: false, reason: '참여 중인 방으로만 전달할 수 있습니다.' };
+    const origin = m.forwardOf ?? { senderId: m.senderId, text: m.text };
+    pushMessage(toRoomId, me().id, 'text', origin.text, { forwardOf: origin });
+    return { ok: true };
+  },
+
+  setNotice(messageId: string): RoomCheck {
+    const m = state.messages.find((x) => x.id === messageId);
+    if (!m || m.recalled || !m.text) return { ok: false, reason: '공지로 올릴 수 없는 메시지입니다.' };
+    const notice = { id: newId('nt'), messageId, text: m.text, by: me().id, at: nowIso() };
+    updateRoom(m.roomId, (r) => ({ ...r, notices: [notice, ...(r.notices ?? []).filter((n) => n.messageId !== messageId)].slice(0, 5), noticeHiddenBy: [] }));
+    pushMessage(m.roomId, SYSTEM_SENDER, 'system', `${me().nickname}님이 공지를 등록했습니다.`);
+    return { ok: true };
+  },
+
+  removeNotice(roomId: string, noticeId: string) {
+    updateRoom(roomId, (r) => ({ ...r, notices: (r.notices ?? []).filter((n) => n.id !== noticeId) }));
+  },
+
+  /** 공지 '다시 보지 않기' */
+  hideNotices(roomId: string) {
+    const uid = me().id;
+    updateRoom(roomId, (r) => ({ ...r, noticeHiddenBy: [...(r.noticeHiddenBy ?? []), uid] }));
+  },
+
+  togglePin(roomId: string) {
+    const uid = me().id;
+    updateRoom(roomId, (r) => ({ ...r, pinnedBy: r.pinnedBy?.includes(uid) ? r.pinnedBy.filter((x) => x !== uid) : [...(r.pinnedBy ?? []), uid] }));
+  },
+
+  setNotify(roomId: string, level: NotifyLevel) {
+    const uid = me().id;
+    updateRoom(roomId, (r) => ({ ...r, notify: { ...r.notify, [uid]: level } }));
+  },
+
+  /** 목록에서 숨기기. 새 메시지가 오면 다시 보입니다. */
+  hideRoom(roomId: string) {
+    const uid = me().id;
+    updateRoom(roomId, (r) => ({ ...r, hiddenAt: { ...r.hiddenAt, [uid]: nowIso() } }));
+  },
+
+  leaveRoom(roomId: string): RoomCheck {
+    const room = state.rooms.find((r) => r.id === roomId);
+    const u = me();
+    if (!room || !room.memberIds.includes(u.id)) return { ok: false, reason: '참여 중인 방이 아닙니다.' };
+    if (room.kind === 'case' || room.kind === 'consult') return { ok: false, reason: '상담·사건방은 나갈 수 없습니다.' };
+    updateRoom(roomId, (r) => ({ ...r, memberIds: r.memberIds.filter((x) => x !== u.id), pinnedBy: r.pinnedBy?.filter((x) => x !== u.id) }));
+    pushMessage(roomId, SYSTEM_SENDER, 'system', `${u.nickname}님이 나갔습니다.`);
+    return { ok: true };
+  },
+
+  /** 멤버 초대. 1:1 방에서 초대하면 새 그룹방을 만듭니다. */
+  invite(roomId: string, userIds: string[]): RoomCheck & { roomId?: string } {
+    const room = state.rooms.find((r) => r.id === roomId);
+    const u = me();
+    if (!room || !room.memberIds.includes(u.id)) return { ok: false, reason: '참여 중인 방이 아닙니다.' };
+    const add = userIds.filter((id) => !room.memberIds.includes(id) && userById(id));
+    if (!add.length) return { ok: false, reason: '초대할 사람을 골라 주세요.' };
+    if (room.kind === 'direct') return actions.startChat([...room.memberIds.filter((x) => x !== u.id), ...add]);
+    updateRoom(roomId, (r) => ({ ...r, memberIds: [...r.memberIds, ...add] }));
+    pushMessage(roomId, SYSTEM_SENDER, 'system', `${u.nickname}님이 ${add.map((id) => userById(id)!.nickname).join(', ')}님을 초대했습니다.`);
+    return { ok: true, roomId };
+  },
+
+  /** 멤버 선택으로 대화 시작: 한 명이면 1:1, 여러 명이면 그룹방 */
+  startChat(userIds: string[], title = ''): RoomCheck & { roomId?: string } {
+    const ids = [...new Set(userIds)].filter((id) => id !== me().id);
+    if (!ids.length) return { ok: false, reason: '대화할 사람을 골라 주세요.' };
+    if (ids.length === 1 && !title) return { ok: true, roomId: actions.openDirect(ids[0]) };
+    return actions.createRoom({ kind: 'group', mode: 'private', title, memberIds: ids });
+  },
+
+  toggleFavorite(userId: string) {
+    const uid = me().id;
+    const cur = state.favorites[uid] ?? [];
+    set((s) => ({ favorites: { ...s.favorites, [uid]: cur.includes(userId) ? cur.filter((x) => x !== userId) : [...cur, userId] } }));
+  },
+
+  shareContact(roomId: string, contactId: string): RoomCheck {
+    const c = userById(contactId);
+    if (!c) return { ok: false, reason: '연락처를 찾을 수 없습니다.' };
+    pushMessage(roomId, me().id, 'contact', displayName(c), { contactId });
+    return { ok: true };
+  },
+
   /** 주소록에서 1:1 대화 열기 (있으면 기존 방) */
   openDirect(otherId: string): string {
     const my = me().id;
     const existing = state.rooms.find((r) => r.kind === 'direct' && r.memberIds.length === 2 && r.memberIds.includes(my) && r.memberIds.includes(otherId));
-    if (existing) return existing.id;
+    if (existing) {
+      if (existing.hiddenAt?.[my]) updateRoom(existing.id, (r) => ({ ...r, hiddenAt: { ...r.hiddenAt, [my]: '' } }));
+      return existing.id;
+    }
     const res = actions.createRoom({ kind: 'direct', mode: 'private', title: '', memberIds: [otherId] });
     return res.roomId!;
   },

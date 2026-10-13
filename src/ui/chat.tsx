@@ -1,0 +1,480 @@
+// 대화방 화면 조각 (웍스 대화방 구성: 읽음 수, 답장 인용, 전달, 회수, 공감, 멘션, 공지, 방 메뉴)
+import { router } from 'expo-router';
+import { useState, type ReactNode } from 'react';
+import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+
+import { displayName, notifyLevel, readCount, roomLinks, splitMentions, type Reads } from '@/core/messenger';
+import { actions } from '@/core/store';
+import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
+import { Icon, type IconName } from './icons';
+import { Avatar } from './kit';
+import { chatTime, roomTitle } from './room-row';
+import { family, radius, space, useColors } from './theme';
+
+export const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
+function nameOf(users: User[], id: string): string {
+  if (id === AI_SENDER) return '✦ AI';
+  if (id === BOT_SENDER) return '✦ AI 알림';
+  return users.find((u) => u.id === id)?.nickname ?? '알 수 없음';
+}
+
+/** 본문: @멘션은 강조 */
+function Body({ text, names, color, mention }: { text: string; names: string[]; color: string; mention: string }) {
+  return (
+    <Text style={{ fontFamily: family.regular, fontSize: 16, lineHeight: 23, color }}>
+      {splitMentions(text, names).map((p, i) => (
+        <Text key={i} style={p.mention ? { color: mention, fontFamily: family.semibold } : undefined}>
+          {p.text}
+        </Text>
+      ))}
+    </Text>
+  );
+}
+
+export function Bubble({
+  m,
+  me,
+  room,
+  users,
+  reads,
+  messages,
+  onLongPress,
+  highlight,
+}: {
+  m: Message;
+  me: User;
+  room: Room;
+  users: User[];
+  reads: Reads;
+  messages: Message[];
+  onLongPress: () => void;
+  highlight?: boolean;
+}) {
+  const c = useColors();
+  if (m.senderId === SYSTEM_SENDER) {
+    return (
+      <View style={{ alignItems: 'center', marginVertical: space.sm }}>
+        <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint, textAlign: 'center' }}>{m.text}</Text>
+      </View>
+    );
+  }
+  const sender = users.find((u) => u.id === m.senderId);
+  if (m.recalled) {
+    return (
+      <View style={{ alignItems: 'center', marginVertical: space.sm }}>
+        <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{sender?.nickname ?? ''}님이 메시지를 회수하였습니다.</Text>
+      </View>
+    );
+  }
+  const mine = m.senderId === me.id;
+  const isAi = m.senderId === AI_SENDER;
+  const isBot = m.senderId === BOT_SENDER;
+  const human = !isAi && !isBot;
+  const names = room.memberIds.map((id) => users.find((u) => u.id === id)?.nickname).filter((n): n is string => !!n);
+  const fg = mine ? c.bubbleMineText : c.text;
+  const quoted = m.replyTo ? messages.find((x) => x.id === m.replyTo) : undefined;
+  const contact = m.kind === 'contact' ? users.find((u) => u.id === m.contactId) : undefined;
+  const read = human ? readCount(m, room, reads) : 0;
+  const reactions = Object.values(m.reactions ?? {}).reduce<Record<string, number>>((acc, e) => ({ ...acc, [e]: (acc[e] ?? 0) + 1 }), {});
+  const myReaction = m.reactions?.[me.id];
+
+  const meta = (
+    <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', justifyContent: 'flex-end', paddingHorizontal: 4 }}>
+      {read > 0 ? <Text style={{ fontFamily: family.semibold, fontSize: 11, color: c.accent }}>읽음 {read}</Text> : null}
+      <Text style={{ fontFamily: family.regular, fontSize: 11, color: c.faint }}>{chatTime(m.at)}</Text>
+    </View>
+  );
+
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: mine ? 'flex-end' : 'flex-start', gap: space.sm, marginVertical: space.xs, backgroundColor: highlight ? c.accentSoft : 'transparent', borderRadius: radius.sm }}>
+      {!mine ? <Avatar name={isAi || isBot ? 'AI' : sender?.nickname ?? '?'} size={36} tone={isAi ? c.aiSoft : undefined} /> : null}
+      <View style={{ maxWidth: '78%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
+        {!mine ? (
+          <Text numberOfLines={1} style={{ fontFamily: family.semibold, fontSize: 13, color: isAi ? c.ai : isBot ? c.accent : c.sub, marginBottom: 2 }}>
+            {isAi || isBot ? nameOf(users, m.senderId) : sender ? displayName(sender) : ''}
+          </Text>
+        ) : null}
+        <View style={{ flexDirection: mine ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 2 }}>
+          <Pressable
+            accessibilityLabel="메시지"
+            onLongPress={onLongPress}
+            delayLongPress={350}
+            style={{
+              flexShrink: 1,
+              backgroundColor: contact || m.forwardOf ? c.bg : mine ? c.bubbleMine : isAi ? c.aiSoft : isBot ? c.accentSoft : c.bubbleOther,
+              borderWidth: contact || m.forwardOf ? 1 : 0,
+              borderColor: c.line,
+              borderRadius: radius.lg,
+              paddingHorizontal: space.md,
+              paddingVertical: space.sm + 2,
+              gap: space.xs,
+            }}>
+            {quoted ? (
+              <View style={{ borderLeftWidth: 2, borderLeftColor: mine ? 'rgba(255,255,255,0.7)' : c.accent, paddingLeft: space.sm, marginBottom: 2 }}>
+                <Text style={{ fontFamily: family.semibold, fontSize: 12, color: mine ? c.bubbleMineText : c.sub }}>{nameOf(users, quoted.senderId)}에게 답장</Text>
+                <Text numberOfLines={2} style={{ fontFamily: family.regular, fontSize: 13, color: mine ? c.bubbleMineText : c.sub }}>
+                  {quoted.recalled ? '회수된 메시지입니다.' : quoted.text}
+                </Text>
+              </View>
+            ) : null}
+            {m.forwardOf ? (
+              <>
+                <Text style={{ fontFamily: family.semibold, fontSize: 12, color: c.sub }}>전달 · {nameOf(users, m.forwardOf.senderId)}</Text>
+                <Body text={m.forwardOf.text} names={names} color={c.text} mention={c.accent} />
+              </>
+            ) : contact ? (
+              <Pressable onPress={() => router.push({ pathname: '/contact/[id]', params: { id: contact.id } })} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minWidth: 200 }}>
+                <Avatar name={contact.nickname} size={40} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.text }}>{contact.nickname}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{[contact.title, contact.dept].filter(Boolean).join(' · ') || '연락처'}</Text>
+                </View>
+                <Icon name="chevron" color={c.faint} size={18} />
+              </Pressable>
+            ) : (
+              <Body text={m.text} names={names} color={fg} mention={mine ? c.bubbleMineText : c.accent} />
+            )}
+          </Pressable>
+          {meta}
+        </View>
+        {Object.keys(reactions).length ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+            {Object.entries(reactions).map(([e, n]) => (
+              <Pressable
+                key={e}
+                onPress={() => actions.react(m.id, e)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill, borderWidth: 1, borderColor: myReaction === e ? c.accent : c.line, backgroundColor: c.bg }}>
+                <Text style={{ fontSize: 13 }}>{e}</Text>
+                <Text style={{ fontFamily: family.semibold, fontSize: 12, color: myReaction === e ? c.accent : c.sub }}>{n}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+/** 바닥에서 올라오는 시트 */
+export function Sheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  const c = useColors();
+  return (
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable accessibilityLabel="닫기" onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}>
+        <Pressable onPress={() => undefined} style={{ backgroundColor: c.bg, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, gap: space.sm, maxHeight: '80%', width: '100%', maxWidth: 720, alignSelf: 'center' }}>
+          {children}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function MenuItem({ icon, label, onPress, danger }: { icon: IconName; label: string; onPress: () => void; danger?: boolean }) {
+  const c = useColors();
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => ({ width: '25%', alignItems: 'center', gap: 6, paddingVertical: space.md, opacity: pressed ? 0.5 : 1 })}>
+      <Icon name={icon} color={danger ? c.accent : c.text} size={24} />
+      <Text style={{ fontFamily: family.regular, fontSize: 13, color: danger ? c.accent : c.text }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/** 메시지 길게 누르기 메뉴: 공감 + 복사·답장·공지·전달·삭제·회수 */
+export function MessageMenu({
+  m,
+  mine,
+  myId,
+  onClose,
+  onCopy,
+  onReply,
+  onForward,
+  onNotice,
+}: {
+  m?: Message;
+  mine: boolean;
+  myId: string;
+  onClose: () => void;
+  onCopy: () => void;
+  onReply: () => void;
+  onForward: () => void;
+  onNotice: () => void;
+}) {
+  const c = useColors();
+  const run = (fn: () => void) => () => {
+    fn();
+    onClose();
+  };
+  return (
+    <Sheet open={!!m} onClose={onClose}>
+      {m ? (
+        <>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingBottom: space.sm, borderBottomWidth: 1, borderBottomColor: c.line }}>
+            {REACTIONS.map((e) => (
+              <Pressable key={e} accessibilityLabel={`공감 ${e}`} onPress={run(() => actions.react(m.id, e))} style={{ padding: space.sm, borderRadius: radius.pill, backgroundColor: m.reactions?.[myId] === e ? c.surface : 'transparent' }}>
+                <Text style={{ fontSize: 26 }}>{e}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {m.kind !== 'contact' ? <MenuItem icon="copy" label="복사" onPress={run(onCopy)} /> : null}
+            <MenuItem icon="reply" label="답장" onPress={run(onReply)} />
+            {m.kind !== 'contact' ? <MenuItem icon="notice" label="공지" onPress={run(onNotice)} /> : null}
+            <MenuItem icon="forward" label="전달" onPress={run(onForward)} />
+            <MenuItem icon="trash" label="삭제" onPress={run(() => actions.deleteForMe(m.id))} />
+            {mine ? <MenuItem icon="recall" label="회수" danger onPress={run(() => void actions.recall(m.id))} /> : null}
+          </View>
+        </>
+      ) : null}
+    </Sheet>
+  );
+}
+
+/** 전달할 방 고르기 */
+export function ForwardSheet({ m, rooms, onClose, onDone }: { m?: Message; rooms: Room[]; onClose: () => void; onDone: (room: Room) => void }) {
+  const c = useColors();
+  return (
+    <Sheet open={!!m} onClose={onClose}>
+      <Text style={{ fontFamily: family.bold, fontSize: 18, color: c.text }}>전달할 대화방</Text>
+      <ScrollView>
+        {rooms.map((r) => (
+          <Pressable
+            key={r.id}
+            onPress={() => {
+              if (m && actions.forward(m.id, r.id).ok) onDone(r);
+              onClose();
+            }}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm, opacity: pressed ? 0.5 : 1 })}>
+            <Avatar name={r.title} size={40} group={r.memberIds.length > 2} />
+            <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.semibold, fontSize: 15, color: c.text }}>{roomTitle(r)}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </Sheet>
+  );
+}
+
+/** 연락처 공유: 내 주소록에서 고르기 */
+export function ContactSheet({ open, contacts, onClose, onPick }: { open: boolean; contacts: User[]; onClose: () => void; onPick: (u: User) => void }) {
+  const c = useColors();
+  return (
+    <Sheet open={open} onClose={onClose}>
+      <Text style={{ fontFamily: family.bold, fontSize: 18, color: c.text }}>연락처 보내기</Text>
+      <ScrollView>
+        {contacts.map((u) => (
+          <Pressable
+            key={u.id}
+            onPress={() => {
+              onPick(u);
+              onClose();
+            }}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm, opacity: pressed ? 0.5 : 1 })}>
+            <Avatar name={u.nickname} size={40} />
+            <View style={{ flex: 1 }}>
+              <Text numberOfLines={1} style={{ fontFamily: family.semibold, fontSize: 15, color: c.text }}>{displayName(u)}</Text>
+              {u.dept ? <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{u.dept}</Text> : null}
+            </View>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </Sheet>
+  );
+}
+
+/** 상단 공지: 접힌 상태는 최신 1개, 펼치면 전체 */
+export function NoticeBar({ room, me, users, onJump }: { room: Room; me: User; users: User[]; onJump: (messageId: string) => void }) {
+  const c = useColors();
+  const [open, setOpen] = useState(false);
+  const notices = room.notices ?? [];
+  if (!notices.length || room.noticeHiddenBy?.includes(me.id)) return null;
+  const shown = open ? notices : notices.slice(0, 1);
+  return (
+    <View style={{ borderWidth: 1, borderColor: c.line, borderRadius: radius.md, backgroundColor: c.bg, paddingHorizontal: space.md, paddingVertical: space.sm, marginBottom: space.sm, gap: space.sm }}>
+      {shown.map((n) => (
+        <View key={n.id} style={{ flexDirection: 'row', gap: space.sm, alignItems: 'flex-start' }}>
+          <Icon name="notice" color={c.accent} size={18} />
+          <Pressable style={{ flex: 1 }} onPress={() => onJump(n.messageId)}>
+            <Text numberOfLines={open ? 4 : 1} style={{ fontFamily: family.semibold, fontSize: 14, color: c.text }}>{n.text}</Text>
+            {open ? <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{nameOf(users, n.by)} · {chatTime(n.at)}</Text> : null}
+          </Pressable>
+          {open && (n.by === me.id || me.role === 'admin') ? (
+            <Pressable accessibilityLabel="공지 내리기" hitSlop={8} onPress={() => actions.removeNotice(room.id, n.id)}>
+              <Icon name="close" color={c.faint} size={16} />
+            </Pressable>
+          ) : null}
+          {!open ? (
+            <Pressable accessibilityLabel="공지 펼치기" hitSlop={8} onPress={() => setOpen(true)} style={{ transform: [{ rotate: '90deg' }] }}>
+              <Icon name="chevron" color={c.faint} size={18} />
+            </Pressable>
+          ) : null}
+        </View>
+      ))}
+      {open ? (
+        <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: c.line, paddingTop: space.sm }}>
+          <Pressable style={{ flex: 1, alignItems: 'center' }} onPress={() => actions.hideNotices(room.id)}>
+            <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.sub }}>다시 보지 않기</Text>
+          </Pressable>
+          <Pressable style={{ flex: 1, alignItems: 'center' }} onPress={() => setOpen(false)}>
+            <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.text }}>접기</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const NOTIFY: [NotifyLevel, string][] = [
+  ['all', '모든 메시지'],
+  ['mention', '멘션만'],
+  ['off', '끄기'],
+];
+
+function DrawerHead({ title }: { title: string }) {
+  const c = useColors();
+  return <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.text, marginTop: space.md }}>{title}</Text>;
+}
+
+/** 오른쪽 방 메뉴: 알림, 대화 중 멤버, 링크·문서, 새 메시지방, 나가기 */
+export function RoomDrawer({
+  open,
+  onClose,
+  room,
+  me,
+  users,
+  messages,
+  onError,
+}: {
+  open: boolean;
+  onClose: () => void;
+  room: Room;
+  me: User;
+  users: User[];
+  messages: Message[];
+  onError: (text: string) => void;
+}) {
+  const c = useColors();
+  const level = notifyLevel(room, me.id);
+  const members = room.memberIds.map((id) => users.find((u) => u.id === id)).filter((u): u is User => !!u);
+  const links = roomLinks(messages);
+  const docs = room.caseInfo?.documents ?? [];
+  const go = (fn: () => void) => () => {
+    onClose();
+    fn();
+  };
+  const leavable = room.kind !== 'case' && room.kind !== 'consult';
+  return (
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={{ flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.35)' }}>
+        <Pressable accessibilityLabel="메뉴 닫기" onPress={onClose} style={{ flex: 1 }} />
+        <View style={{ width: '86%', maxWidth: 380, backgroundColor: c.bg }}>
+          <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.sm }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+              <Avatar name={room.title} size={48} group={members.length > 2} />
+              <Text numberOfLines={2} style={{ flex: 1, fontFamily: family.bold, fontSize: 17, color: c.text }}>{roomTitle(room)}</Text>
+              <Pressable accessibilityLabel="메뉴 닫기" onPress={onClose} hitSlop={8}>
+                <Icon name="close" color={c.text} size={22} />
+              </Pressable>
+            </View>
+
+            <DrawerHead title="알림" />
+            <View style={{ flexDirection: 'row', gap: space.sm }}>
+              {NOTIFY.map(([k, label]) => (
+                <Pressable
+                  key={k}
+                  onPress={() => actions.setNotify(room.id, k)}
+                  style={{ flex: 1, alignItems: 'center', paddingVertical: space.sm, borderRadius: radius.sm, borderWidth: 1, borderColor: level === k ? c.accent : c.line, backgroundColor: level === k ? c.accentSoft : c.bg }}>
+                  <Text style={{ fontFamily: family.semibold, fontSize: 13, color: level === k ? c.accent : c.sub }}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: space.md }}>
+              <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.text }}>대화 중 멤버 ({members.length})</Text>
+              <Pressable
+                accessibilityLabel="멤버 초대"
+                onPress={go(() => router.push({ pathname: '/room/new', params: { roomId: room.id } }))}
+                style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Icon name="plus" color={c.accent} size={18} />
+                <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.accent }}>멤버 초대</Text>
+              </Pressable>
+            </View>
+            {members.map((u) => (
+              <Pressable
+                key={u.id}
+                onPress={go(() => router.push({ pathname: '/contact/[id]', params: { id: u.id } }))}
+                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 4, opacity: pressed ? 0.5 : 1 })}>
+                <Avatar name={u.nickname} size={34} />
+                <View style={{ flex: 1 }}>
+                  <Text numberOfLines={1} style={{ fontFamily: family.semibold, fontSize: 14, color: c.text }}>
+                    {displayName(u)}
+                    {u.id === me.id ? ' (나)' : ''}
+                  </Text>
+                  {u.dept ? <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{u.dept}</Text> : null}
+                </View>
+              </Pressable>
+            ))}
+
+            <DrawerHead title={`링크 (${links.length})`} />
+            {links.length ? (
+              links.map((l, i) => (
+                <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+                  <Icon name="link" color={c.sub} size={16} />
+                  <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.regular, fontSize: 13, color: c.text }}>{l.url}</Text>
+                  <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{chatTime(l.at)}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={{ fontFamily: family.regular, fontSize: 13, color: c.faint }}>없음</Text>
+            )}
+            {room.caseInfo ? (
+              <>
+                <DrawerHead title={`사건 서류 (${docs.length})`} />
+                {docs.map((d) => (
+                  <View key={d.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+                    <Icon name="file" color={c.sub} size={16} />
+                    <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.regular, fontSize: 13, color: c.text }}>{d.name}</Text>
+                  </View>
+                ))}
+              </>
+            ) : null}
+
+            <View style={{ borderTopWidth: 1, borderTopColor: c.line, marginTop: space.md, paddingTop: space.sm }}>
+              <DrawerRow
+                icon="chat"
+                label="새 메시지방 만들기"
+                onPress={go(() => {
+                  const res = actions.startChat(room.memberIds.filter((x) => x !== me.id), members.length > 2 ? room.title : '');
+                  if (res.ok && res.roomId) router.push({ pathname: '/room/[id]', params: { id: res.roomId } });
+                  else if (!res.ok) onError(res.reason);
+                })}
+              />
+              <DrawerRow icon="pin" label={room.pinnedBy?.includes(me.id) ? '대화방 고정 해제' : '대화방 고정'} onPress={() => actions.togglePin(room.id)} />
+              {leavable ? (
+                <DrawerRow
+                  icon="exit"
+                  label="나가기"
+                  danger
+                  onPress={go(() => {
+                    const res = actions.leaveRoom(room.id);
+                    if (res.ok) router.replace('/');
+                    else onError(res.reason);
+                  })}
+                />
+              ) : null}
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function DrawerRow({ icon, label, onPress, danger }: { icon: IconName; label: string; onPress: () => void; danger?: boolean }) {
+  const c = useColors();
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md, opacity: pressed ? 0.5 : 1 })}>
+      <Icon name={icon} color={danger ? c.accent : c.text} size={20} />
+      <Text style={{ fontFamily: family.semibold, fontSize: 15, color: danger ? c.accent : c.text }}>{label}</Text>
+    </Pressable>
+  );
+}

@@ -1,15 +1,22 @@
+import * as Clipboard from 'expo-clipboard';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 
+import { displayName, lastReadAt, mentionQuery, notifyLevel, visibleMessages } from '@/core/messenger';
 import { aiCanJoin, ROOM_KIND_LABEL } from '@/core/rooms';
+import { contactsFor } from '@/core/contacts';
 import { actions } from '@/core/store';
-import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Message } from '@/core/types';
+import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Message, type User } from '@/core/types';
 import { CasePanel } from '@/ui/case-panel';
+import { Bubble, ContactSheet, ForwardSheet, MessageMenu, NoticeBar, RoomDrawer } from '@/ui/chat';
 import { Icon } from '@/ui/icons';
-import { Button, Empty, Input, ModeBadge, ModeBanner, Notice, Screen, Sub, T } from '@/ui/kit';
+import { Avatar, Button, Empty, Input, ModeBadge, ModeBanner, Notice, Screen, Sub } from '@/ui/kit';
+import { roomTitle } from '@/ui/room-row';
 import { family, font, radius, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
+
+type Item = Message | { id: '__unread'; divider: true };
 
 export default function RoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -17,19 +24,67 @@ export default function RoomScreen() {
   const user = useMe();
   const c = useColors();
   const room = s.rooms.find((r) => r.id === id);
-  const messages = useMemo(() => s.messages.filter((m) => m.roomId === id), [s.messages, id]);
+  const messages = useMemo(() => visibleMessages(s.messages, id, user.id), [s.messages, id, user.id]);
+  // 들어올 때 마지막으로 읽은 시각: '읽지 않은 메시지' 구분선 위치
+  const [readSnapshot] = useState(() => lastReadAt(s.reads, id, user.id));
   const [text, setText] = useState('');
+  const [replyTo, setReplyTo] = useState<Message>();
+  const [menuFor, setMenuFor] = useState<Message>();
+  const [forwardFor, setForwardFor] = useState<Message>();
+  const [drawer, setDrawer] = useState(false);
+  const [plus, setPlus] = useState(false);
+  const [contactPick, setContactPick] = useState(false);
+  const [search, setSearch] = useState<string>();
+  const [highlight, setHighlight] = useState<string>();
+  const [toast, setToast] = useState('');
   const [promote, setPromote] = useState({ open: false, title: '', field: '', error: '' });
-  const list = useRef<FlatList<Message>>(null);
+  const list = useRef<FlatList<Item>>(null);
+  const isMember = !!room?.memberIds.includes(user.id);
+
+  useEffect(() => {
+    if (isMember) actions.markRead(id);
+  }, [id, isMember, messages.length]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(''), 1800);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const items = useMemo<Item[]>(() => {
+    if (search?.trim()) return messages.filter((m) => !m.recalled && m.senderId !== SYSTEM_SENDER && m.text.includes(search.trim()));
+    const first = readSnapshot ? messages.findIndex((m) => m.at > readSnapshot && m.senderId !== user.id && m.senderId !== SYSTEM_SENDER) : -1;
+    if (first <= 0) return messages;
+    return [...messages.slice(0, first), { id: '__unread', divider: true }, ...messages.slice(first)];
+  }, [messages, readSnapshot, search, user.id]);
 
   if (!room) return <Screen title="대화" back><Empty text="방을 찾을 수 없습니다." /></Screen>;
-  const isMember = room.memberIds.includes(user.id);
-  const names = room.memberIds.map((mid) => s.users.find((u) => u.id === mid)?.nickname ?? mid);
+  const members = room.memberIds.map((mid) => s.users.find((u) => u.id === mid)).filter((u): u is User => !!u);
+  const muted = notifyLevel(room, user.id) !== 'all';
+
+  // @멘션 자동완성
+  const mq = mentionQuery(text);
+  const mentionList =
+    mq === undefined
+      ? []
+      : [{ id: 'all', nickname: '전체' } as User, ...members.filter((u) => u.id !== user.id)].filter((u) => u.nickname.includes(mq)).slice(0, 6);
+  const pickMention = (u: User) => setText((t) => t.replace(/@([^\s@]*)$/, `@${u.nickname} `));
 
   const send = () => {
     if (!text.trim()) return;
-    void actions.sendMessage(room.id, text);
+    void actions.sendMessage(room.id, text, { replyTo: replyTo?.id });
     setText('');
+    setReplyTo(undefined);
+  };
+
+  const jump = (messageId: string) => {
+    setSearch(undefined);
+    setHighlight(messageId);
+    setTimeout(() => {
+      const index = items.findIndex((m) => m.id === messageId);
+      if (index >= 0) list.current?.scrollToIndex({ index, viewPosition: 0.3, animated: true });
+    }, 50);
+    setTimeout(() => setHighlight(undefined), 2000);
   };
 
   const doPromote = () => {
@@ -37,11 +92,14 @@ export default function RoomScreen() {
     setPromote((p) => ({ ...p, error: res.ok ? '' : res.reason, open: !res.ok }));
   };
 
+  const myRooms = s.rooms.filter((r) => r.memberIds.includes(user.id) && r.id !== room.id);
+  const shareable = contactsFor(user, s);
+
   const header = (
     <View style={{ gap: space.sm, marginBottom: space.md }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
         <ModeBadge mode={room.mode} />
-        <Sub>{ROOM_KIND_LABEL[room.kind]} · {names.join(', ')}</Sub>
+        <Sub>{ROOM_KIND_LABEL[room.kind]}</Sub>
       </View>
       <ModeBanner mode={room.mode} />
       {room.kind === 'case' ? <CasePanel room={room} canEdit={user.role !== 'client'} /> : null}
@@ -61,65 +119,155 @@ export default function RoomScreen() {
     </View>
   );
 
+  const right = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+      {muted ? <Icon name="mute" color={c.faint} size={18} /> : null}
+      <Pressable accessibilityLabel="대화 검색" hitSlop={8} onPress={() => setSearch((q) => (q === undefined ? '' : undefined))}>
+        <Icon name="search" color={search !== undefined ? c.accent : c.text} size={22} />
+      </Pressable>
+      <Pressable accessibilityLabel="대화방 메뉴" hitSlop={8} onPress={() => setDrawer(true)}>
+        <Icon name="menu" color={c.text} size={22} />
+      </Pressable>
+    </View>
+  );
+
+  const inputStyle = { flex: 1, backgroundColor: c.surface, color: c.text, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, fontSize: font.body, fontFamily: family.regular, maxHeight: 120 };
+
   return (
-    <Screen title={room.title} back scroll={false}>
+    <Screen title={roomTitle(room)} back scroll={false} right={right}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={80}>
+        {search !== undefined ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm }}>
+            <TextInput autoFocus value={search} onChangeText={setSearch} placeholder="대화 내용 검색" placeholderTextColor={c.faint} style={[inputStyle, { paddingVertical: space.sm }]} />
+            {search.trim() ? <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.sub, flexShrink: 0 }}>{items.length}건</Text> : null}
+          </View>
+        ) : (
+          <NoticeBar room={room} me={user} users={s.users} onJump={jump} />
+        )}
         <FlatList
           ref={list}
-          data={messages}
+          data={items}
           keyExtractor={(m) => m.id}
-          ListHeaderComponent={header}
-          onContentSizeChange={() => list.current?.scrollToEnd({ animated: false })}
-          renderItem={({ item }) => <Bubble m={item} mine={item.senderId === user.id} sender={s.users.find((u) => u.id === item.senderId)?.nickname} />}
+          ListHeaderComponent={search === undefined ? header : null}
+          ListEmptyComponent={search?.trim() ? <Empty text="검색 결과가 없습니다." /> : null}
+          onContentSizeChange={() => {
+            if (search === undefined && !highlight) list.current?.scrollToEnd({ animated: false });
+          }}
+          onScrollToIndexFailed={({ averageItemLength, index }) => list.current?.scrollToOffset({ offset: averageItemLength * index, animated: true })}
+          renderItem={({ item }) =>
+            'divider' in item ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginVertical: space.md }}>
+                <View style={{ flex: 1, height: 1, backgroundColor: c.accent, opacity: 0.4 }} />
+                <Text style={{ fontFamily: family.semibold, fontSize: 12, color: c.accent }}>읽지 않은 메시지</Text>
+                <View style={{ flex: 1, height: 1, backgroundColor: c.accent, opacity: 0.4 }} />
+              </View>
+            ) : (
+              <Pressable disabled={search === undefined} onPress={() => jump(item.id)}>
+                <Bubble
+                  m={item}
+                  me={user}
+                  room={room}
+                  users={s.users}
+                  reads={s.reads}
+                  messages={s.messages}
+                  highlight={highlight === item.id}
+                  onLongPress={() => (isMember && item.senderId !== AI_SENDER && item.senderId !== BOT_SENDER ? setMenuFor(item) : undefined)}
+                />
+              </Pressable>
+            )
+          }
         />
+        {toast ? (
+          <View style={{ alignSelf: 'center', backgroundColor: c.text, borderRadius: radius.pill, paddingHorizontal: space.lg, paddingVertical: space.sm, marginBottom: space.sm }}>
+            <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.bg }}>{toast}</Text>
+          </View>
+        ) : null}
         {isMember ? (
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, paddingVertical: space.sm }}>
-            <TextInput
-              value={text}
-              onChangeText={setText}
-              placeholder={aiCanJoin(room) ? '메시지 입력 · @AI 도움말' : '메시지 입력'}
-              placeholderTextColor={c.faint}
-              multiline
-              onSubmitEditing={send}
-              style={{ flex: 1, backgroundColor: c.surface, color: c.text, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, fontSize: font.body, fontFamily: family.regular, maxHeight: 120 }}
-            />
-            <Pressable accessibilityLabel="보내기" onPress={send} style={{ backgroundColor: c.accent, borderRadius: 22, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="send" color="#FFFFFF" size={20} />
-            </Pressable>
+          <View>
+            {replyTo ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, borderTopWidth: 1, borderTopColor: c.line, paddingTop: space.sm }}>
+                <Icon name="reply" color={c.accent} size={18} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.accent }}>
+                    {s.users.find((u) => u.id === replyTo.senderId)?.nickname ?? ''}에게 답장
+                  </Text>
+                  <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 13, color: c.sub }}>{replyTo.text}</Text>
+                </View>
+                <Pressable accessibilityLabel="답장 취소" hitSlop={8} onPress={() => setReplyTo(undefined)}>
+                  <Icon name="close" color={c.faint} size={18} />
+                </Pressable>
+              </View>
+            ) : null}
+            {mentionList.length ? (
+              <View style={{ borderWidth: 1, borderColor: c.line, borderRadius: radius.md, marginTop: space.sm, overflow: 'hidden' }}>
+                {mentionList.map((u) => (
+                  <Pressable key={u.id} onPress={() => pickMention(u)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.sm, backgroundColor: pressed ? c.surface : c.bg })}>
+                    <Avatar name={u.nickname} size={28} group={u.id === 'all'} />
+                    <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.text }}>{u.id === 'all' ? '전체' : displayName(u)}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            {plus ? (
+              <View style={{ flexDirection: 'row', gap: space.lg, paddingVertical: space.md }}>
+                <Pressable
+                  accessibilityLabel="연락처 보내기"
+                  onPress={() => {
+                    setPlus(false);
+                    setContactPick(true);
+                  }}
+                  style={{ alignItems: 'center', gap: 6 }}>
+                  <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name="contact" color={c.text} size={24} />
+                  </View>
+                  <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.text }}>연락처</Text>
+                </Pressable>
+              </View>
+            ) : null}
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, paddingVertical: space.sm }}>
+              <Pressable accessibilityLabel="더하기" onPress={() => setPlus((v) => !v)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: plus ? '45deg' : '0deg' }] }}>
+                <Icon name="plus" color={c.sub} size={24} />
+              </Pressable>
+              <TextInput
+                value={text}
+                onChangeText={setText}
+                placeholder={aiCanJoin(room) ? '메시지 입력 · @AI 도움말' : '메시지 입력'}
+                placeholderTextColor={c.faint}
+                multiline
+                onSubmitEditing={send}
+                style={inputStyle}
+              />
+              <Pressable accessibilityLabel="보내기" onPress={send} style={{ backgroundColor: c.accent, borderRadius: 22, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="send" color="#FFFFFF" size={20} />
+              </Pressable>
+            </View>
           </View>
         ) : (
           <Notice text="이 방의 참여자가 아닙니다." />
         )}
       </KeyboardAvoidingView>
-    </Screen>
-  );
-}
 
-function Bubble({ m, mine, sender }: { m: Message; mine: boolean; sender?: string }) {
-  const c = useColors();
-  if (m.senderId === SYSTEM_SENDER) {
-    return (
-      <View style={{ alignItems: 'center', marginVertical: space.sm }}>
-        <T size="tiny" color={c.faint} style={{ textAlign: 'center' }}>{m.text}</T>
-      </View>
-    );
-  }
-  const isAi = m.senderId === AI_SENDER;
-  const isBot = m.senderId === BOT_SENDER;
-  return (
-    <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', marginVertical: space.xs }}>
-      {!mine ? <T size="tiny" color={isAi ? c.ai : isBot ? c.accent : c.sub}>{isAi ? '✦ AI' : isBot ? '✦ AI 알림' : sender}</T> : null}
-      <View
-        style={{
-          maxWidth: '82%',
-          backgroundColor: mine ? c.bubbleMine : isAi ? c.aiSoft : isBot ? c.accentSoft : c.bubbleOther,
-          borderRadius: radius.lg,
-          paddingHorizontal: space.md,
-          paddingVertical: space.sm + 2,
-          marginTop: 2,
-        }}>
-        <T color={mine ? c.bubbleMineText : c.text}>{m.text}</T>
-      </View>
-    </View>
+      <MessageMenu
+        m={menuFor}
+        mine={menuFor?.senderId === user.id}
+        myId={user.id}
+        onClose={() => setMenuFor(undefined)}
+        onCopy={() => {
+          if (!menuFor) return;
+          void Clipboard.setStringAsync(menuFor.forwardOf?.text ?? menuFor.text);
+          setToast('복사했습니다.');
+        }}
+        onReply={() => setReplyTo(menuFor)}
+        onForward={() => setForwardFor(menuFor)}
+        onNotice={() => {
+          if (!menuFor) return;
+          const res = actions.setNotice(menuFor.id);
+          if (!res.ok) setToast(res.reason);
+        }}
+      />
+      <ForwardSheet m={forwardFor} rooms={myRooms} onClose={() => setForwardFor(undefined)} onDone={(r) => setToast(`${r.title}에 전달했습니다.`)} />
+      <ContactSheet open={contactPick} contacts={shareable} onClose={() => setContactPick(false)} onPick={(u) => actions.shareContact(room.id, u.id)} />
+      <RoomDrawer open={drawer} onClose={() => setDrawer(false)} room={room} me={user} users={s.users} messages={messages} onError={setToast} />
+    </Screen>
   );
 }

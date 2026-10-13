@@ -200,11 +200,18 @@ export function Empty({ text }: { text: string }) {
   );
 }
 
-export function Avatar({ name, tone }: { name: string; tone?: string }) {
+export function Avatar({ name, tone, size = 44, group }: { name: string; tone?: string; size?: number; group?: boolean }) {
   const c = useColors();
   return (
-    <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: tone ?? c.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ color: c.accent, fontFamily: family.bold, fontSize: font.body }}>{name.slice(0, 1)}</Text>
+    <View style={{ width: size, height: size }}>
+      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: tone ?? c.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: c.accent, fontFamily: family.bold, fontSize: Math.round(size * 0.36) }}>{name.slice(0, group ? 2 : 1)}</Text>
+      </View>
+      {group ? (
+        <View style={{ position: 'absolute', right: -2, bottom: -2, width: 18, height: 18, borderRadius: 9, backgroundColor: c.accent, borderWidth: 2, borderColor: c.bg, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="people" color="#FFFFFF" size={10} />
+        </View>
+      ) : null}
     </View>
   );
 }
