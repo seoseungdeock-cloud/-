@@ -33,7 +33,6 @@ export default function MeetingScreen() {
   return (
     <AgentGate title="회의 정리">
       <Screen title="회의 정리" back>
-        <Sub>회의방을 고르고 녹음하거나 회의록을 붙여 넣으세요.</Sub>
         <Section title="회의방">
           <Chips>
             {meetings.map((m) => <Chip key={m.id} label={m.title} active={m.id === roomId} onPress={() => setRoomId(m.id)} />)}
@@ -44,7 +43,6 @@ export default function MeetingScreen() {
           <View>
             <Button label={recording ? '녹음 중지' : '녹음 시작'} kind="soft" onPress={() => setRecording((r) => !r)} />
           </View>
-          {recording ? <Notice text="음성인식은 아직 연결되지 않았습니다. 연결되면 말한 내용이 아래 회의록에 자동으로 채워집니다." tone="accent" /> : null}
         </Section>
         <Section title="회의록" right={<Button label="예시 넣기" kind="ghost" small onPress={() => setTranscript(SAMPLE)} />}>
           <Input multiline placeholder={'이름: 발언\n이름: 발언'} value={transcript} onChangeText={setTranscript} />
@@ -60,7 +58,6 @@ export default function MeetingScreen() {
               <T bold style={{ marginTop: space.sm }}>할 일</T>
               {notes.actions.length ? notes.actions.map((a, i) => <T key={i}>· {a.owner ? `[${a.owner}] ` : ''}{a.task}{a.due ? ` (${a.due})` : ''}</T>) : <Sub>없음</Sub>}
             </Card>
-            <Sub>결정사항은 '의견 받기'의 지식으로 자동 저장됩니다.</Sub>
           </Section>
         ) : null}
       </Screen>

@@ -5,7 +5,7 @@ import { latest, parseRows } from '@/core/templates';
 import { actions } from '@/core/store';
 import { AgentGate } from '@/ui/agent-gate';
 import { Chart } from '@/ui/chart';
-import { Button, Card, Chip, Chips, Input, Screen, Section, Sub, T } from '@/ui/kit';
+import { Button, Card, Chip, Chips, Input, Screen, Section, Sub } from '@/ui/kit';
 import { space } from '@/ui/theme';
 import { useApp } from '@/ui/use-app';
 
@@ -17,7 +17,6 @@ export default function ImagesScreen() {
   return (
     <AgentGate title="자료 이미지">
       <Screen title="자료 이미지 다시 만들기" back>
-        <Sub>차트를 그림이 아니라 "데이터 + 모양"으로 저장해 둡니다. 새 숫자만 넣으면 예전과 같은 모양으로 다시 만들어집니다. AI가 연결되면 "작년 그 자료 최신으로"라고 말만 하면 됩니다.</Sub>
         {s.templates.map((t) => {
           const v = latest(t);
           return (
@@ -62,7 +61,6 @@ export default function ImagesScreen() {
                 setForm({ name: '', unit: '', rows: '', chart: 'bar' });
               }}
             />
-            <T size="tiny">예전 그림 파일을 템플릿으로 바꾸는 작업은 AI 연결 후 가능합니다.</T>
           </View>
         </Section>
       </Screen>

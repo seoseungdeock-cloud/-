@@ -30,14 +30,12 @@ export default function MeScreen() {
       <Section title="라잇나우 멤버십">
         <Card onPress={() => router.push('/membership')}>
           <T bold>{user.membership === 'rightnow' ? '멤버 혜택 보기' : '멤버십 알아보기'}</T>
-          <Sub>사건 진행 리포트, 기일 알림, 서류 보관함 등</Sub>
         </Card>
       </Section>
       {user.role === 'admin' ? (
         <Section title="관리">
           <Card onPress={() => router.push('/backoffice')}>
             <T bold>백오피스</T>
-            <Sub>계정 만들기·비밀번호 초기화·사용 중지·권한 관리</Sub>
           </Card>
         </Section>
       ) : null}

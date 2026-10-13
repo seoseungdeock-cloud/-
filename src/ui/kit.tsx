@@ -162,7 +162,6 @@ export function ModeBanner({ mode }: { mode: RoomMode }) {
       <Icon name={mode === 'private' ? 'case' : 'spark'} color={fg} size={20} />
       <View style={{ flex: 1 }}>
         <T size="small" bold color={fg}>{info.label}</T>
-        <T size="tiny" color={fg}>{info.description}</T>
       </View>
     </View>
   );

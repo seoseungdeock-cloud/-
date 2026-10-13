@@ -46,7 +46,6 @@ export default function LawyerScreen() {
             <Chip key={m} label={ROOM_MODE_INFO[m].label} active={mode === m} onPress={() => setMode(m)} />
           ))}
         </Chips>
-        <ModeBanner mode={mode} />
         <View style={{ height: space.md }} />
         {error ? <Notice text={error} /> : null}
         <Button label="상담 신청하기" onPress={submit} />

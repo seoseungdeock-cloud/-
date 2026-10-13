@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { allFields, formatFee, OFFICES, officeCountByRegion, regionName, searchLawyers, type LawyerFilter } from '@/core/offices';
-import { Avatar, Chip, Chips, Empty, Input, Notice, Row, Screen, Section, Sub } from '@/ui/kit';
+import { Avatar, Chip, Chips, Empty, Input, Row, Screen, Section } from '@/ui/kit';
 import { KoreaMap } from '@/ui/korea-map';
 import { KOREA_REGIONS } from '@/data/korea-map';
 import { space } from '@/ui/theme';
@@ -22,12 +22,9 @@ export default function FindScreen() {
   const rows = useMemo(() => searchLawyers({ regionCode, field, keyword, sort }), [regionCode, field, keyword, sort]);
   const counts = useMemo(() => officeCountByRegion(), []);
   const pins = OFFICES.filter((o) => o.lat && o.lon).map((o) => ({ id: o.id, lat: o.lat!, lon: o.lon! }));
-  const hasSample = OFFICES.some((o) => o.sample);
 
   return (
     <Screen title="변호사 찾기">
-      <Sub>지도에서 지역을 누르거나 조건을 골라 직접 비교하세요.</Sub>
-      {hasSample ? <View style={{ marginTop: space.md }}><Notice text="지금은 화면 확인용 샘플 데이터입니다. 법대륜 데이터를 받으면 교체됩니다." tone="accent" /></View> : null}
       <View style={{ marginVertical: space.md }}>
         <KoreaMap counts={counts} selected={regionCode} onSelect={setRegion} pins={pins} />
       </View>

@@ -32,9 +32,6 @@ export default function MembershipScreen() {
           <Button label="멤버십 시작하기" onPress={() => actions.setMembership('rightnow')} />
         )}
       </View>
-      <View style={{ marginTop: space.sm }}>
-        <Sub>결제는 아직 연결되지 않았습니다.</Sub>
-      </View>
     </Screen>
   );
 }

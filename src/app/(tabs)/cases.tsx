@@ -14,7 +14,6 @@ export default function CasesScreen() {
   const open = (id: string) => router.push({ pathname: '/room/[id]', params: { id } });
   return (
     <Screen title="사건">
-      <Sub>상담부터 수임, 진행, 종결까지 모든 과정을 사건방에서 함께 봅니다.</Sub>
       <Section title="진행 중인 사건">
         {cases.length ? (
           cases.map((r) => {

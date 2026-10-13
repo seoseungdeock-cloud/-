@@ -17,7 +17,6 @@ export default function KnowledgeScreen() {
   return (
     <AgentGate title="의견 받기">
       <Screen title="의견 받기" back>
-        <Sub>새 안건을 적으면 지난 결정과 그 결과를 근거로 찬반과 추가 의견을 냅니다. 결과를 기록할수록 정확해집니다.</Sub>
         <Section title="새 안건">
           <Input multiline placeholder="예: 검색광고 이혼 키워드 예산을 더 늘리자" value={proposal} onChangeText={setProposal} />
           <Button label="의견 받기" disabled={!proposal.trim()} onPress={() => setOp(opinionFor(s.decisions, proposal))} />
@@ -25,7 +24,6 @@ export default function KnowledgeScreen() {
             <Card style={{ marginTop: space.md }}>
               <Badge label={op.stance} tone={op.stance === '찬성' ? 'secure' : op.stance === '반대' ? 'warn' : 'plain'} />
               {op.reasons.map((r) => <T key={r} style={{ marginTop: space.xs }}>· {r}</T>)}
-              <Sub>AI가 연결되면 근거에 더해 추가 제안(+α)을 냅니다.</Sub>
             </Card>
           ) : null}
         </Section>

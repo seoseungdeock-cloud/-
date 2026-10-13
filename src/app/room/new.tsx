@@ -1,12 +1,10 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { View } from 'react-native';
 
 import { allowedModes, defaultMode, ROOM_KIND_LABEL, ROOM_MODE_INFO } from '@/core/rooms';
 import { actions } from '@/core/store';
 import type { RoomKind, RoomMode } from '@/core/types';
-import { Button, Chip, Chips, Input, ModeBanner, Notice, Screen, Section, Sub } from '@/ui/kit';
-import { space } from '@/ui/theme';
+import { Button, Chip, Chips, Input, Notice, Screen, Section } from '@/ui/kit';
 import { useApp, useMe } from '@/ui/use-app';
 
 const KINDS: RoomKind[] = ['direct', 'group', 'stranger', 'office', 'meeting', 'marketing'];
@@ -43,17 +41,13 @@ export default function NewRoomScreen() {
             <Chip key={k} label={ROOM_KIND_LABEL[k]} active={kind === k} onPress={() => pickKind(k)} />
           ))}
         </Chips>
-        {kind === 'stranger' ? <Sub>닉네임으로 새로운 사람과 대화합니다.</Sub> : null}
       </Section>
       <Section title="방 방식">
-        <Sub>만든 뒤에는 바꿀 수 없고, 방 안에서 항상 표시됩니다.</Sub>
-        <View style={{ height: space.sm }} />
         <Chips>
           {(['private', 'ai'] as RoomMode[]).map((m) => (
             <Chip key={m} label={ROOM_MODE_INFO[m].label + (modes.includes(m) ? '' : ' (불가)')} active={mode === m} onPress={() => modes.includes(m) && setMode(m)} />
           ))}
         </Chips>
-        <ModeBanner mode={mode} />
       </Section>
       {kind !== 'stranger' ? (
         <Section title="참여자">
