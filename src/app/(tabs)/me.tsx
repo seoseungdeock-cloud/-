@@ -1,9 +1,9 @@
 import { router } from 'expo-router';
-import { View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { actions } from '@/core/store';
 import { Avatar, Badge, Button, Card, Screen, Section, Sub, T } from '@/ui/kit';
-import { space } from '@/ui/theme';
+import { family, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 
 export const ROLE_LABEL = { client: '의뢰인', lawyer: '변호사', staff: '직원', admin: '어드민' } as const;
@@ -11,20 +11,23 @@ export const ROLE_LABEL = { client: '의뢰인', lawyer: '변호사', staff: '�
 export default function MeScreen() {
   const s = useApp();
   const user = useMe();
+  const c = useColors();
   const account = s.accounts.find((a) => a.userId === user.id);
   return (
     <Screen title="나">
-      <Card>
+      <Card onPress={() => router.push('/profile')}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-          <Avatar name={user.nickname} />
+          <Avatar name={user.nickname} uri={user.photo} />
           <View style={{ flex: 1 }}>
             <T size="h2" bold>{user.nickname}</T>
-            <Sub>{account?.loginId}</Sub>
+            {user.status ? <T size="small">{user.status}</T> : null}
+            <Sub>{[user.title, account?.loginId].filter(Boolean).join(' · ')}</Sub>
             <View style={{ flexDirection: 'row', gap: space.xs, marginTop: space.xs, flexWrap: 'wrap' }}>
               <Badge label={ROLE_LABEL[user.role]} tone="plain" />
               {user.membership === 'rightnow' ? <Badge label="라잇나우 멤버" tone="member" /> : null}
             </View>
           </View>
+          <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.accent }}>편집</Text>
         </View>
       </Card>
       <Section title="라잇나우 멤버십">

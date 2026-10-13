@@ -34,6 +34,15 @@ export function mentionedUnread(room: Room, userId: string, messages: Message[],
   return messages.some((m) => m.roomId === room.id && m.at > read && !m.recalled && (m.mentions?.includes(userId) || m.mentions?.includes('all')));
 }
 
+/** 방 마스터: 지정된 사람, 없으면 방을 만든 사람 */
+export function roomMasters(room: Room): string[] {
+  return room.masters?.length ? room.masters : [room.createdBy];
+}
+
+export function isMaster(room: Room, userId: string): boolean {
+  return roomMasters(room).includes(userId);
+}
+
 export function notifyLevel(room: Room, userId: string): NotifyLevel {
   return room.notify?.[userId] ?? 'all';
 }
@@ -234,8 +243,10 @@ export function searchAll(q: string, userId: string, rooms: Room[], messages: Me
       .filter((m) => ids.has(m.roomId) && searchable(m) && !m.deletedFor?.includes(userId) && textOf(m).includes(query))
       .sort((a, b) => b.at.localeCompare(a.at)),
     files: mine
-      .flatMap((room) => (room.caseInfo?.documents ?? []).map((d) => ({ room, name: d.name, at: d.addedAt })))
+      .flatMap((room) => (room.caseInfo?.documents ?? []).map((d, i) => ({ room, name: d.name, at: d.addedAt, i })))
       .filter((f) => f.name.includes(query))
-      .sort((a, b) => b.at.localeCompare(a.at)),
+      // 같은 시각이면 나중에 올린 서류가 위
+      .sort((a, b) => b.at.localeCompare(a.at) || b.i - a.i)
+      .map(({ room, name, at }) => ({ room, name, at })),
   };
 }

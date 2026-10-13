@@ -295,7 +295,7 @@ export default function RoomScreen() {
               <View style={{ borderWidth: 1, borderColor: c.line, borderRadius: radius.md, marginTop: space.sm, overflow: 'hidden' }}>
                 {mentionList.map((u) => (
                   <Pressable key={u.id} onPress={() => pickMention(u)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.sm, backgroundColor: pressed ? c.surface : c.bg })}>
-                    <Avatar name={u.nickname} size={28} group={u.id === 'all'} />
+                    <Avatar name={u.nickname} size={28} group={u.id === 'all'} uri={u.photo} />
                     <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.text }}>{u.id === 'all' ? '전체' : displayName(u)}</Text>
                   </Pressable>
                 ))}

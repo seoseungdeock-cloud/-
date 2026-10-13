@@ -1,7 +1,7 @@
 // 공통 화면 부품
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps, type ViewStyle } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ROOM_MODE_INFO } from '@/core/rooms';
@@ -200,13 +200,17 @@ export function Empty({ text }: { text: string }) {
   );
 }
 
-export function Avatar({ name, tone, size = 44, group }: { name: string; tone?: string; size?: number; group?: boolean }) {
+export function Avatar({ name, tone, size = 44, group, uri }: { name: string; tone?: string; size?: number; group?: boolean; uri?: string }) {
   const c = useColors();
   return (
     <View style={{ width: size, height: size }}>
-      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: tone ?? c.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: c.accent, fontFamily: family.bold, fontSize: Math.round(size * 0.36) }}>{name.slice(0, group ? 2 : 1)}</Text>
-      </View>
+      {uri ? (
+        <Image source={{ uri }} accessibilityLabel={`${name} 프로필 사진`} style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c.surface }} />
+      ) : (
+        <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: tone ?? c.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: c.accent, fontFamily: family.bold, fontSize: Math.round(size * 0.36) }}>{name.slice(0, group ? 2 : 1)}</Text>
+        </View>
+      )}
       {group ? (
         <View style={{ position: 'absolute', right: -2, bottom: -2, width: 18, height: 18, borderRadius: 9, backgroundColor: c.accent, borderWidth: 2, borderColor: c.bg, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="people" color="#FFFFFF" size={10} />

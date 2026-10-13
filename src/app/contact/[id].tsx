@@ -45,12 +45,17 @@ export default function ContactScreen() {
   return (
     <Screen title="연락처 상세" back>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg, marginTop: space.md }}>
-        <Avatar name={u.nickname} size={88} />
+        <Avatar name={u.nickname} size={88} uri={u.photo} />
         <View style={{ flex: 1 }}>
           <Text style={{ fontFamily: family.bold, fontSize: 22, color: c.text }}>{displayName(u)}</Text>
           <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.sub, marginTop: 2 }}>{ROLE_LABEL[u.role]}</Text>
+          {u.status ? <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.text, marginTop: 4 }}>{u.status}</Text> : null}
         </View>
-        {u.id !== me.id ? (
+        {u.id === me.id ? (
+          <Pressable accessibilityLabel="프로필 편집" onPress={() => router.push('/profile')} hitSlop={10}>
+            <Text style={{ fontFamily: family.semibold, fontSize: 15, color: c.accent }}>편집</Text>
+          </Pressable>
+        ) : u.id !== me.id ? (
           <Pressable accessibilityLabel={fav ? '즐겨찾기 해제' : '즐겨찾기'} onPress={() => actions.toggleFavorite(u.id)} hitSlop={10}>
             <Icon name="star" color={fav ? c.accent : c.faint} size={28} />
           </Pressable>

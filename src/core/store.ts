@@ -23,7 +23,7 @@ import {
 import { summarizeMeeting, type MeetingNotes } from './meeting';
 import { asksCaseInfo, assignmentText, caseStatusText } from './case-bot';
 import { formatUntil, reportTarget, restrictedUntil, toggleVote } from './board';
-import { displayName, parseMentions, type Reads } from './messenger';
+import { displayName, isMaster, parseMentions, roomMasters, type Reads } from './messenger';
 import { findLawyer } from './offices';
 import { procedureReply } from './procedures';
 import { aiAnswerLevel, canCreateRoom, canUseAgents, type RoomCheck } from './rooms';
@@ -427,6 +427,7 @@ export const actions = {
       title: input.title.trim() || members.map((m) => m.nickname).join(', ') || '새 대화',
       memberIds: [creator.id, ...members.map((m) => m.id)],
       createdBy: creator.id,
+      masters: [creator.id],
       createdAt: nowIso(),
     };
     set((s) => ({ rooms: [room, ...s.rooms] }));
@@ -645,8 +646,44 @@ export const actions = {
     const u = me();
     if (!room || !room.memberIds.includes(u.id)) return { ok: false, reason: '참여 중인 방이 아닙니다.' };
     if (room.kind === 'case' || room.kind === 'consult') return { ok: false, reason: '상담·사건방은 나갈 수 없습니다.' };
-    updateRoom(roomId, (r) => ({ ...r, memberIds: r.memberIds.filter((x) => x !== u.id), pinnedBy: r.pinnedBy?.filter((x) => x !== u.id) }));
+    updateRoom(roomId, (r) => ({ ...r, memberIds: r.memberIds.filter((x) => x !== u.id), pinnedBy: r.pinnedBy?.filter((x) => x !== u.id), masters: roomMasters(r).filter((x) => x !== u.id) }));
     pushMessage(roomId, SYSTEM_SENDER, 'system', `${u.nickname}님이 나갔습니다.`);
+    // 마지막 마스터가 나가면 남은 사람 중 먼저 들어온 사람이 마스터가 됩니다.
+    const after = state.rooms.find((r) => r.id === roomId)!;
+    if (!after.masters?.length && after.memberIds.length) {
+      const next = after.memberIds[0];
+      updateRoom(roomId, (r) => ({ ...r, masters: [next] }));
+      pushMessage(roomId, SYSTEM_SENDER, 'system', `${userById(next)?.nickname ?? ''}님이 마스터가 되었습니다.`);
+    }
+    return { ok: true };
+  },
+
+  /** 마스터 지정·해제. 마스터만 할 수 있고, 마스터는 한 명 이상 남아야 합니다. */
+  setMaster(roomId: string, userId: string, on: boolean): RoomCheck {
+    const room = state.rooms.find((r) => r.id === roomId);
+    const u = me();
+    if (!room || !isMaster(room, u.id)) return { ok: false, reason: '마스터만 할 수 있습니다.' };
+    if (!room.memberIds.includes(userId)) return { ok: false, reason: '대화 참여자만 마스터가 될 수 있습니다.' };
+    const cur = roomMasters(room);
+    if (on === cur.includes(userId)) return { ok: true };
+    const next = on ? [...cur, userId] : cur.filter((x) => x !== userId);
+    if (!next.length) return { ok: false, reason: '마스터는 한 명 이상 있어야 합니다.' };
+    updateRoom(roomId, (r) => ({ ...r, masters: next }));
+    const name = userById(userId)?.nickname ?? '';
+    pushMessage(roomId, SYSTEM_SENDER, 'system', on ? `${u.nickname}님이 ${name}님을 마스터로 지정했습니다.` : `${name}님의 마스터 권한이 해제되었습니다.`);
+    return { ok: true };
+  },
+
+  /** 강퇴: 마스터만. 상담·사건방은 의뢰인 보호를 위해 강퇴할 수 없습니다. */
+  kick(roomId: string, userId: string): RoomCheck {
+    const room = state.rooms.find((r) => r.id === roomId);
+    const u = me();
+    if (!room || !isMaster(room, u.id)) return { ok: false, reason: '마스터만 내보낼 수 있습니다.' };
+    if (userId === u.id) return { ok: false, reason: '나 자신은 내보낼 수 없습니다. 나가기를 이용해 주세요.' };
+    if (!room.memberIds.includes(userId)) return { ok: false, reason: '대화 참여자가 아닙니다.' };
+    if (room.kind === 'case' || room.kind === 'consult') return { ok: false, reason: '상담·사건방에서는 참여자를 내보낼 수 없습니다.' };
+    updateRoom(roomId, (r) => ({ ...r, memberIds: r.memberIds.filter((x) => x !== userId), pinnedBy: r.pinnedBy?.filter((x) => x !== userId), masters: roomMasters(r).filter((x) => x !== userId) }));
+    pushMessage(roomId, SYSTEM_SENDER, 'system', `${u.nickname}님이 ${userById(userId)?.nickname ?? ''}님을 내보냈습니다.`);
     return { ok: true };
   },
 
@@ -669,6 +706,51 @@ export const actions = {
     if (!ids.length) return { ok: false, reason: '대화할 사람을 골라 주세요.' };
     if (ids.length === 1 && !title) return { ok: true, roomId: actions.openDirect(ids[0]) };
     return actions.createRoom({ kind: 'group', mode: 'private', title, memberIds: ids });
+  },
+
+  /** 어드민: 여러 사람의 직책을 한 번에 정합니다. 빈 값이면 직책을 지웁니다. */
+  setTitles(userIds: string[], title: string): RoomCheck {
+    if (me().role !== 'admin') return { ok: false, reason: '어드민만 직책을 정할 수 있습니다.' };
+    const ids = userIds.filter((id) => userById(id));
+    if (!ids.length) return { ok: false, reason: '직책을 바꿀 사람을 골라 주세요.' };
+    const t = title.trim();
+    if (t.length > 40) return { ok: false, reason: '직책은 40자 이내로 적어 주세요.' };
+    set((s) => ({ users: s.users.map((x) => (ids.includes(x.id) ? { ...x, title: t || undefined } : x)) }));
+    return { ok: true };
+  },
+
+  /** 내 프로필 수정 (직책·부서·지점은 어드민이 정합니다) */
+  updateProfile(patch: { nickname?: string; photo?: string | null; status?: string; phone?: string; email?: string; birthday?: string }): RoomCheck {
+    const u = me();
+    const next = { ...u };
+    if (patch.nickname !== undefined) {
+      const n = patch.nickname.trim();
+      if (!n) return { ok: false, reason: '이름을 입력해 주세요.' };
+      if (n.length > 20) return { ok: false, reason: '이름은 20자 이내로 적어 주세요.' };
+      next.nickname = n;
+    }
+    if (patch.email !== undefined) {
+      const e = patch.email.trim();
+      if (e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return { ok: false, reason: '메일 주소 형식이 맞지 않습니다.' };
+      next.email = e || undefined;
+    }
+    if (patch.phone !== undefined) {
+      const p = patch.phone.trim();
+      if (p && !/^[0-9+\-\s()]{7,20}$/.test(p)) return { ok: false, reason: '전화번호 형식이 맞지 않습니다.' };
+      next.phone = p || undefined;
+    }
+    if (patch.birthday !== undefined) {
+      const b = patch.birthday.trim();
+      if (b && (!/^\d{4}-\d{2}-\d{2}$/.test(b) || Number.isNaN(Date.parse(b)))) return { ok: false, reason: '생일은 2000-01-31 형식으로 적어 주세요.' };
+      next.birthday = b || undefined;
+    }
+    if (patch.status !== undefined) {
+      if (patch.status.trim().length > 60) return { ok: false, reason: '상태 메시지는 60자 이내로 적어 주세요.' };
+      next.status = patch.status.trim() || undefined;
+    }
+    if (patch.photo !== undefined) next.photo = patch.photo ?? undefined;
+    set((s) => ({ users: s.users.map((x) => (x.id === u.id ? next : x)) }));
+    return { ok: true };
   },
 
   toggleFavorite(userId: string) {

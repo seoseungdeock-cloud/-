@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 
-import { dayLabel, displayName, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
+import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
 import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
 import { Icon, type IconName } from './icons';
@@ -121,7 +121,7 @@ export function Bubble({
   const card = !!(contact || m.forwardOf || m.bundle);
   const row = (
     <View style={{ flex: 1, flexDirection: 'row', justifyContent: mine ? 'flex-end' : 'flex-start', gap: space.sm, marginVertical: space.xs, backgroundColor: highlight ? c.accentSoft : 'transparent', borderRadius: radius.sm }}>
-      {!mine ? <Avatar name={isAi || isBot ? 'AI' : sender?.nickname ?? '?'} size={36} tone={isAi ? c.aiSoft : undefined} /> : null}
+      {!mine ? <Avatar name={isAi || isBot ? 'AI' : sender?.nickname ?? '?'} size={36} tone={isAi ? c.aiSoft : undefined} uri={isAi || isBot ? undefined : sender?.photo} /> : null}
       <View style={{ maxWidth: '78%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
         {!mine ? (
           <Text numberOfLines={1} style={{ fontFamily: family.semibold, fontSize: 13, color: isAi ? c.ai : isBot ? c.accent : c.sub, marginBottom: 2 }}>
@@ -162,7 +162,7 @@ export function Bubble({
               </>
             ) : contact ? (
               <Pressable onPress={() => router.push({ pathname: '/contact/[id]', params: { id: contact.id } })} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minWidth: 200 }}>
-                <Avatar name={contact.nickname} size={40} />
+                <Avatar name={contact.nickname} size={40} uri={contact.photo} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.text }}>{contact.nickname}</Text>
                   <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{[contact.title, contact.dept].filter(Boolean).join(' · ') || '연락처'}</Text>
@@ -253,7 +253,7 @@ function PersonRow({ u, right }: { u: User; right?: ReactNode }) {
   const c = useColors();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm }}>
-      <Avatar name={u.nickname} size={36} />
+      <Avatar name={u.nickname} size={36} uri={u.photo} />
       <View style={{ flex: 1 }}>
         <Text numberOfLines={1} style={{ fontFamily: family.semibold, fontSize: 15, color: c.text }}>{displayName(u)}</Text>
         {u.dept ? <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{u.dept}</Text> : null}
@@ -441,7 +441,7 @@ export function ContactSheet({ open, contacts, onClose, onPick }: { open: boolea
               onClose();
             }}
             style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm, opacity: pressed ? 0.5 : 1 })}>
-            <Avatar name={u.nickname} size={40} />
+            <Avatar name={u.nickname} size={40} uri={u.photo} />
             <View style={{ flex: 1 }}>
               <Text numberOfLines={1} style={{ fontFamily: family.semibold, fontSize: 15, color: c.text }}>{displayName(u)}</Text>
               {u.dept ? <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{u.dept}</Text> : null}
@@ -534,6 +534,10 @@ export function RoomDrawer({
     fn();
   };
   const leavable = room.kind !== 'case' && room.kind !== 'consult';
+  // 마스터: 참여자 마스터 지정·해제, 내보내기 (상담·사건방은 내보내기 없음)
+  const amMaster = isMaster(room, me.id);
+  const kickable = leavable;
+  const [manage, setManage] = useState<string>();
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.35)' }}>
@@ -571,19 +575,57 @@ export function RoomDrawer({
               </Pressable>
             </View>
             {members.map((u) => (
-              <Pressable
-                key={u.id}
-                onPress={go(() => router.push({ pathname: '/contact/[id]', params: { id: u.id } }))}
-                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 4, opacity: pressed ? 0.5 : 1 })}>
-                <Avatar name={u.nickname} size={34} />
-                <View style={{ flex: 1 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: family.semibold, fontSize: 14, color: c.text }}>
-                    {displayName(u)}
-                    {u.id === me.id ? ' (나)' : ''}
-                  </Text>
-                  {u.dept ? <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{u.dept}</Text> : null}
+              <View key={u.id}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+                  <Pressable
+                    onPress={go(() => router.push({ pathname: '/contact/[id]', params: { id: u.id } }))}
+                    style={({ pressed }) => ({ flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 4, opacity: pressed ? 0.5 : 1 })}>
+                    <Avatar name={u.nickname} size={34} uri={u.photo} />
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: family.semibold, fontSize: 14, color: c.text }}>
+                          {displayName(u)}
+                          {u.id === me.id ? ' (나)' : ''}
+                        </Text>
+                        {isMaster(room, u.id) ? (
+                          <View style={{ backgroundColor: c.accentSoft, borderRadius: radius.pill, paddingHorizontal: 6, paddingVertical: 1 }}>
+                            <Text style={{ fontFamily: family.bold, fontSize: 11, color: c.accent }}>마스터</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      {u.dept ? <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{u.dept}</Text> : null}
+                    </View>
+                  </Pressable>
+                  {amMaster && u.id !== me.id ? (
+                    <Pressable accessibilityLabel={`${u.nickname} 관리`} hitSlop={8} onPress={() => setManage((x) => (x === u.id ? undefined : u.id))} style={{ padding: 4 }}>
+                      <Text style={{ fontFamily: family.bold, fontSize: 18, color: c.sub }}>⋯</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
-              </Pressable>
+                {manage === u.id ? (
+                  <View style={{ flexDirection: 'row', gap: space.sm, paddingLeft: 42, paddingBottom: space.sm }}>
+                    <SmallAction
+                      label={isMaster(room, u.id) ? '마스터 해제' : '마스터로 지정'}
+                      onPress={() => {
+                        const r = actions.setMaster(room.id, u.id, !isMaster(room, u.id));
+                        if (!r.ok) onError(r.reason);
+                        setManage(undefined);
+                      }}
+                    />
+                    {kickable ? (
+                      <SmallAction
+                        label="내보내기"
+                        danger
+                        onPress={() => {
+                          const r = actions.kick(room.id, u.id);
+                          if (!r.ok) onError(r.reason);
+                          setManage(undefined);
+                        }}
+                      />
+                    ) : null}
+                  </View>
+                ) : null}
+              </View>
             ))}
 
             <DrawerHead title={`링크 (${links.length})`} />
@@ -726,5 +768,14 @@ export function CalendarSheet({ open, days, onClose, onPick }: { open: boolean; 
         </Pressable>
       </Pressable>
     </Modal>
+  );
+}
+
+function SmallAction({ label, onPress, danger }: { label: string; onPress: () => void; danger?: boolean }) {
+  const c = useColors();
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => ({ paddingHorizontal: space.md, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: danger ? c.accent : c.line, opacity: pressed ? 0.5 : 1 })}>
+      <Text style={{ fontFamily: family.semibold, fontSize: 13, color: danger ? c.accent : c.text }}>{label}</Text>
+    </Pressable>
   );
 }

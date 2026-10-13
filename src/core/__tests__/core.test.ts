@@ -2,7 +2,7 @@ import { checkCompliance } from '../compliance';
 import { PROCEDURE_MENU, procedureReply } from '../procedures';
 import { authorView, commentTree, score, searchPosts, sortPosts, unreadIn } from '../board';
 import { contactsFor } from '../contacts';
-import { dayKey, dayLabel, firstOfDay, isHidden, markParts, mentionQuery, messageDays, orgGroups, parseMentions, reactionGroups, readCount, readers, searchAll, searchDirectory, searchMessages, sortRooms, splitMentions, unreadCount } from '../messenger';
+import { dayKey, dayLabel, firstOfDay, isHidden, isMaster, markParts, mentionQuery, messageDays, orgGroups, parseMentions, reactionGroups, readCount, readers, searchAll, searchDirectory, searchMessages, sortRooms, splitMentions, unreadCount } from '../messenger';
 import { opinionFor } from '../knowledge';
 import { planFromCommand, rankPerformance, mostSimilar } from '../marketing';
 import { summarizeMeeting } from '../meeting';
@@ -585,5 +585,51 @@ describe('메신저 (웍스식 주소록·대화)', () => {
     expect(r3.files.map((f) => f.name)).toEqual(['소장 수정본.pdf', '소장 초안.pdf']);
     // 내가 없는 방은 나오지 않는다
     expect(searchAll('일정', 'u_client', st().rooms, st().messages, st().users).messages).toEqual([]);
+  });
+
+  it('어드민은 여러 사람의 직책을 한 번에 정한다', () => {
+    expect(actions.setTitles(['u_l2', 'u_l3'], ' Associate Attorney ').ok).toBe(true);
+    expect(['u_l2', 'u_l3'].map((id) => st().users.find((u) => u.id === id)!.title)).toEqual(['Associate Attorney', 'Associate Attorney']);
+    expect(actions.setTitles(['u_l2'], '').ok).toBe(true);
+    expect(st().users.find((u) => u.id === 'u_l2')!.title).toBeUndefined();
+    expect(actions.setTitles([], 'X').ok).toBe(false);
+    as('lawyer');
+    expect(actions.setTitles(['u_l2'], 'Partner').ok).toBe(false);
+  });
+
+  it('방 마스터: 만든 사람이 마스터, 다른 참여자를 마스터로 지정하고 내보낼 수 있다', () => {
+    as('lawyer');
+    expect(isMaster(room('r_team'), 'u_lawyer')).toBe(true);
+    as('staff');
+    expect(actions.kick('r_team', 'u_l2').ok).toBe(false); // 마스터가 아님
+    as('lawyer');
+    expect(actions.setMaster('r_team', 'u_staff', true).ok).toBe(true);
+    as('staff');
+    expect(actions.kick('r_team', 'u_l2').ok).toBe(true);
+    expect(room('r_team').memberIds).not.toContain('u_l2');
+    expect(actions.kick('r_team', 'u_staff').ok).toBe(false); // 나 자신
+    expect(actions.setMaster('r_team', 'u_lawyer', false).ok).toBe(true);
+    expect(actions.setMaster('r_team', 'u_staff', false).ok).toBe(false); // 마지막 마스터
+    // 마지막 마스터가 나가면 남은 사람이 마스터가 된다
+    expect(actions.leaveRoom('r_team').ok).toBe(true);
+    expect(room('r_team').masters).toEqual([room('r_team').memberIds[0]]);
+    // 새로 만든 방은 만든 사람이 마스터, 상담·사건방은 내보낼 수 없다
+    as('lawyer');
+    const g = actions.startChat(['u_staff', 'u_m1']).roomId!;
+    expect(room(g).masters).toEqual(['u_lawyer']);
+    as('client');
+    const consult = actions.requestConsult('lw_1', '').roomId!;
+    expect(actions.kick(consult, 'u_lawyer').ok).toBe(false);
+  });
+
+  it('내 프로필을 고친다 (사진·이름·상태·연락처), 형식이 틀리면 거절', () => {
+    as('lawyer');
+    expect(actions.updateProfile({ nickname: '  새 이름 ', photo: 'file:///a.jpg', status: '재판 중', email: 'a@b.co', birthday: '1990-05-01' }).ok).toBe(true);
+    expect(me()).toMatchObject({ nickname: '새 이름', photo: 'file:///a.jpg', status: '재판 중', email: 'a@b.co', birthday: '1990-05-01' });
+    expect(actions.updateProfile({ nickname: ' ' }).ok).toBe(false);
+    expect(actions.updateProfile({ email: 'nope' }).ok).toBe(false);
+    expect(actions.updateProfile({ birthday: '90-5-1' }).ok).toBe(false);
+    expect(actions.updateProfile({ photo: null }).ok).toBe(true);
+    expect(me().photo).toBeUndefined();
   });
 });

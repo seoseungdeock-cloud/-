@@ -104,7 +104,7 @@ export default function PickMembersScreen() {
             const u = s.users.find((x) => x.id === id)!;
             return (
               <Pressable key={id} onPress={() => toggle(id)} style={{ alignItems: 'center', width: 64 }}>
-                <Avatar name={u.nickname} size={48} />
+                <Avatar name={u.nickname} size={48} uri={u.photo} />
                 <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub, marginTop: 2 }}>{displayName(u)}</Text>
               </Pressable>
             );

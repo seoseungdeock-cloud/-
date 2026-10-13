@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Switch, useWindowDimensions, View } from 'react-native';
+import { Pressable, Switch, Text, useWindowDimensions, View } from 'react-native';
 
 import { OFFICES } from '@/core/offices';
 import { actions } from '@/core/store';
 import type { Role } from '@/core/types';
 import { Badge, Button, Card, Chip, Chips, Empty, Input, Notice, Screen, Section, Sub, T } from '@/ui/kit';
-import { space } from '@/ui/theme';
+import { Icon } from '@/ui/icons';
+import { family, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 
 const ROLES: { key: Role; label: string }[] = [
@@ -25,10 +26,16 @@ export default function BackofficeScreen() {
   const [resetFor, setResetFor] = useState<string>();
   const [newPw, setNewPw] = useState('');
   const [query, setQuery] = useState('');
+  const [title, setTitle] = useState('');
+  const [picked, setPicked] = useState<string[]>([]);
+  const c = useColors();
 
   if (user.role !== 'admin') return <Screen title="백오피스" back><Empty text="어드민만 볼 수 있습니다." /></Screen>;
 
   const report = (r: { ok: boolean; reason?: string }, okText: string) => setMsg(r.ok ? { text: okText, ok: true } : { text: (r as { reason: string }).reason, ok: false });
+
+  // 직책은 법무법인 구성원(변호사·직원·어드민)에게 붙습니다.
+  const staffUsers = s.users.filter((u) => u.role !== 'client').sort((a, b) => a.nickname.localeCompare(b.nickname, 'ko'));
 
   const rows = s.accounts
     .map((a) => ({ a, u: s.users.find((x) => x.id === a.userId)! }))
@@ -66,6 +73,53 @@ export default function BackofficeScreen() {
             if (r.ok) setForm({ loginId: '', password: '', nickname: '', role: 'client', officeId: '', firm: '대륜' });
           }}
         />
+      </Section>
+
+      <Section title="직책 일괄 지정">
+        <Input label="직책" placeholder="예: Associate Attorney" value={title} onChangeText={setTitle} />
+        <Chips>
+          {[...new Set(s.users.map((u) => u.title).filter((t): t is string => !!t))].sort().map((t) => (
+            <Chip key={t} label={t} active={title === t} onPress={() => setTitle(t)} />
+          ))}
+        </Chips>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: space.sm }}>
+          <Sub>{picked.length}명 선택</Sub>
+          <Pressable
+            style={{ marginLeft: 'auto' }}
+            hitSlop={8}
+            onPress={() => setPicked(picked.length === staffUsers.length ? [] : staffUsers.map((u) => u.id))}>
+            <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.accent }}>{picked.length === staffUsers.length ? '선택 해제' : '전체 선택'}</Text>
+          </Pressable>
+        </View>
+        {staffUsers.map((u) => {
+          const on = picked.includes(u.id);
+          return (
+            <Pressable
+              key={u.id}
+              accessibilityLabel={`${u.nickname} 선택`}
+              onPress={() => setPicked((cur) => (on ? cur.filter((x) => x !== u.id) : [...cur, u.id]))}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm, borderBottomWidth: 1, borderBottomColor: c.line }}>
+              <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: on ? c.accent : c.faint, backgroundColor: on ? c.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                {on ? <Icon name="check" color="#FFFFFF" size={14} /> : null}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: family.semibold, fontSize: 15, color: c.text }}>{u.nickname}</Text>
+                <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{[u.title ?? '직책 없음', u.dept, u.branch].filter(Boolean).join(' · ')}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+        <View style={{ marginTop: space.md }}>
+          <Button
+            label={`선택한 ${picked.length}명에게 반영`}
+            disabled={!picked.length}
+            onPress={() => {
+              const r = actions.setTitles(picked, title);
+              report(r, title.trim() ? `${picked.length}명의 직책을 '${title.trim()}'(으)로 바꿨습니다.` : `${picked.length}명의 직책을 지웠습니다.`);
+              if (r.ok) setPicked([]);
+            }}
+          />
+        </View>
       </Section>
 
       <Section title="계정 목록">

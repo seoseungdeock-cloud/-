@@ -22,7 +22,7 @@ export function ContactRow({ u, left, onPress, me }: { u: User; left?: ReactNode
       onPress={onPress ?? (() => router.push({ pathname: '/contact/[id]', params: { id: u.id } }))}
       style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm + 2, opacity: pressed ? 0.6 : 1 })}>
       {left}
-      <Avatar name={u.nickname} size={48} />
+      <Avatar name={u.nickname} size={48} uri={u.photo} />
       <View style={{ flex: 1 }}>
         <Text numberOfLines={1} style={{ fontFamily: family.bold, fontSize: 16, color: c.text }}>{displayName(u)}</Text>
         <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 13, color: c.sub }}>

@@ -19,6 +19,8 @@ export type User = {
   email?: string;
   birthday?: string; // YYYY-MM-DD
   joinedAt?: string; // YYYY-MM-DD
+  photo?: string; // 프로필 사진 (지금은 기기 안 주소, 서버가 붙으면 업로드 주소)
+  status?: string; // 상태 메시지
 };
 
 /** 방의 종류. 메신저·사건·업무·에이전트가 모두 같은 "방" 구조를 씁니다. */
@@ -69,6 +71,8 @@ export type Room = {
   title: string;
   memberIds: string[];
   createdBy: string;
+  /** 방 마스터: 강퇴·마스터 지정 권한. 없으면 만든 사람. */
+  masters?: string[];
   createdAt: string;
   caseInfo?: CaseInfo;
   officeId?: string; // 상담·사건방의 담당 사무소
