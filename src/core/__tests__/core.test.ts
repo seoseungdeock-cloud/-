@@ -2,8 +2,9 @@ import { checkCompliance } from '../compliance';
 import { PROCEDURE_MENU, procedureReply } from '../procedures';
 import { authorView, commentTree, score, searchPosts, sortPosts, unreadIn } from '../board';
 import { contactsFor } from '../contacts';
-import { dayKey, dayLabel, firstOfDay, isHidden, isMaster, markParts, mentionQuery, messageDays, orgGroups, parseMentions, reactionGroups, readCount, readers, searchAll, searchDirectory, searchMessages, sortRooms, splitMentions, unreadCount } from '../messenger';
+import { clientCanSee, dayKey, dayLabel, firstOfDay, hasClient, isHidden, isMaster, presenceOf, markParts, mentionQuery, messageDays, orgGroups, parseMentions, reactionGroups, readCount, readers, searchAll, searchDirectory, searchMessages, sortRooms, splitMentions, unreadCount } from '../messenger';
 import { opinionFor } from '../knowledge';
+import { searchOpenRooms, splitOpenRooms } from '../open-chat';
 import { planFromCommand, rankPerformance, mostSimilar } from '../marketing';
 import { summarizeMeeting } from '../meeting';
 import { officeCountByRegion, searchLawyers } from '../offices';
@@ -631,5 +632,60 @@ describe('메신저 (웍스식 주소록·대화)', () => {
     expect(actions.updateProfile({ birthday: '90-5-1' }).ok).toBe(false);
     expect(actions.updateProfile({ photo: null }).ok).toBe(true);
     expect(me().photo).toBeUndefined();
+  });
+
+  it('상태 설정: 기본은 대화 가능, 프로필에서 바꾼다', () => {
+    as('lawyer');
+    expect(presenceOf(me()).label).toBe('대화 가능');
+    expect(actions.updateProfile({ presence: 'court' }).ok).toBe(true);
+    expect(presenceOf(me()).label).toBe('재판 중');
+  });
+
+  it('의뢰인 방은 클라이언트 탭에, 의뢰인은 자기 상담·사건방만', () => {
+    const users = st().users;
+    expect(hasClient(room('r_case1'), users)).toBe(true);
+    expect(hasClient(room('r_team'), users)).toBe(false);
+    as('client');
+    const visible = st().rooms.filter((r) => clientCanSee(r, me())).map((r) => r.id);
+    expect(visible).toContain('r_case1');
+    expect(visible).not.toContain('r_team');
+    const consult = actions.requestConsult('lw_1', '').roomId!;
+    expect(st().rooms.filter((r) => clientCanSee(r, me())).map((r) => r.id)).toContain(consult);
+  });
+});
+
+describe('오픈대화방', () => {
+  const st = () => getState();
+  const open = (id: string) => st().openRooms.find((r) => r.id === id)!;
+
+  it('방을 만들고, 방마다 다른 닉네임으로 참여하며 실명은 쓸 수 없다', () => {
+    as('lawyer');
+    const res = actions.createOpenRoom({ title: '형사 실무 Q&A', description: '', tags: '#형사, 실무', max: 30, alias: '야근요정' });
+    expect(res.ok).toBe(true);
+    expect(open(res.roomId!).tags).toEqual(['형사', '실무']);
+    as('staff');
+    expect(actions.joinOpenRoom(res.roomId!, '야근요정').ok).toBe(false); // 닉네임 중복
+    expect(actions.joinOpenRoom(res.roomId!, '사무국 직원').ok).toBe(false); // 실명
+    expect(actions.joinOpenRoom(res.roomId!, '커피').ok).toBe(true);
+    expect(actions.sendOpen(res.roomId!, '안녕하세요').ok).toBe(true);
+    expect(searchOpenRooms(st().openRooms, '#형사').map((r) => r.id)).toEqual([res.roomId]);
+    expect(splitOpenRooms(st().openRooms, st().openMessages, 'u_staff').mine.map((r) => r.id)).toContain(res.roomId);
+    as('client');
+    expect(actions.joinOpenRoom('o1', '손님').ok).toBe(false); // 의뢰인 계정은 사용하지 않음
+  });
+
+  it('방장은 내보내고(재입장 불가), 방장이 나가면 다음 사람이 방장이 된다', () => {
+    as('staff'); // o1 방장
+    expect(actions.kickOpen('o1', 'u_l2').ok).toBe(true);
+    expect(open('o1').members.map((m) => m.userId)).toEqual(['u_staff']);
+    as('lawyer');
+    expect(actions.joinOpenRoom('o1', '새손님').ok).toBe(true);
+    expect(actions.kickOpen('o1', 'u_staff').ok).toBe(false); // 방장 아님
+    as('staff');
+    expect(actions.leaveOpenRoom('o1').ok).toBe(true);
+    expect(open('o1').hostId).toBe('u_lawyer');
+    as('lawyer');
+    expect(actions.leaveOpenRoom('o1').ok).toBe(true);
+    expect(st().openRooms.find((r) => r.id === 'o1')).toBeUndefined(); // 아무도 없으면 방이 사라짐
   });
 });

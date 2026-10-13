@@ -2,11 +2,12 @@ import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import { displayName, orgGroups } from '@/core/messenger';
+import { displayName, orgGroups, presenceOf } from '@/core/messenger';
 import { actions } from '@/core/store';
 import type { User } from '@/core/types';
 import { Icon } from './icons';
 import { Avatar, Empty } from './kit';
+import { usePresenceColor } from './presence';
 import { family, space, useColors } from './theme';
 import { useApp, useMe } from './use-app';
 
@@ -17,16 +18,20 @@ export function ContactRow({ u, left, onPress, me }: { u: User; left?: ReactNode
   const s = useApp();
   const user = useMe();
   const fav = (s.favorites[user.id] ?? []).includes(u.id);
+  const dot = usePresenceColor();
+  const presence = presenceOf(u);
   return (
     <Pressable
       onPress={onPress ?? (() => router.push({ pathname: '/contact/[id]', params: { id: u.id } }))}
       style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm + 2, opacity: pressed ? 0.6 : 1 })}>
       {left}
-      <Avatar name={u.nickname} size={48} uri={u.photo} />
+      <Avatar name={u.nickname} size={48} uri={u.photo} dot={u.role === 'client' ? undefined : dot(u)} />
       <View style={{ flex: 1 }}>
         <Text numberOfLines={1} style={{ fontFamily: family.bold, fontSize: 16, color: c.text }}>{displayName(u)}</Text>
         <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 13, color: c.sub }}>
-          {me ? '나 · ' : ''}{u.dept ?? ROLE_LABEL[u.role]}
+          {me ? '나 · ' : ''}
+          {u.dept ?? ROLE_LABEL[u.role]}
+          {u.role !== 'client' && presence.key !== 'available' ? ` · ${presence.label}` : ''}
         </Text>
       </View>
       {fav ? <Icon name="star" color={c.accent} size={18} /> : null}

@@ -200,7 +200,7 @@ export function Empty({ text }: { text: string }) {
   );
 }
 
-export function Avatar({ name, tone, size = 44, group, uri }: { name: string; tone?: string; size?: number; group?: boolean; uri?: string }) {
+export function Avatar({ name, tone, size = 44, group, uri, dot }: { name: string; tone?: string; size?: number; group?: boolean; uri?: string; dot?: string }) {
   const c = useColors();
   return (
     <View style={{ width: size, height: size }}>
@@ -215,6 +215,9 @@ export function Avatar({ name, tone, size = 44, group, uri }: { name: string; to
         <View style={{ position: 'absolute', right: -2, bottom: -2, width: 18, height: 18, borderRadius: 9, backgroundColor: c.accent, borderWidth: 2, borderColor: c.bg, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="people" color="#FFFFFF" size={10} />
         </View>
+      ) : null}
+      {dot && !group ? (
+        <View style={{ position: 'absolute', right: 0, bottom: 0, width: Math.max(10, size * 0.26), height: Math.max(10, size * 0.26), borderRadius: size, backgroundColor: dot, borderWidth: 2, borderColor: c.bg }} />
       ) : null}
     </View>
   );

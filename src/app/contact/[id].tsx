@@ -2,10 +2,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Linking, Pressable, Text, View } from 'react-native';
 
 import { contactsFor } from '@/core/contacts';
-import { displayName, externalContacts } from '@/core/messenger';
+import { displayName, externalContacts, presenceOf } from '@/core/messenger';
 import { actions } from '@/core/store';
 import { Icon, type IconName } from '@/ui/icons';
 import { Avatar, Empty, Screen } from '@/ui/kit';
+import { usePresenceColor } from '@/ui/presence';
 import { family, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 
@@ -22,6 +23,7 @@ export default function ContactScreen() {
   const s = useApp();
   const me = useMe();
   const c = useColors();
+  const dot = usePresenceColor();
   const u = s.users.find((x) => x.id === id);
   // 주소록에서 볼 수 있는 사람만 (자기 자신 포함)
   const visible = u && (u.id === me.id || contactsFor(me, s).some((x) => x.id === u.id) || externalContacts(me, s.users, s.rooms).some((x) => x.id === u.id));
@@ -45,10 +47,13 @@ export default function ContactScreen() {
   return (
     <Screen title="연락처 상세" back>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg, marginTop: space.md }}>
-        <Avatar name={u.nickname} size={88} uri={u.photo} />
+        <Avatar name={u.nickname} size={88} uri={u.photo} dot={u.role === 'client' ? undefined : dot(u)} />
         <View style={{ flex: 1 }}>
           <Text style={{ fontFamily: family.bold, fontSize: 22, color: c.text }}>{displayName(u)}</Text>
-          <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.sub, marginTop: 2 }}>{ROLE_LABEL[u.role]}</Text>
+          <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.sub, marginTop: 2 }}>
+            {ROLE_LABEL[u.role]}
+            {u.role !== 'client' ? ` · ${presenceOf(u).label}` : ''}
+          </Text>
           {u.status ? <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.text, marginTop: 4 }}>{u.status}</Text> : null}
         </View>
         {u.id === me.id ? (

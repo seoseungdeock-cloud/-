@@ -357,6 +357,7 @@ export function MessageMenu({
   m,
   mine,
   myId,
+  simple,
   onClose,
   onCopy,
   onReply,
@@ -366,6 +367,8 @@ export function MessageMenu({
   m?: Message;
   mine: boolean;
   myId: string;
+  /** 의뢰인 화면: 복사·답장·삭제·회수만 */
+  simple?: boolean;
   onClose: () => void;
   onCopy: () => void;
   onReply: () => void;
@@ -391,8 +394,8 @@ export function MessageMenu({
           <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
             {m.kind !== 'contact' ? <MenuItem icon="copy" label="복사" onPress={run(onCopy)} /> : null}
             <MenuItem icon="reply" label="답장" onPress={run(onReply)} />
-            {m.kind !== 'contact' ? <MenuItem icon="notice" label="공지" onPress={run(onNotice)} /> : null}
-            <MenuItem icon="forward" label="전달" onPress={run(onForward)} />
+            {m.kind !== 'contact' && !simple ? <MenuItem icon="notice" label="공지" onPress={run(onNotice)} /> : null}
+            {simple ? null : <MenuItem icon="forward" label="전달" onPress={run(onForward)} />}
             <MenuItem icon="trash" label="삭제" onPress={run(() => actions.deleteForMe(m.id))} />
             {mine ? <MenuItem icon="recall" label="회수" danger onPress={run(() => void actions.recall(m.id))} /> : null}
           </View>

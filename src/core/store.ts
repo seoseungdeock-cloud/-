@@ -25,6 +25,7 @@ import { asksCaseInfo, assignmentText, caseStatusText } from './case-bot';
 import { formatUntil, reportTarget, restrictedUntil, toggleVote } from './board';
 import { displayName, isMaster, parseMentions, roomMasters, type Reads } from './messenger';
 import { findLawyer } from './offices';
+import { aliasOf, canUseOpenChat, checkAlias, isOpenMember, OPEN_MAX_OPTIONS, parseTags } from './open-chat';
 import { procedureReply } from './procedures';
 import { aiAnswerLevel, canCreateRoom, canUseAgents, type RoomCheck } from './rooms';
 import { latest, parseRows, refreshTemplate, type DataRow, type ImageTemplate } from './templates';
@@ -39,6 +40,9 @@ import {
   type CaseInfo,
   type Message,
   type NotifyLevel,
+  type OpenMessage,
+  type OpenRoom,
+  type Presence,
   type Room,
   type RoomKind,
   type RoomMode,
@@ -72,6 +76,8 @@ export type State = {
   reads: Reads;
   /** 사용자 id → 즐겨찾기한 사람 */
   favorites: Record<string, string[]>;
+  openRooms: OpenRoom[];
+  openMessages: OpenMessage[];
 };
 
 const T0 = '2026-10-13T09:00:00.000Z';
@@ -84,9 +90,9 @@ export function initialState(): State {
     { id: 'u_lawyer', nickname: '샘플 변호사 A', role: 'lawyer', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Partner Attorney', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0003', email: 'lawyer@example.com', joinedAt: '2020-09-01' },
     { id: 'u_client', nickname: '하늘', role: 'client', agentAccess: false, membership: 'basic' },
     // 조직도 확인용 샘플 구성원 (로그인 계정 없음)
-    { id: 'u_l2', nickname: '샘플 변호사 B', role: 'lawyer', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Junior Associate Attorney', dept: '실무수습변호사', branch: '서울강남', phone: '010-0000-0004', email: 'lawyer-b@example.com', joinedAt: '2026-06-15' },
+    { id: 'u_l2', presence: 'court', nickname: '샘플 변호사 B', role: 'lawyer', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Junior Associate Attorney', dept: '실무수습변호사', branch: '서울강남', phone: '010-0000-0004', email: 'lawyer-b@example.com', joinedAt: '2026-06-15' },
     { id: 'u_l3', nickname: '샘플 변호사 C', role: 'lawyer', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Junior Associate Attorney', dept: '실무수습변호사', branch: '군산', phone: '010-0000-0005', email: 'lawyer-c@example.com', joinedAt: '2026-06-15' },
-    { id: 'u_m1', nickname: '샘플 매니저', role: 'staff', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Manager', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0006', email: 'manager@example.com', joinedAt: '2024-01-08' },
+    { id: 'u_m1', presence: 'meeting', nickname: '샘플 매니저', role: 'staff', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Manager', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0006', email: 'manager@example.com', joinedAt: '2024-01-08' },
   ];
   // 개발용 계정 (서버 연결 시 백오피스에서 실제 계정으로 교체)
   const accounts: Account[] = [
@@ -105,6 +111,16 @@ export function initialState(): State {
       pinnedBy: ['u_lawyer'],
       notices: [{ id: 'nt1', messageId: 'mt1', text: '[리마인드 공지] 상담 변호사는 내방 안내 전화를 상담 전날까지 꼭 해 주세요.', by: 'u_m1', at: ago(50) }],
     },
+    // 의뢰인과의 사건방: 변호사·직원에게는 '클라이언트' 탭에만, 의뢰인에게는 대화 탭에 보입니다.
+    {
+      id: 'r_case1', kind: 'case', mode: 'private', title: '임대차보증금 반환 · 샘플 변호사 A', memberIds: ['u_client', 'u_lawyer'], createdBy: 'u_client', createdAt: ago(30), lawyerId: 'lw_1',
+      caseInfo: {
+        title: '임대차보증금 반환', field: '부동산·임대차', stage: '진행',
+        deadlines: [{ id: 'dl1', label: '답변서 제출', date: '2026-10-27' }],
+        documents: [{ id: 'dc1', name: '임대차계약서.pdf', addedAt: ago(29) }, { id: 'dc2', name: '내용증명 사본.pdf', addedAt: ago(20) }],
+        costs: [], progress: [{ id: 'pg1', at: ago(30), note: '수임' }],
+      },
+    },
   ];
   const messages: Message[] = [
     { id: 'm1', roomId: 'r_office', senderId: SYSTEM_SENDER, kind: 'system', text: 'AI 참여방입니다. @AI 로 부르면 AI가 답합니다.', at: T0 },
@@ -114,6 +130,8 @@ export function initialState(): State {
     { id: 'mt2', roomId: 'r_team', senderId: 'u_lawyer', kind: 'text', text: '@샘플 매니저 @사무국 직원 내일 상담 일정 공유 부탁드립니다.', at: ago(27), mentions: ['u_m1', 'u_staff'], reactions: { u_m1: '👍' } },
     { id: 'mt3', roomId: 'r_team', senderId: 'u_staff', kind: 'text', text: '네, 오전 중에 올리겠습니다.', at: ago(26.9), replyTo: 'mt2' },
     { id: 'mt4', roomId: 'r_team', senderId: 'u_m1', kind: 'text', text: '상담 일정표 링크입니다 https://example.com/schedule', at: ago(1) },
+    { id: 'mc1', roomId: 'r_case1', senderId: 'u_client', kind: 'text', text: '변호사님, 집주인에게서 아직 연락이 없습니다.', at: ago(6) },
+    { id: 'mc2', roomId: 'r_case1', senderId: 'u_lawyer', kind: 'text', text: '네, 이번 주 안에 소장 초안 보내드리겠습니다. 계약서 원본은 보관해 두세요.', at: ago(5.5) },
     { id: 'mt5', roomId: 'r_team', senderId: 'u_l2', kind: 'text', text: '@승덕 대표님 확인 부탁드립니다.', at: ago(0.5), mentions: ['u_admin'] },
   ];
   return {
@@ -176,6 +194,21 @@ export function initialState(): State {
     boardBans: {},
     reads: { r_team: { u_lawyer: ago(26.95), u_staff: ago(26.9), u_m1: ago(1), u_l2: ago(0.5), u_admin: ago(28) } },
     favorites: { u_lawyer: ['u_staff'], u_admin: ['u_lawyer'] },
+    openRooms: [
+      {
+        id: 'o1', title: '이혼 소송 경험 나눠요', description: '실제 겪은 일만 편하게 나눠요. 실명·연락처 공유 금지.', tags: ['이혼', '양육권'], hostId: 'u_staff', max: 100, createdAt: ago(40), banned: [],
+        members: [{ userId: 'u_staff', alias: '새벽별', joinedAt: ago(40) }, { userId: 'u_l2', alias: '지나가는법조인', joinedAt: ago(10) }],
+      },
+      {
+        id: 'o2', title: '개업 변호사 정보방', description: '사무실 운영, 수임, 세무 이야기', tags: ['개업', '사무실'], hostId: 'u_l3', max: 300, createdAt: ago(80), banned: [],
+        members: [{ userId: 'u_l3', alias: '군산댁', joinedAt: ago(80) }],
+      },
+    ],
+    openMessages: [
+      { id: 'om1', roomId: 'o1', senderId: 'u_staff', text: '양육권 다툼 있으셨던 분 계신가요?', at: ago(9) },
+      { id: 'om2', roomId: 'o1', senderId: 'u_l2', text: '일반론으로는 주 양육자가 누구였는지가 가장 크게 봅니다. 구체적인 건 상담 받아 보세요.', at: ago(8) },
+      { id: 'om3', roomId: 'o2', senderId: 'u_l3', text: '부가세 신고 다들 직접 하시나요?', at: ago(20) },
+    ],
   };
 }
 
@@ -225,6 +258,15 @@ function closeReports(reports: BoardReport[], match: (r: BoardReport) => boolean
 }
 
 const PRIVATE_CASE_NOTE = '사건수행방입니다. AI는 대화에 참여하지 않고, 사건 진행·배당 알림과 절차 안내만 전해 드립니다.';
+
+function updateOpen(roomId: string, fn: (r: OpenRoom) => OpenRoom) {
+  set((s) => ({ openRooms: s.openRooms.map((r) => (r.id === roomId ? fn(r) : r)) }));
+}
+
+function pushOpen(roomId: string, senderId: string, text: string, system = false) {
+  const m: OpenMessage = { id: newId('om'), roomId, senderId, text, at: nowIso(), ...(system ? { system } : {}) };
+  set((s) => ({ openMessages: [...s.openMessages, m] }));
+}
 
 function userById(id: string) {
   return state.users.find((u) => u.id === id);
@@ -720,7 +762,7 @@ export const actions = {
   },
 
   /** 내 프로필 수정 (직책·부서·지점은 어드민이 정합니다) */
-  updateProfile(patch: { nickname?: string; photo?: string | null; status?: string; phone?: string; email?: string; birthday?: string }): RoomCheck {
+  updateProfile(patch: { nickname?: string; photo?: string | null; status?: string; presence?: Presence; phone?: string; email?: string; birthday?: string }): RoomCheck {
     const u = me();
     const next = { ...u };
     if (patch.nickname !== undefined) {
@@ -749,7 +791,81 @@ export const actions = {
       next.status = patch.status.trim() || undefined;
     }
     if (patch.photo !== undefined) next.photo = patch.photo ?? undefined;
+    if (patch.presence !== undefined) next.presence = patch.presence;
     set((s) => ({ users: s.users.map((x) => (x.id === u.id ? next : x)) }));
+    return { ok: true };
+  },
+
+  // ---- 오픈대화방 ----
+
+  createOpenRoom(input: { title: string; description: string; tags: string; max: number; alias: string }): RoomCheck & { roomId?: string } {
+    const u = me();
+    if (!canUseOpenChat(u)) return { ok: false, reason: '오픈대화방을 쓸 수 없는 계정입니다.' };
+    const title = input.title.trim();
+    if (!title) return { ok: false, reason: '방 이름을 입력해 주세요.' };
+    if (title.length > 30) return { ok: false, reason: '방 이름은 30자 이내로 적어 주세요.' };
+    if (!OPEN_MAX_OPTIONS.includes(input.max)) return { ok: false, reason: '최대 인원을 골라 주세요.' };
+    const bad = checkAlias(undefined, input.alias, u);
+    if (bad) return { ok: false, reason: bad };
+    const room: OpenRoom = {
+      id: newId('o'), title, description: input.description.trim().slice(0, 200), tags: parseTags(input.tags), hostId: u.id, max: input.max, createdAt: nowIso(), banned: [],
+      members: [{ userId: u.id, alias: input.alias.trim(), joinedAt: nowIso() }],
+    };
+    set((s) => ({ openRooms: [room, ...s.openRooms] }));
+    pushOpen(room.id, u.id, `${input.alias.trim()}님이 방을 만들었습니다.`, true);
+    return { ok: true, roomId: room.id };
+  },
+
+  joinOpenRoom(roomId: string, alias: string): RoomCheck {
+    const u = me();
+    const room = state.openRooms.find((r) => r.id === roomId);
+    if (!room || !canUseOpenChat(u)) return { ok: false, reason: '들어갈 수 없는 방입니다.' };
+    if (isOpenMember(room, u.id)) return { ok: true };
+    if (room.banned.includes(u.id)) return { ok: false, reason: '방장이 내보낸 방에는 다시 들어갈 수 없습니다.' };
+    if (room.members.length >= room.max) return { ok: false, reason: '방이 가득 찼습니다.' };
+    const bad = checkAlias(room, alias, u);
+    if (bad) return { ok: false, reason: bad };
+    updateOpen(roomId, (r) => ({ ...r, members: [...r.members, { userId: u.id, alias: alias.trim(), joinedAt: nowIso() }] }));
+    pushOpen(roomId, u.id, `${alias.trim()}님이 들어왔습니다.`, true);
+    return { ok: true };
+  },
+
+  sendOpen(roomId: string, text: string): RoomCheck {
+    const u = me();
+    const room = state.openRooms.find((r) => r.id === roomId);
+    if (!room || !isOpenMember(room, u.id)) return { ok: false, reason: '참여 중인 방이 아닙니다.' };
+    if (!text.trim()) return { ok: false, reason: '' };
+    pushOpen(roomId, u.id, text.trim());
+    return { ok: true };
+  },
+
+  /** 나가기. 방장이 나가면 가장 먼저 들어온 사람이 방장이 되고, 아무도 없으면 방이 없어집니다. */
+  leaveOpenRoom(roomId: string): RoomCheck {
+    const u = me();
+    const room = state.openRooms.find((r) => r.id === roomId);
+    if (!room || !isOpenMember(room, u.id)) return { ok: false, reason: '참여 중인 방이 아닙니다.' };
+    const alias = aliasOf(room, u.id)!;
+    const members = room.members.filter((m) => m.userId !== u.id);
+    if (!members.length) {
+      set((s) => ({ openRooms: s.openRooms.filter((r) => r.id !== roomId), openMessages: s.openMessages.filter((m) => m.roomId !== roomId) }));
+      return { ok: true };
+    }
+    const hostId = room.hostId === u.id ? members[0].userId : room.hostId;
+    updateOpen(roomId, (r) => ({ ...r, members, hostId }));
+    pushOpen(roomId, u.id, `${alias}님이 나갔습니다.`, true);
+    if (hostId !== room.hostId) pushOpen(roomId, hostId, `${members[0].alias}님이 방장이 되었습니다.`, true);
+    return { ok: true };
+  },
+
+  /** 방장: 참여자 내보내기 (다시 못 들어옴) */
+  kickOpen(roomId: string, userId: string): RoomCheck {
+    const u = me();
+    const room = state.openRooms.find((r) => r.id === roomId);
+    if (!room || room.hostId !== u.id) return { ok: false, reason: '방장만 내보낼 수 있습니다.' };
+    if (userId === u.id || !isOpenMember(room, userId)) return { ok: false, reason: '내보낼 수 없는 참여자입니다.' };
+    const alias = aliasOf(room, userId)!;
+    updateOpen(roomId, (r) => ({ ...r, members: r.members.filter((m) => m.userId !== userId), banned: [...r.banned, userId] }));
+    pushOpen(roomId, u.id, `방장이 ${alias}님을 내보냈습니다.`, true);
     return { ok: true };
   },
 

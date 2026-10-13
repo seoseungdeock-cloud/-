@@ -1,6 +1,6 @@
 // 메신저 규칙 (네이버웍스 메신저의 주소록·대화 기능을 참고)
 // 읽음 수, 안 읽은 수, 멘션, 방 정렬·숨김, 조직도 묶음, 주소록 검색
-import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Message, type NotifyLevel, type Room, type User } from './types';
+import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Message, type NotifyLevel, type Presence, type Room, type User } from './types';
 
 export type Reads = Record<string, Record<string, string>>;
 
@@ -32,6 +32,32 @@ export function unreadCount(room: Room, userId: string, messages: Message[], rea
 export function mentionedUnread(room: Room, userId: string, messages: Message[], reads: Reads): boolean {
   const read = lastReadAt(reads, room.id, userId);
   return messages.some((m) => m.roomId === room.id && m.at > read && !m.recalled && (m.mentions?.includes(userId) || m.mentions?.includes('all')));
+}
+
+/** 상태 목록: 화면 색은 tone (on=대화 가능, busy=용무 중, off=자리 비움, dnd=방해 금지) */
+export const PRESENCE: { key: Presence; label: string; tone: 'on' | 'busy' | 'off' | 'dnd' }[] = [
+  { key: 'available', label: '대화 가능', tone: 'on' },
+  { key: 'busy', label: '다른 용무 중', tone: 'busy' },
+  { key: 'meeting', label: '회의 중', tone: 'busy' },
+  { key: 'court', label: '재판 중', tone: 'busy' },
+  { key: 'outside', label: '외근 중', tone: 'off' },
+  { key: 'trip', label: '출장 중', tone: 'off' },
+  { key: 'vacation', label: '휴가 중', tone: 'off' },
+  { key: 'dnd', label: '방해 금지', tone: 'dnd' },
+];
+
+export function presenceOf(u: User) {
+  return PRESENCE.find((p) => p.key === (u.presence ?? 'available'))!;
+}
+
+/** 의뢰인이 들어 있는 방: 변호사·직원에게는 '클라이언트' 탭에만 보입니다. */
+export function hasClient(room: Room, users: User[]): boolean {
+  return room.memberIds.some((id) => users.find((u) => u.id === id)?.role === 'client');
+}
+
+/** 의뢰인 계정이 대화 탭에서 보는 방: 내 상담·사건방만 */
+export function clientCanSee(room: Room, me: User): boolean {
+  return room.memberIds.includes(me.id) && (room.kind === 'case' || room.kind === 'consult');
 }
 
 /** 방 마스터: 지정된 사람, 없으면 방을 만든 사람 */

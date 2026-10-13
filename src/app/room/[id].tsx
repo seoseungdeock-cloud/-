@@ -3,7 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 
-import { dayKey, displayName, firstOfDay, lastReadAt, mentionQuery, messageDays, notifyLevel, searchMessages, visibleMessages } from '@/core/messenger';
+import { clientCanSee, dayKey, displayName, firstOfDay, lastReadAt, mentionQuery, messageDays, notifyLevel, searchMessages, visibleMessages } from '@/core/messenger';
 import { aiCanJoin, ROOM_KIND_LABEL } from '@/core/rooms';
 import { contactsFor } from '@/core/contacts';
 import { actions } from '@/core/store';
@@ -106,14 +106,16 @@ export default function RoomScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentHit?.id]);
 
-  if (!room) return <Screen title="대화" back><Empty text="방을 찾을 수 없습니다." /></Screen>;
+  // 의뢰인 계정: 자기 상담·사건방만, 대화와 검색만 (전달·공지·방 메뉴·첨부 없음)
+  const simple = user.role === 'client';
+  if (!room || (simple && !clientCanSee(room, user))) return <Screen title="대화" back><Empty text="방을 찾을 수 없습니다." /></Screen>;
   const members = room.memberIds.map((mid) => s.users.find((u) => u.id === mid)).filter((u): u is User => !!u);
   const muted = notifyLevel(room, user.id) !== 'all';
 
   // @멘션 자동완성
   const mq = mentionQuery(text);
   const mentionList =
-    mq === undefined
+    mq === undefined || simple
       ? []
       : [{ id: 'all', nickname: '전체' } as User, ...members.filter((u) => u.id !== user.id)].filter((u) => u.nickname.includes(mq)).slice(0, 6);
   const pickMention = (u: User) => setText((t) => t.replace(/@([^\s@]*)$/, `@${u.nickname} `));
@@ -184,9 +186,11 @@ export default function RoomScreen() {
       <Pressable accessibilityLabel="대화 검색" hitSlop={8} onPress={() => setSearch((cur) => (cur === undefined ? '' : undefined))}>
         <Icon name="search" color={search !== undefined ? c.accent : c.text} size={22} />
       </Pressable>
-      <Pressable accessibilityLabel="대화방 메뉴" hitSlop={8} onPress={() => setDrawer(true)}>
-        <Icon name="menu" color={c.text} size={22} />
-      </Pressable>
+      {simple ? null : (
+        <Pressable accessibilityLabel="대화방 메뉴" hitSlop={8} onPress={() => setDrawer(true)}>
+          <Icon name="menu" color={c.text} size={22} />
+        </Pressable>
+      )}
     </View>
   );
 
@@ -318,9 +322,11 @@ export default function RoomScreen() {
               </View>
             ) : null}
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, paddingVertical: space.sm }}>
-              <Pressable accessibilityLabel="더하기" onPress={() => setPlus((v) => !v)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: plus ? '45deg' : '0deg' }] }}>
-                <Icon name="plus" color={c.sub} size={24} />
-              </Pressable>
+              {simple ? null : (
+                <Pressable accessibilityLabel="더하기" onPress={() => setPlus((v) => !v)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: plus ? '45deg' : '0deg' }] }}>
+                  <Icon name="plus" color={c.sub} size={24} />
+                </Pressable>
+              )}
               <TextInput
                 value={text}
                 onChangeText={setText}
@@ -344,6 +350,7 @@ export default function RoomScreen() {
         m={menuFor}
         mine={menuFor?.senderId === user.id}
         myId={user.id}
+        simple={simple}
         onClose={() => setMenuFor(undefined)}
         onCopy={() => {
           if (!menuFor) return;

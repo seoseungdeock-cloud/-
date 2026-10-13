@@ -3,9 +3,12 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
+import { PRESENCE } from '@/core/messenger';
 import { actions } from '@/core/store';
+import type { Presence } from '@/core/types';
 import { Icon } from '@/ui/icons';
-import { Avatar, Button, Input, Notice, Screen, Sub, T } from '@/ui/kit';
+import { Avatar, Button, Chip, Chips, Input, Notice, Screen, Sub, T } from '@/ui/kit';
+import { usePresenceColor } from '@/ui/presence';
 import { family, space, useColors } from '@/ui/theme';
 import { useMe } from '@/ui/use-app';
 
@@ -21,6 +24,8 @@ export default function ProfileScreen() {
     birthday: user.birthday ?? '',
   });
   const [photo, setPhoto] = useState<string | undefined>(user.photo);
+  const [presence, setPresence] = useState<Presence>(user.presence ?? 'available');
+  const dot = usePresenceColor();
   const [error, setError] = useState('');
 
   const pick = async () => {
@@ -29,7 +34,7 @@ export default function ProfileScreen() {
   };
 
   const save = () => {
-    const r = actions.updateProfile({ ...form, photo: photo ?? null });
+    const r = actions.updateProfile({ ...form, presence, photo: photo ?? null });
     if (!r.ok) return setError(r.reason);
     router.back();
   };
@@ -49,7 +54,7 @@ export default function ProfileScreen() {
       }>
       <View style={{ alignItems: 'center', gap: space.sm, marginVertical: space.lg }}>
         <Pressable accessibilityLabel="사진 변경" onPress={pick}>
-          <Avatar name={form.nickname || user.nickname} size={96} uri={photo} />
+          <Avatar name={form.nickname || user.nickname} size={96} uri={photo} dot={dot({ ...user, presence })} />
           <View style={{ position: 'absolute', right: 0, bottom: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: c.text, borderWidth: 2, borderColor: c.bg, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="plus" color={c.bg} size={16} />
           </View>
@@ -61,6 +66,12 @@ export default function ProfileScreen() {
         ) : null}
       </View>
       {error ? <Notice text={error} /> : null}
+      <Sub>상태</Sub>
+      <Chips>
+        {PRESENCE.map((p) => (
+          <Chip key={p.key} label={p.label} active={presence === p.key} onPress={() => setPresence(p.key)} />
+        ))}
+      </Chips>
       {field('nickname', '이름')}
       {field('status', '상태 메시지', { placeholder: '예: 오후 재판 중' })}
       {field('phone', '휴대전화', { keyboardType: 'phone-pad' })}

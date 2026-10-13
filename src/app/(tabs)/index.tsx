@@ -4,11 +4,12 @@ import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { contactsFor } from '@/core/contacts';
-import { externalContacts, isHidden, markParts, searchAll, sortRooms, unreadCount, searchDirectory, type DirectoryHit } from '@/core/messenger';
+import { clientCanSee, externalContacts, hasClient, isHidden, markParts, searchAll, sortRooms, unreadCount, searchDirectory, type DirectoryHit } from '@/core/messenger';
 import { actions } from '@/core/store';
 import type { Message, Room } from '@/core/types';
 import { ContactRow, OrgBrowser, UnderlineTabs } from '@/ui/contacts';
 import { Icon } from '@/ui/icons';
+import { OpenPanel } from '@/ui/open-chat';
 import { Avatar, Empty } from '@/ui/kit';
 import { chatTime, roomTitle, RoomRow } from '@/ui/room-row';
 import { family, font, MAX_WIDTH, radius, space, useColors } from '@/ui/theme';
@@ -24,12 +25,72 @@ const TEST: Record<RoomFilter, (r: Room) => boolean> = {
   ai: (r) => r.mode === 'ai',
 };
 
-// 메신저: 주소록 / 대화방 (네이버웍스 주소록·메시지 구성 참고)
+type Tab = 'contacts' | 'rooms' | 'open' | 'clients';
+const PLACEHOLDER: Record<Tab, string> = {
+  contacts: '이름·부서·직책 검색',
+  rooms: '대화방·메시지 검색',
+  open: '오픈대화방 검색 (#태그)',
+  clients: '의뢰인·사건방·메시지 검색',
+};
+
+// 메신저: 주소록 / 대화방 / 오픈대화방 / 클라이언트 (네이버웍스 주소록·메시지 구성 참고)
+// 의뢰인 계정은 자기 사건방만 보는 간단한 화면을 씁니다.
 export default function MessengerScreen() {
+  const user = useMe();
+  return user.role === 'client' ? <ClientMessenger /> : <FirmMessenger />;
+}
+
+function SearchBar({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+  const c = useColors();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.surface, borderRadius: radius.pill, paddingHorizontal: space.md }}>
+      <Icon name="search" color={c.faint} size={18} />
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor={c.faint}
+        style={{ flex: 1, paddingVertical: space.sm + 2, fontSize: font.body, fontFamily: family.regular, color: c.text }}
+      />
+      {value ? (
+        <Pressable accessibilityLabel="검색어 지우기" onPress={() => onChange('')} hitSlop={8}>
+          <Icon name="close" color={c.faint} size={16} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/** 의뢰인: 내 사건방(상담·사건)만, 대화와 검색만 */
+function ClientMessenger() {
   const s = useApp();
   const user = useMe();
   const c = useColors();
-  const [tab, setTab] = useState<'contacts' | 'rooms'>('contacts');
+  const [q, setQ] = useState('');
+  const query = q.trim();
+  const rooms = useMemo(() => sortRooms(s.rooms.filter((r) => clientCanSee(r, user)), user.id, s.messages), [s.rooms, s.messages, user]);
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top', 'left', 'right']}>
+      <View style={{ width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', flex: 1 }}>
+        <View style={{ paddingHorizontal: space.lg, paddingTop: space.md, gap: space.md }}>
+          <Text style={{ fontFamily: family.heavy, fontSize: font.title, color: c.text }}>대화</Text>
+          <SearchBar value={q} onChange={setQ} placeholder="사건방·메시지 검색" />
+        </View>
+        {query ? (
+          <SearchResults query={query} scope={(r) => clientCanSee(r, user)} />
+        ) : (
+          <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: 96 }}>
+            {rooms.length ? rooms.map((r) => <RoomRow key={r.id} room={r} />) : <Empty text="진행 중인 사건방이 없습니다." />}
+          </ScrollView>
+        )}
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function FirmMessenger() {
+  const c = useColors();
+  const [tab, setTab] = useState<Tab>('contacts');
   const [q, setQ] = useState('');
   const [selecting, setSelecting] = useState(false);
   const query = q.trim();
@@ -38,30 +99,29 @@ export default function MessengerScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top', 'left', 'right']}>
       <View style={{ width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', flex: 1 }}>
         <View style={{ paddingHorizontal: space.lg, paddingTop: space.md }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.surface, borderRadius: radius.pill, paddingHorizontal: space.md }}>
-            <Icon name="search" color={c.faint} size={18} />
-            <TextInput
-              value={q}
-              onChangeText={setQ}
-              placeholder={tab === 'rooms' ? '대화방·메시지 검색' : '이름·부서·직책 검색'}
-              placeholderTextColor={c.faint}
-              style={{ flex: 1, paddingVertical: space.sm + 2, fontSize: font.body, fontFamily: family.regular, color: c.text }}
-            />
-            {q ? (
-              <Pressable accessibilityLabel="검색어 지우기" onPress={() => setQ('')} hitSlop={8}>
-                <Icon name="close" color={c.faint} size={16} />
-              </Pressable>
-            ) : null}
-          </View>
+          <SearchBar value={q} onChange={setQ} placeholder={PLACEHOLDER[tab]} />
           <View style={{ marginTop: space.sm }}>
-            <UnderlineTabs tabs={[['contacts', '주소록'], ['rooms', '대화방']]} value={tab} onChange={setTab} />
+            <UnderlineTabs
+              tabs={[['contacts', '주소록'], ['rooms', '대화방'], ['open', '오픈대화방'], ['clients', '클라이언트']]}
+              value={tab}
+              onChange={(t) => {
+                setTab(t);
+                setSelecting(false);
+              }}
+            />
           </View>
         </View>
-        {tab === 'contacts' ? <ContactsPanel query={query} /> : <RoomsPanel query={query} onSelecting={setSelecting} />}
-        {tab === 'rooms' && selecting ? null : (
+        {tab === 'contacts' ? (
+          <ContactsPanel query={query} />
+        ) : tab === 'open' ? (
+          <OpenPanel query={query} />
+        ) : (
+          <RoomsPanel key={tab} query={query} onSelecting={setSelecting} scope={tab === 'clients' ? 'clients' : 'internal'} />
+        )}
+        {(tab === 'rooms' || tab === 'clients') && selecting ? null : tab === 'clients' ? null : (
         <Pressable
-          accessibilityLabel="새 대화"
-          onPress={() => router.push('/room/new')}
+          accessibilityLabel={tab === 'open' ? '오픈대화방 만들기' : '새 대화'}
+          onPress={() => router.push(tab === 'open' ? '/open/new' : '/room/new')}
           style={{ position: 'absolute', right: space.lg, bottom: space.lg, width: 56, height: 56, borderRadius: 28, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4 }}>
           <Icon name="plus" color="#FFFFFF" size={28} />
         </Pressable>
@@ -143,7 +203,8 @@ function HitRow({ h, onDept }: { h: DirectoryHit; onDept: (d: string) => void })
   );
 }
 
-function RoomsPanel({ query, onSelecting }: { query: string; onSelecting: (v: boolean) => void }) {
+// 대화방 탭은 내부 대화만, 클라이언트 탭은 의뢰인이 있는 방만 (변호사·직원 기준)
+function RoomsPanel({ query, onSelecting, scope }: { query: string; onSelecting: (v: boolean) => void; scope: 'internal' | 'clients' }) {
   const s = useApp();
   const user = useMe();
   const c = useColors();
@@ -152,7 +213,8 @@ function RoomsPanel({ query, onSelecting }: { query: string; onSelecting: (v: bo
   const selecting = selected.length > 0;
   useEffect(() => onSelecting(selecting), [selecting, onSelecting]);
 
-  const mine = useMemo(() => s.rooms.filter((r) => r.memberIds.includes(user.id)), [s.rooms, user.id]);
+  const inScope = (r: Room) => r.memberIds.includes(user.id) && hasClient(r, s.users) === (scope === 'clients');
+  const mine = useMemo(() => s.rooms.filter(inScope), [s.rooms, user.id, s.users, scope]); // eslint-disable-line react-hooks/exhaustive-deps
   const visible = useMemo(() => mine.filter((r) => !isHidden(r, user.id, s.messages)), [mine, user.id, s.messages]);
   const dots = Object.fromEntries(FILTERS.map(([k]) => [k, visible.some((r) => TEST[k](r) && unreadCount(r, user.id, s.messages, s.reads) > 0)])) as Record<RoomFilter, boolean>;
   const rooms = useMemo(() => {
@@ -167,7 +229,7 @@ function RoomsPanel({ query, onSelecting }: { query: string; onSelecting: (v: bo
   const allPinned = selected.every((id) => mine.find((r) => r.id === id)?.pinnedBy?.includes(user.id));
   const allMuted = selected.every((id) => mine.find((r) => r.id === id)?.notify?.[user.id] === 'off');
 
-  if (query) return <SearchResults query={query} />;
+  if (query) return <SearchResults query={query} scope={inScope} />;
 
   return (
     <View style={{ flex: 1 }}>
@@ -178,6 +240,8 @@ function RoomsPanel({ query, onSelecting }: { query: string; onSelecting: (v: bo
             <Text style={{ fontFamily: family.semibold, fontSize: 15, color: c.sub }}>모두 취소</Text>
           </Pressable>
         </View>
+      ) : scope === 'clients' ? (
+        <View style={{ height: space.sm }} />
       ) : (
         <View style={{ flexDirection: 'row', gap: space.lg, paddingHorizontal: space.lg, paddingVertical: space.md }}>
           {FILTERS.map(([k, label]) => (
@@ -192,7 +256,7 @@ function RoomsPanel({ query, onSelecting }: { query: string; onSelecting: (v: bo
         {rooms.length ? (
           rooms.map((r) => <RoomRow key={r.id} room={r} selecting={selecting} selected={selected.includes(r.id)} onToggle={() => toggle(r.id)} />)
         ) : (
-          <Empty text="대화가 없습니다." />
+          <Empty text={scope === 'clients' ? '의뢰인과의 대화방이 없습니다.' : '대화가 없습니다.'} />
         )}
       </ScrollView>
       {selecting ? (
@@ -221,12 +285,12 @@ function BarButton({ icon, label, onPress }: { icon: 'pin' | 'mute' | 'hide' | '
 }
 
 // 대화 탭 전체 검색: 메시지방·멤버 이름 / 메시지 / 파일 (각각 접기, 최신순)
-function SearchResults({ query }: { query: string }) {
+function SearchResults({ query, scope }: { query: string; scope: (r: Room) => boolean }) {
   const s = useApp();
   const user = useMe();
   const c = useColors();
   const [closed, setClosed] = useState<Record<string, boolean>>({});
-  const res = useMemo(() => searchAll(query, user.id, s.rooms, s.messages, s.users), [query, user.id, s.rooms, s.messages, s.users]);
+  const res = useMemo(() => searchAll(query, user.id, s.rooms.filter(scope), s.messages, s.users), [query, user.id, s.rooms, s.messages, s.users, scope]);
   const roomOf = (id: string) => s.rooms.find((r) => r.id === id);
   const sender = (m: Message) => s.users.find((u) => u.id === m.senderId)?.nickname ?? '';
   const Mark = ({ text, style }: { text: string; style: object }) => (

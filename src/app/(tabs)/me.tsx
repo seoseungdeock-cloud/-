@@ -1,7 +1,9 @@
 import { router } from 'expo-router';
 import { Text, View } from 'react-native';
 
+import { presenceOf } from '@/core/messenger';
 import { actions } from '@/core/store';
+import { usePresenceColor } from '@/ui/presence';
 import { Avatar, Badge, Button, Card, Screen, Section, Sub, T } from '@/ui/kit';
 import { family, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
@@ -12,15 +14,16 @@ export default function MeScreen() {
   const s = useApp();
   const user = useMe();
   const c = useColors();
+  const dot = usePresenceColor();
   const account = s.accounts.find((a) => a.userId === user.id);
   return (
     <Screen title="나">
       <Card onPress={() => router.push('/profile')}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-          <Avatar name={user.nickname} uri={user.photo} />
+          <Avatar name={user.nickname} uri={user.photo} dot={user.role === 'client' ? undefined : dot(user)} />
           <View style={{ flex: 1 }}>
             <T size="h2" bold>{user.nickname}</T>
-            {user.status ? <T size="small">{user.status}</T> : null}
+            <T size="small">{[user.role === 'client' ? '' : presenceOf(user).label, user.status].filter(Boolean).join(' · ')}</T>
             <Sub>{[user.title, account?.loginId].filter(Boolean).join(' · ')}</Sub>
             <View style={{ flexDirection: 'row', gap: space.xs, marginTop: space.xs, flexWrap: 'wrap' }}>
               <Badge label={ROLE_LABEL[user.role]} tone="plain" />

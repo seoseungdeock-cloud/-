@@ -21,6 +21,7 @@ export type User = {
   joinedAt?: string; // YYYY-MM-DD
   photo?: string; // 프로필 사진 (지금은 기기 안 주소, 서버가 붙으면 업로드 주소)
   status?: string; // 상태 메시지
+  presence?: Presence; // 상태 (대화 가능, 회의 중 등)
 };
 
 /** 방의 종류. 메신저·사건·업무·에이전트가 모두 같은 "방" 구조를 씁니다. */
@@ -169,3 +170,22 @@ export type BoardReport = {
 };
 
 export type ForwardBundle = { title: string; items: { senderId: string; text: string; at: string }[] };
+
+/** 상태 설정 (네이버웍스 상태 참고, 재판 중 추가) */
+export type Presence = 'available' | 'busy' | 'meeting' | 'court' | 'outside' | 'trip' | 'vacation' | 'dnd';
+
+// ---- 오픈대화방 (카카오톡 오픈채팅처럼 방마다 닉네임으로만 참여, 실명·프로필은 보이지 않음) ----
+export type OpenMember = { userId: string; alias: string; joinedAt: string };
+export type OpenRoom = {
+  id: string;
+  title: string;
+  description: string;
+  tags: string[];
+  hostId: string; // 방장
+  members: OpenMember[];
+  max: number;
+  createdAt: string;
+  /** 내보낸 사람은 다시 들어올 수 없습니다. */
+  banned: string[];
+};
+export type OpenMessage = { id: string; roomId: string; senderId: string; text: string; at: string; system?: boolean };
