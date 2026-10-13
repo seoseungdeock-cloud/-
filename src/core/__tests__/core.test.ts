@@ -1,4 +1,5 @@
 import { checkCompliance } from '../compliance';
+import { contactsFor } from '../contacts';
 import { opinionFor } from '../knowledge';
 import { planFromCommand, rankPerformance, mostSimilar } from '../marketing';
 import { summarizeMeeting } from '../meeting';
@@ -180,5 +181,67 @@ describe('로그인·백오피스', () => {
     expect(actions.login('kim', 'newpass123').ok).toBe(true);
     expect(me().nickname).toBe('김');
     expect(actions.createAccount({ loginId: 'lee', password: 'password1', nickname: '이', role: 'client' }).ok).toBe(false);
+  });
+});
+
+describe('대화방 @AI 명령', () => {
+  const last = () => getState().messages.at(-1)!;
+
+  it('회의방 대화를 @AI 회의 정리로 정리한다', async () => {
+    await actions.sendMessage('r_meeting', '이번 분기 검색광고 예산을 20% 늘리기로 결정합니다.');
+    await actions.sendMessage('r_meeting', '@사무국 다음 주까지 소재 준비해주세요.');
+    await actions.sendMessage('r_meeting', '@AI 회의 정리');
+    expect(last().kind).toBe('ai');
+    expect(last().text).toContain('결정사항');
+    expect(last().text).toContain('[사무국]');
+    expect(getState().decisions[0].decision).toContain('20%');
+  });
+
+  it('마케팅 지시 → 승인까지 대화로 한다', async () => {
+    await actions.sendMessage('r_marketing', '@AI 마케팅 구글 예산 10% 증액, 홈페이지 상속 2건');
+    expect(last().text).toContain('승인 대기');
+    await actions.sendMessage('r_marketing', '@AI 승인');
+    expect(last().text).toContain('실행됨');
+    expect(getState().budgets.google_ads).toBe(110000);
+  });
+
+  it('의견·점검·자료·프로그램·도움말', async () => {
+    await actions.sendMessage('r_office', '@AI 의견 검색광고 이혼 키워드 예산 늘리기');
+    expect(last().text).toContain('찬성');
+    await actions.sendMessage('r_office', '@AI 점검 승소율 99% 보장');
+    expect(last().text).toContain('승소율');
+    await actions.sendMessage('r_office', '@AI 자료 월별 상담 문의\n7월 120\n8월 130');
+    expect(last().text).toContain('8월 130건');
+    await actions.sendMessage('r_office', '@AI 프로그램 기일표 만들어주는 도구');
+    expect(getState().programs).toHaveLength(1);
+    await actions.sendMessage('r_office', '@AI 도움말');
+    expect(last().text).toContain('@AI 명령');
+  });
+
+  it('허용되지 않은 사용자는 에이전트 명령을 못 쓴다', async () => {
+    as('staff');
+    await actions.sendMessage('r_office', '@AI 회의 정리');
+    expect(last().text).toBe('이 기능은 어드민 허용이 필요합니다.');
+  });
+});
+
+describe('주소록·대시보드', () => {
+  it('변호사는 같은 법무법인, 의뢰인은 자기 사건의 의뢰인만 본다', () => {
+    as('lawyer');
+    expect(contactsFor(me(), getState()).map((u) => u.id).sort()).toEqual(['u_admin', 'u_staff']);
+    as('client');
+    expect(contactsFor(me(), getState())).toHaveLength(0);
+  });
+
+  it('바로 수임 요청하면 사건방이 열리고, 주소록에서 1:1 방을 연다', () => {
+    as('client');
+    const res = actions.requestRetain('lw_1', '이혼', '상담 원합니다');
+    const room = getState().rooms.find((r) => r.id === res.roomId)!;
+    expect(room.kind).toBe('case');
+    expect(room.memberIds).toEqual(['u_client', 'u_lawyer']);
+    as('admin');
+    const id = actions.openDirect('u_staff');
+    expect(id).toBe('r_direct');
+    expect(actions.openDirect('u_lawyer')).not.toBe('r_direct');
   });
 });

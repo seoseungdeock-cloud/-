@@ -1,6 +1,9 @@
 // 앱 상태 저장소. 서버가 붙기 전까지는 기기 메모리에만 있고 앱을 다시 열면 처음 상태로 돌아갑니다.
 // 서버 연결 시 이 파일의 동작들을 API 호출로 바꾸면 화면 코드는 그대로 둘 수 있습니다.
 import { getAi } from './ai';
+import { AI_HELP, needsAgentAccess, parseAiCommand, type AiCommand } from './commands';
+import { checkCompliance } from './compliance';
+import { similarity } from './text';
 import type { DecisionRecord } from './knowledge';
 import { opinionFor } from './knowledge';
 import { titleFrom, type ProgramRequest } from './builder';
@@ -9,7 +12,9 @@ import {
   applyBudget,
   CHANNEL_LABEL,
   DEFAULT_GUARDRAILS,
+  mostSimilar,
   planFromCommand,
+  rankPerformance,
   type Channel,
   type ContentItem,
   type Performance,
@@ -18,7 +23,7 @@ import {
 import { summarizeMeeting, type MeetingNotes } from './meeting';
 import { findLawyer } from './offices';
 import { aiAnswerLevel, canCreateRoom, canUseAgents, type RoomCheck } from './rooms';
-import { refreshTemplate, type DataRow, type ImageTemplate } from './templates';
+import { latest, parseRows, refreshTemplate, type DataRow, type ImageTemplate } from './templates';
 import {
   AI_SENDER,
   SYSTEM_SENDER,
@@ -55,9 +60,9 @@ const T0 = '2026-10-13T09:00:00.000Z';
 
 export function initialState(): State {
   const users: User[] = [
-    { id: 'u_admin', nickname: '승덕', role: 'admin', agentAccess: true, membership: 'basic' },
-    { id: 'u_staff', nickname: '사무국 직원', role: 'staff', officeId: 'of_seoul', agentAccess: false, membership: 'basic' },
-    { id: 'u_lawyer', nickname: '샘플 변호사 A', role: 'lawyer', officeId: 'of_seoul', agentAccess: false, membership: 'basic' },
+    { id: 'u_admin', nickname: '승덕', role: 'admin', firm: '대륜', agentAccess: true, membership: 'basic' },
+    { id: 'u_staff', nickname: '사무국 직원', role: 'staff', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic' },
+    { id: 'u_lawyer', nickname: '샘플 변호사 A', role: 'lawyer', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic' },
     { id: 'u_client', nickname: '하늘', role: 'client', agentAccess: false, membership: 'basic' },
   ];
   // 개발용 계정 (서버 연결 시 백오피스에서 실제 계정으로 교체)
@@ -159,6 +164,106 @@ function updateRoom(roomId: string, fn: (r: Room) => Room) {
   set((s) => ({ rooms: s.rooms.map((r) => (r.id === roomId ? fn(r) : r)) }));
 }
 
+/** 이 방에서 마지막 회의 정리 이후 사람들이 나눈 대화를 회의록으로 만듭니다. */
+function roomTranscript(roomId: string): string {
+  const msgs = state.messages.filter((m) => m.roomId === roomId);
+  let start = 0;
+  msgs.forEach((m, i) => {
+    if (m.kind === 'ai' && m.text.startsWith('회의 정리')) start = i + 1;
+  });
+  return msgs
+    .slice(start)
+    .filter((m) => m.kind === 'text' && !/@ai\b/i.test(m.text))
+    .map((m) => `${userById(m.senderId)?.nickname ?? m.senderId}: ${m.text}`)
+    .join('\n');
+}
+
+function planText(p: Plan): string {
+  return [
+    `마케팅 계획 (${p.status})`,
+    ...p.steps.map((st) => `· ${st.kind === 'budget' ? `${CHANNEL_LABEL[st.channel]} 예산 ${st.changePct > 0 ? '+' : ''}${st.changePct}%` : `${CHANNEL_LABEL[st.channel]} '${st.topic}' 콘텐츠 ${st.count}건`}`),
+    ...p.warnings.map((w) => `⚠ ${w}`),
+    ...(p.status === '승인 대기' && p.steps.length ? ['"@AI 승인" 또는 "@AI 반려"로 답해 주세요.'] : []),
+  ].join('\n');
+}
+
+function runCommand(roomId: string, cmd: AiCommand): string {
+  switch (cmd.kind) {
+    case 'help':
+      return AI_HELP;
+    case 'meeting': {
+      const transcript = cmd.arg || roomTranscript(roomId);
+      if (!transcript.trim()) return '정리할 대화가 없습니다.';
+      const notes = summarizeMeeting(transcript);
+      set((s) => ({ meetingNotes: { ...s.meetingNotes, [roomId]: notes } }));
+      const today = nowIso().slice(0, 10);
+      const records = notes.decisions.map((d) => ({ id: newId('d'), date: today, topic: d.slice(0, 30), decision: d }));
+      set((s) => ({ decisions: [...records, ...s.decisions] }));
+      return meetingText(notes);
+    }
+    case 'opinion': {
+      if (!cmd.arg) return '안건을 함께 적어 주세요. 예: @AI 의견 검색광고 예산 늘리기';
+      const op = opinionFor(state.decisions, cmd.arg);
+      return [`의견: ${op.stance}`, ...op.reasons.map((r) => `· ${r}`)].join('\n');
+    }
+    case 'program': {
+      if (!cmd.arg) return '만들 도구를 설명해 주세요. 예: @AI 프로그램 기일표 만들어주는 도구';
+      actions.requestProgram(cmd.arg);
+      return `프로그램 요청을 받았습니다: ${titleFrom(cmd.arg)} (${getAi().connected ? '생성 중' : 'AI 연결 대기'})`;
+    }
+    case 'image': {
+      const [first, ...rest] = cmd.arg.split('\n');
+      const t =
+        state.templates
+          .map((x) => ({ x, score: similarity(first, x.name) }))
+          .sort((a, b) => b.score - a.score)[0]?.x ?? state.templates[0];
+      if (!t) return '저장된 자료가 없습니다.';
+      const rows = parseRows(rest.join('\n'));
+      if (rows.length) actions.refreshTemplate(t.id, rows);
+      const cur = latest(state.templates.find((x) => x.id === t.id)!);
+      return [`${t.name} (${cur.at}${rows.length ? ', 최신 데이터로 다시 만듦' : ''})`, ...cur.rows.map((r) => `· ${r.label} ${r.value}${t.unit}`)].join('\n');
+    }
+    case 'marketing': {
+      if (!cmd.arg) return '지시를 함께 적어 주세요. 예: @AI 마케팅 홈페이지 이혼 콘텐츠 5건, 구글 예산 20% 증액';
+      return planText(actions.planCommand(cmd.arg));
+    }
+    case 'approve':
+    case 'reject': {
+      const p = state.plans.find((x) => x.status === '승인 대기');
+      if (!p) return '승인을 기다리는 마케팅 계획이 없습니다.';
+      if (cmd.kind === 'reject') {
+        actions.rejectPlan(p.id);
+        return '계획을 반려했습니다.';
+      }
+      const r = actions.approvePlan(p.id);
+      return r.ok ? planText(state.plans.find((x) => x.id === p.id)!) : r.reason;
+    }
+    case 'check': {
+      if (!cmd.arg) return '점검할 원고를 함께 붙여 넣어 주세요.';
+      const issues = checkCompliance(cmd.arg);
+      const sim = mostSimilar(cmd.arg, state.contents);
+      return [
+        '광고 규정 점검',
+        ...(issues.length ? issues.map((i) => `· "${i.phrase}" — ${i.reason}`) : ['· 문제 표현 없음']),
+        sim ? `유사도: "${sim.item.title}"와 ${Math.round(sim.score * 100)}%${sim.score > 0.5 ? ' (중복 위험)' : ''}` : '',
+      ].filter(Boolean).join('\n');
+    }
+    case 'performance':
+      return ['성과 (문의 전환율 순)', ...rankPerformance(state.performance).map((r, i) => `${i + 1}. ${CHANNEL_LABEL[r.channel]} · ${r.topic} — 전환율 ${(r.rate * 100).toFixed(1)}%, 문의 ${r.inquiries}건`)].join('\n');
+    default:
+      return '';
+  }
+}
+
+function meetingText(notes: MeetingNotes): string {
+  return [
+    '회의 정리',
+    ...notes.summary.map((x) => `· ${x}`),
+    ...(notes.decisions.length ? ['결정사항', ...notes.decisions.map((d) => `· ${d}`)] : []),
+    ...(notes.actions.length ? ['할 일', ...notes.actions.map((a) => `· ${a.owner ? `[${a.owner}] ` : ''}${a.task}${a.due ? ` (${a.due})` : ''}`)] : []),
+  ].join('\n');
+}
+
 // ---- 사용자 ----
 export const actions = {
   // ---- 로그인 ----
@@ -176,14 +281,14 @@ export const actions = {
   },
 
   // ---- 백오피스: 계정 관리 (어드민 전용) ----
-  createAccount(input: { loginId: string; password: string; nickname: string; role: Role; officeId?: string }): RoomCheck {
+  createAccount(input: { loginId: string; password: string; nickname: string; role: Role; officeId?: string; firm?: string }): RoomCheck {
     if (me().role !== 'admin') return { ok: false, reason: '어드민만 계정을 만들 수 있습니다.' };
     const loginId = input.loginId.trim();
     if (!/^[a-zA-Z0-9._-]{3,30}$/.test(loginId)) return { ok: false, reason: '아이디는 영문·숫자 3~30자로 정해 주세요.' };
     if (state.accounts.some((a) => a.loginId === loginId)) return { ok: false, reason: '이미 쓰는 아이디입니다.' };
     if (input.password.length < 8) return { ok: false, reason: '비밀번호는 8자 이상이어야 합니다.' };
     if (!input.nickname.trim()) return { ok: false, reason: '이름을 입력해 주세요.' };
-    const user: User = { id: newId('u'), nickname: input.nickname.trim(), role: input.role, officeId: input.officeId, agentAccess: false, membership: 'basic' };
+    const user: User = { id: newId('u'), nickname: input.nickname.trim(), role: input.role, officeId: input.officeId, firm: input.role === 'client' ? undefined : input.firm?.trim() || '대륜', agentAccess: false, membership: 'basic' };
     const acc: Account = { userId: user.id, loginId, password: input.password, active: true, createdAt: nowIso() };
     set((s) => ({ users: [...s.users, user], accounts: [...s.accounts, acc] }));
     return { ok: true };
@@ -254,11 +359,20 @@ export const actions = {
     const room = state.rooms.find((r) => r.id === roomId);
     if (!room || !text.trim()) return;
     pushMessage(roomId, me().id, 'text', text.trim());
-    if (!/@ai\b|@AI/i.test(text)) return;
+    if (!/@ai\b/i.test(text)) return;
     const members = room.memberIds.map(userById).filter((u): u is User => !!u);
     const level = aiAnswerLevel(room, members);
     if (level === 'none') {
       pushMessage(roomId, SYSTEM_SENDER, 'system', '사건수행방에는 AI가 참여하지 않습니다. AI가 필요하면 AI 참여방을 따로 만들어 주세요.');
+      return;
+    }
+    const cmd = parseAiCommand(text);
+    if (cmd.kind !== 'chat') {
+      if (needsAgentAccess(cmd) && !canUseAgents(me())) {
+        pushMessage(roomId, AI_SENDER, 'ai', '이 기능은 어드민 허용이 필요합니다.');
+        return;
+      }
+      pushMessage(roomId, AI_SENDER, 'ai', runCommand(roomId, cmd));
       return;
     }
     const recent = state.messages.filter((m) => m.roomId === roomId).slice(-20).map((m) => `${m.senderId}: ${m.text}`).join('\n');
@@ -296,6 +410,39 @@ export const actions = {
     return { ok: true, roomId: room.id };
   },
 
+  /** 대시보드에서 바로 수임 요청: 사건방이 곧바로 열립니다. */
+  requestRetain(lawyerId: string, field: string, summary: string): RoomCheck & { roomId?: string } {
+    const lawyer = findLawyer(lawyerId);
+    if (!lawyer) return { ok: false, reason: '변호사 정보를 찾을 수 없습니다.' };
+    const client = me();
+    const lawyerUser = state.lawyerAccounts[lawyerId];
+    const title = `${field || lawyer.fields[0] || '사건'} · ${lawyer.name}`;
+    const room: Room = {
+      id: newId('r'),
+      kind: 'case',
+      mode: 'ai',
+      title,
+      memberIds: [client.id, ...(lawyerUser ? [lawyerUser] : [])],
+      createdBy: client.id,
+      createdAt: nowIso(),
+      officeId: lawyer.office.id,
+      caseInfo: { title, field: field || lawyer.fields[0] || '', stage: '수임', deadlines: [], documents: [], costs: [], progress: [{ id: newId('p'), at: nowIso(), note: '수임 요청' }] },
+    };
+    set((s) => ({ rooms: [room, ...s.rooms] }));
+    pushMessage(room.id, SYSTEM_SENDER, 'system', `${lawyer.name} 변호사에게 수임을 요청했습니다. 이 사건방에서 진행 상황을 함께 봅니다.`);
+    if (summary.trim()) pushMessage(room.id, client.id, 'text', summary.trim());
+    return { ok: true, roomId: room.id };
+  },
+
+  /** 주소록에서 1:1 대화 열기 (있으면 기존 방) */
+  openDirect(otherId: string): string {
+    const my = me().id;
+    const existing = state.rooms.find((r) => r.kind === 'direct' && r.memberIds.length === 2 && r.memberIds.includes(my) && r.memberIds.includes(otherId));
+    if (existing) return existing.id;
+    const res = actions.createRoom({ kind: 'direct', mode: 'private', title: '', memberIds: [otherId] });
+    return res.roomId!;
+  },
+
   /** 상담방을 사건방으로 올립니다. 담당 변호사가 방에 있어야 합니다. */
   promoteToCase(roomId: string, title: string, field: string): RoomCheck {
     const room = state.rooms.find((r) => r.id === roomId);
@@ -331,18 +478,7 @@ export const actions = {
   // ---- 경영 에이전트 ----
   summarizeMeeting(roomId: string, transcript: string): RoomCheck {
     if (!canUseAgents(me())) return { ok: false, reason: '어드민이 허용한 사용자만 쓸 수 있습니다.' };
-    const notes = summarizeMeeting(transcript);
-    set((s) => ({ meetingNotes: { ...s.meetingNotes, [roomId]: notes } }));
-    const lines = [
-      '회의 정리',
-      ...notes.summary.map((x) => `· ${x}`),
-      ...(notes.decisions.length ? ['결정사항', ...notes.decisions.map((d) => `· ${d}`)] : []),
-      ...(notes.actions.length ? ['할 일', ...notes.actions.map((a) => `· ${a.owner ? `[${a.owner}] ` : ''}${a.task}${a.due ? ` (${a.due})` : ''}`)] : []),
-    ];
-    pushMessage(roomId, AI_SENDER, 'ai', lines.join('\n'));
-    const today = nowIso().slice(0, 10);
-    const newRecords = notes.decisions.map((d) => ({ id: newId('d'), date: today, topic: d.slice(0, 30), decision: d }));
-    set((s) => ({ decisions: [...newRecords, ...s.decisions] }));
+    pushMessage(roomId, AI_SENDER, 'ai', runCommand(roomId, { kind: 'meeting', arg: transcript }));
     return { ok: true };
   },
 

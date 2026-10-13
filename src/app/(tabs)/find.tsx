@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
@@ -15,9 +15,11 @@ const SORTS: { key: LawyerFilter['sort']; label: string }[] = [
 ];
 
 export default function FindScreen() {
+  const params = useLocalSearchParams<{ field?: string }>();
+  const fromHome = params.field && !allFields().includes(params.field) ? params.field.split('·')[0] : '';
   const [regionCode, setRegion] = useState<string>();
-  const [field, setField] = useState<string>();
-  const [keyword, setKeyword] = useState('');
+  const [field, setField] = useState<string | undefined>(params.field && allFields().includes(params.field) ? params.field : undefined);
+  const [keyword, setKeyword] = useState(fromHome);
   const [sort, setSort] = useState<LawyerFilter['sort']>('career');
   const rows = useMemo(() => searchLawyers({ regionCode, field, keyword, sort }), [regionCode, field, keyword, sort]);
   const counts = useMemo(() => officeCountByRegion(), []);

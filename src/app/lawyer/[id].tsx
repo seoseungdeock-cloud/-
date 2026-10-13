@@ -10,15 +10,15 @@ import { Badge, Button, Card, Chip, Chips, Empty, Input, ModeBanner, Notice, Scr
 import { space } from '@/ui/theme';
 
 export default function LawyerScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const l = findLawyer(id);
-  const [summary, setSummary] = useState('');
+  const params = useLocalSearchParams<{ id: string; summary?: string; field?: string }>();
+  const l = findLawyer(params.id);
+  const [summary, setSummary] = useState(params.summary ?? '');
   const [mode, setMode] = useState<RoomMode>('ai');
   const [error, setError] = useState<string>();
   if (!l) return <Screen title="변호사" back><Empty text="정보를 찾을 수 없습니다." /></Screen>;
 
-  const submit = () => {
-    const res = actions.requestConsult(l.id, summary, mode);
+  const submit = (kind: 'consult' | 'retain') => {
+    const res = kind === 'consult' ? actions.requestConsult(l.id, summary, mode) : actions.requestRetain(l.id, params.field ?? '', summary);
     if (!res.ok) return setError(res.reason);
     router.replace({ pathname: '/room/[id]', params: { id: res.roomId! } });
   };
@@ -38,7 +38,7 @@ export default function LawyerScreen() {
         <Sub>{regionName(l.office.regionCode)} · {l.office.address}</Sub>
         <Sub>{l.office.phone}</Sub>
       </Section>
-      <Section title="상담 신청">
+      <Section title="상담·수임">
         <Input label="어떤 일인지 짧게 적어 주세요 (선택)" multiline value={summary} onChangeText={setSummary} placeholder="예: 이혼 소송을 준비 중입니다" />
         <Sub>상담방 방식</Sub>
         <Chips>
@@ -48,7 +48,10 @@ export default function LawyerScreen() {
         </Chips>
         <View style={{ height: space.md }} />
         {error ? <Notice text={error} /> : null}
-        <Button label="상담 신청하기" onPress={submit} />
+        <View style={{ gap: space.sm }}>
+          <Button label="상담 신청하기" onPress={() => submit('consult')} />
+          <Button label="바로 수임 요청하기" kind="soft" onPress={() => submit('retain')} />
+        </View>
       </Section>
     </Screen>
   );

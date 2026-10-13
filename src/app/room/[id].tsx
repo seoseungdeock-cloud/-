@@ -77,7 +77,7 @@ export default function RoomScreen() {
             <TextInput
               value={text}
               onChangeText={setText}
-              placeholder={aiCanJoin(room) ? '메시지 입력 · @AI 로 AI 호출' : '메시지 입력'}
+              placeholder={aiCanJoin(room) ? '메시지 입력 · @AI 도움말' : '메시지 입력'}
               placeholderTextColor={c.faint}
               multiline
               onSubmitEditing={send}

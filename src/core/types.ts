@@ -7,6 +7,7 @@ export type User = {
   nickname: string; // 평소에는 닉네임(익명)으로만 보입니다
   role: Role;
   officeId?: string; // 변호사·직원이 소속된 사무소
+  firm?: string; // 소속 법무법인 (주소록 범위)
   /** 경영 에이전트 접근 권한. 어드민이 허용합니다. */
   agentAccess: boolean;
   membership: 'basic' | 'rightnow';

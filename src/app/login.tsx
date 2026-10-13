@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { actions } from '@/core/store';
+import { actions, me } from '@/core/store';
 import { Button, Input, Notice, Sub, T } from '@/ui/kit';
 import { MAX_WIDTH, space, useColors } from '@/ui/theme';
 
@@ -16,7 +16,7 @@ export default function LoginScreen() {
   const submit = () => {
     const res = actions.login(loginId, password);
     if (!res.ok) return setError(res.reason);
-    router.replace('/');
+    router.replace(me().role === 'client' ? '/home' : '/');
   };
 
   return (

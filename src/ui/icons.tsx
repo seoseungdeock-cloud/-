@@ -2,12 +2,19 @@
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
 type Props = { name: IconName; color: string; size?: number };
-export type IconName = 'chat' | 'case' | 'map' | 'work' | 'me' | 'plus' | 'lock' | 'spark' | 'back' | 'send' | 'chevron';
+export type IconName = 'home' | 'search' | 'chat' | 'case' | 'map' | 'work' | 'me' | 'plus' | 'lock' | 'spark' | 'back' | 'send' | 'chevron';
 
 export function Icon({ name, color, size = 24 }: Props) {
   const p = { stroke: color, strokeWidth: 1.8, fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
+      {name === 'home' && <Path {...p} d="M4 11l8-7 8 7v9h-5v-6H9v6H4z" />}
+      {name === 'search' && (
+        <>
+          <Circle {...p} cx={11} cy={11} r={6.5} />
+          <Path {...p} d="M16 16l4.5 4.5" />
+        </>
+      )}
       {name === 'chat' && <Path {...p} d="M4 5h16v11H9l-5 4z" />}
       {name === 'case' && (
         <>

@@ -21,7 +21,7 @@ export default function BackofficeScreen() {
   const user = useMe();
   const { width } = useWindowDimensions();
   const [msg, setMsg] = useState<{ text: string; ok: boolean }>();
-  const [form, setForm] = useState({ loginId: '', password: '', nickname: '', role: 'client' as Role, officeId: '' });
+  const [form, setForm] = useState({ loginId: '', password: '', nickname: '', role: 'client' as Role, officeId: '', firm: '대륜' });
   const [resetFor, setResetFor] = useState<string>();
   const [newPw, setNewPw] = useState('');
   const [query, setQuery] = useState('');
@@ -51,6 +51,7 @@ export default function BackofficeScreen() {
         </Chips>
         {form.role === 'lawyer' || form.role === 'staff' ? (
           <>
+            <Input label="소속 법무법인" value={form.firm} onChangeText={(firm) => setForm((f) => ({ ...f, firm }))} />
             <Sub>소속 사무소</Sub>
             <Chips>
               {OFFICES.map((o) => <Chip key={o.id} label={o.name} active={form.officeId === o.id} onPress={() => setForm((f) => ({ ...f, officeId: o.id }))} />)}
@@ -62,7 +63,7 @@ export default function BackofficeScreen() {
           onPress={() => {
             const r = actions.createAccount({ ...form, officeId: form.officeId || undefined });
             report(r, `${form.loginId} 계정을 만들었습니다.`);
-            if (r.ok) setForm({ loginId: '', password: '', nickname: '', role: 'client', officeId: '' });
+            if (r.ok) setForm({ loginId: '', password: '', nickname: '', role: 'client', officeId: '', firm: '대륜' });
           }}
         />
       </Section>
