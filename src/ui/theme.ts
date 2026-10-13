@@ -20,6 +20,8 @@ const light = {
   bubbleMine: '#C8102E',
   bubbleMineText: '#FFFFFF',
   bubbleOther: '#F2F4F6',
+  mark: '#FFE45C', // 검색 형광펜
+  markText: '#191F28',
 };
 
 const dark: typeof light = {
@@ -41,6 +43,8 @@ const dark: typeof light = {
   bubbleMine: '#B81428',
   bubbleMineText: '#FFFFFF',
   bubbleOther: '#1C2026',
+  mark: '#FFE45C',
+  markText: '#191F28',
 };
 
 export type Colors = typeof light;

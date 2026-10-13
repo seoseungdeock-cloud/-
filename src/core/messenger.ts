@@ -183,29 +183,59 @@ export function dayLabel(iso: string): string {
   return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 ${WEEKDAYS[d.getDay()]}요일`;
 }
 
-/** 검색어가 날짜면 날짜 키로: '10월 8일', '10/8', '10.8', '2026-10-08', '2026년 10월 8일', '오늘', '어제' */
-export function parseDateQuery(q: string, now = new Date()): string | undefined {
-  const t = q.trim();
-  if (t === '오늘') return dayKey(now.toISOString());
-  if (t === '어제') return dayKey(new Date(now.getTime() - 86_400_000).toISOString());
-  let m = /^(\d{4})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})\s*일?$/.exec(t);
-  if (m) return valid(+m[1], +m[2], +m[3]);
-  m = /^(\d{1,2})\s*[./월]\s*(\d{1,2})\s*일?$/.exec(t);
-  if (m) return valid(now.getFullYear(), +m[1], +m[2]);
-  return undefined;
+/** 메시지가 있는 날짜들 (캘린더에서 고를 수 있는 날) */
+export function messageDays(messages: Message[]): Set<string> {
+  return new Set(messages.filter((m) => m.senderId !== SYSTEM_SENDER).map((m) => dayKey(m.at)));
 }
 
-function valid(y: number, mo: number, d: number): string | undefined {
-  if (mo < 1 || mo > 12 || d < 1 || d > 31) return undefined;
-  return `${y}-${pad(mo)}-${pad(d)}`;
+/** 그날의 첫 메시지 */
+export function firstOfDay(messages: Message[], day: string): Message | undefined {
+  return messages.find((m) => dayKey(m.at) === day);
 }
 
-/** 대화 검색: 날짜면 그날의 대화, 아니면 내용 */
-export function searchMessages(messages: Message[], q: string, now = new Date()): Message[] {
+const searchable = (m: Message) => !m.recalled && m.senderId !== SYSTEM_SENDER;
+const textOf = (m: Message) => (m.bundle ? m.bundle.items.map((i) => i.text).join('\n') : m.text);
+
+/** 방 안 검색: 내용에 검색어가 있는 말풍선 (대화 순서) */
+export function searchMessages(messages: Message[], q: string): Message[] {
   const query = q.trim();
   if (!query) return [];
-  const day = parseDateQuery(query, now);
-  return messages.filter(
-    (m) => !m.recalled && m.senderId !== SYSTEM_SENDER && (day ? dayKey(m.at) === day : m.text.includes(query) || !!m.bundle?.items.some((i) => i.text.includes(query))),
-  );
+  return messages.filter((m) => searchable(m) && textOf(m).includes(query));
+}
+
+/** 형광펜 표시용으로 본문을 검색어 기준으로 나눕니다. */
+export function markParts(text: string, q: string): { text: string; mark: boolean }[] {
+  const query = q.trim();
+  if (!query) return [{ text, mark: false }];
+  const out: { text: string; mark: boolean }[] = [];
+  let at = 0;
+  for (let i = text.indexOf(query); i >= 0; i = text.indexOf(query, at)) {
+    if (i > at) out.push({ text: text.slice(at, i), mark: false });
+    out.push({ text: query, mark: true });
+    at = i + query.length;
+  }
+  if (at < text.length) out.push({ text: text.slice(at), mark: false });
+  return out;
+}
+
+export type FileHit = { room: Room; name: string; at: string };
+
+/** 대화 탭 전체 검색: 메시지방·멤버 이름 / 메시지 / 파일, 모두 최신순 */
+export function searchAll(q: string, userId: string, rooms: Room[], messages: Message[], users: User[]): { rooms: Room[]; messages: Message[]; files: FileHit[] } {
+  const query = q.trim();
+  if (!query) return { rooms: [], messages: [], files: [] };
+  const mine = rooms.filter((r) => r.memberIds.includes(userId));
+  const ids = new Set(mine.map((r) => r.id));
+  const name = (id: string) => users.find((u) => u.id === id)?.nickname ?? '';
+  const latest = (r: Room) => lastMessage(r, messages, userId)?.at ?? r.createdAt;
+  return {
+    rooms: mine.filter((r) => r.title.includes(query) || r.memberIds.some((id) => id !== userId && name(id).includes(query))).sort((a, b) => latest(b).localeCompare(latest(a))),
+    messages: messages
+      .filter((m) => ids.has(m.roomId) && searchable(m) && !m.deletedFor?.includes(userId) && textOf(m).includes(query))
+      .sort((a, b) => b.at.localeCompare(a.at)),
+    files: mine
+      .flatMap((room) => (room.caseInfo?.documents ?? []).map((d) => ({ room, name: d.name, at: d.addedAt })))
+      .filter((f) => f.name.includes(query))
+      .sort((a, b) => b.at.localeCompare(a.at)),
+  };
 }

@@ -3,13 +3,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 
-import { dayKey, displayName, lastReadAt, mentionQuery, notifyLevel, searchMessages, visibleMessages } from '@/core/messenger';
+import { dayKey, displayName, firstOfDay, lastReadAt, mentionQuery, messageDays, notifyLevel, searchMessages, visibleMessages } from '@/core/messenger';
 import { aiCanJoin, ROOM_KIND_LABEL } from '@/core/rooms';
 import { contactsFor } from '@/core/contacts';
 import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Message, type User } from '@/core/types';
 import { CasePanel } from '@/ui/case-panel';
-import { Bubble, ContactSheet, DayDivider, ForwardSheet, MessageMenu, NoticeBar, ReactionsSheet, ReadersSheet, RoomDrawer } from '@/ui/chat';
+import { Bubble, CalendarSheet, ContactSheet, DayDivider, ForwardSheet, MessageMenu, NoticeBar, ReactionsSheet, ReadersSheet, RoomDrawer } from '@/ui/chat';
 import { Icon } from '@/ui/icons';
 import { Avatar, Button, Empty, Input, ModeBadge, ModeBanner, Notice, Screen, Sub } from '@/ui/kit';
 import { roomTitle } from '@/ui/room-row';
@@ -34,7 +34,8 @@ function withDays(list: Item[]): Item[] {
 }
 
 export default function RoomScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // q·focus: 대화 탭 전체 검색에서 메시지를 눌러 들어온 경우
+  const { id, q, focus } = useLocalSearchParams<{ id: string; q?: string; focus?: string }>();
   const s = useApp();
   const user = useMe();
   const c = useColors();
@@ -52,7 +53,10 @@ export default function RoomScreen() {
   const [drawer, setDrawer] = useState(false);
   const [plus, setPlus] = useState(false);
   const [contactPick, setContactPick] = useState(false);
-  const [search, setSearch] = useState<string>();
+  const [search, setSearch] = useState<string | undefined>(q || undefined);
+  // 지금 보고 있는 검색 결과 (hits 안의 순서, 기본은 가장 최근)
+  const [cursor, setCursor] = useState(-1);
+  const [calendar, setCalendar] = useState(false);
   const [highlight, setHighlight] = useState<string>();
   const [toast, setToast] = useState('');
   const [promote, setPromote] = useState({ open: false, title: '', field: '', error: '' });
@@ -69,12 +73,38 @@ export default function RoomScreen() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  const query = search?.trim() ?? '';
+  const hits = useMemo(() => searchMessages(messages, query), [messages, query]);
+  const currentHit = hits[cursor];
+
   const items = useMemo<Item[]>(() => {
-    if (search?.trim()) return withDays(searchMessages(messages, search));
     const first = readSnapshot ? messages.findIndex((m) => m.at > readSnapshot && m.senderId !== user.id && m.senderId !== SYSTEM_SENDER) : -1;
     if (first <= 0) return withDays(messages);
     return withDays([...messages.slice(0, first), { id: '__unread', divider: 'unread' }, ...messages.slice(first)]);
-  }, [messages, readSnapshot, search, user.id]);
+  }, [messages, readSnapshot, user.id]);
+
+  const scrollTo = (itemId: string) => {
+    setTimeout(() => {
+      const index = items.findIndex((m) => m.id === itemId);
+      if (index >= 0) list.current?.scrollToIndex({ index, viewPosition: 0.4, animated: true });
+    }, 60);
+  };
+
+  // 검색어가 바뀌면 가장 최근 결과부터 (전체 검색에서 고른 메시지가 있으면 그것부터)
+  useEffect(() => {
+    if (!query) {
+      setCursor(-1);
+      return;
+    }
+    const at = focus ? hits.findIndex((m) => m.id === focus) : -1;
+    setCursor(at >= 0 ? at : hits.length - 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  useEffect(() => {
+    if (currentHit) scrollTo(currentHit.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentHit?.id]);
 
   if (!room) return <Screen title="대화" back><Empty text="방을 찾을 수 없습니다." /></Screen>;
   const members = room.memberIds.map((mid) => s.users.find((u) => u.id === mid)).filter((u): u is User => !!u);
@@ -96,12 +126,17 @@ export default function RoomScreen() {
   };
 
   const jump = (messageId: string) => {
-    setSearch(undefined);
     setHighlight(messageId);
-    setTimeout(() => {
-      const index = items.findIndex((m) => m.id === messageId);
-      if (index >= 0) list.current?.scrollToIndex({ index, viewPosition: 0.3, animated: true });
-    }, 50);
+    scrollTo(messageId);
+    setTimeout(() => setHighlight(undefined), 2000);
+  };
+
+  // 캘린더에서 고른 날의 첫 대화로
+  const jumpToDay = (day: string) => {
+    const m = firstOfDay(messages, day);
+    if (!m) return;
+    setHighlight(m.id);
+    scrollTo(`__day_${day}`);
     setTimeout(() => setHighlight(undefined), 2000);
   };
 
@@ -137,7 +172,6 @@ export default function RoomScreen() {
     </View>
   );
 
-  const results = items.filter((i) => !('divider' in i)).length;
   const togglePick = (mid: string) => setPicking((cur) => (cur ? (cur.includes(mid) ? cur.filter((x) => x !== mid) : [...cur, mid]) : cur));
 
   const right = picking ? (
@@ -147,7 +181,7 @@ export default function RoomScreen() {
   ) : (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
       {muted ? <Icon name="mute" color={c.faint} size={18} /> : null}
-      <Pressable accessibilityLabel="대화 검색" hitSlop={8} onPress={() => setSearch((q) => (q === undefined ? '' : undefined))}>
+      <Pressable accessibilityLabel="대화 검색" hitSlop={8} onPress={() => setSearch((cur) => (cur === undefined ? '' : undefined))}>
         <Icon name="search" color={search !== undefined ? c.accent : c.text} size={22} />
       </Pressable>
       <Pressable accessibilityLabel="대화방 메뉴" hitSlop={8} onPress={() => setDrawer(true)}>
@@ -162,9 +196,14 @@ export default function RoomScreen() {
     <Screen title={roomTitle(room)} back scroll={false} right={right}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={80}>
         {search !== undefined ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm }}>
-            <TextInput autoFocus value={search} onChangeText={setSearch} placeholder="내용 또는 날짜 (10월 8일)" placeholderTextColor={c.faint} style={[inputStyle, { paddingVertical: space.sm }]} />
-            {search.trim() ? <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.sub, flexShrink: 0 }}>{results}건</Text> : null}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm, backgroundColor: c.surface, borderRadius: radius.lg, paddingHorizontal: space.md }}>
+            <Icon name="search" color={c.faint} size={18} />
+            <TextInput autoFocus value={search} onChangeText={setSearch} placeholder="대화내용 검색" placeholderTextColor={c.faint} style={{ flex: 1, paddingVertical: space.sm + 2, color: c.text, fontSize: font.body, fontFamily: family.regular }} />
+            {search ? (
+              <Pressable accessibilityLabel="검색어 지우기" hitSlop={8} onPress={() => setSearch('')}>
+                <Icon name="close" color={c.faint} size={16} />
+              </Pressable>
+            ) : null}
           </View>
         ) : (
           <NoticeBar room={room} me={user} users={s.users} onJump={jump} />
@@ -173,10 +212,9 @@ export default function RoomScreen() {
           ref={list}
           data={items}
           keyExtractor={(m) => m.id}
-          ListHeaderComponent={search === undefined ? header : null}
-          ListEmptyComponent={search?.trim() ? <Empty text="검색 결과가 없습니다." /> : null}
+          ListHeaderComponent={header}
           onContentSizeChange={() => {
-            if (search === undefined && !highlight) list.current?.scrollToEnd({ animated: false });
+            if (!query && !highlight) list.current?.scrollToEnd({ animated: false });
           }}
           onScrollToIndexFailed={({ averageItemLength, index }) => list.current?.scrollToOffset({ offset: averageItemLength * index, animated: true })}
           renderItem={({ item }) =>
@@ -189,8 +227,7 @@ export default function RoomScreen() {
                 <View style={{ flex: 1, height: 1, backgroundColor: c.accent, opacity: 0.4 }} />
               </View>
             ) : (
-              <Pressable disabled={search === undefined || !!picking} onPress={() => jump(item.id)}>
-                <Bubble
+              <Bubble
                   m={item}
                   me={user}
                   room={room}
@@ -198,6 +235,8 @@ export default function RoomScreen() {
                   reads={s.reads}
                   messages={s.messages}
                   highlight={highlight === item.id}
+                  mark={query || undefined}
+                  current={currentHit?.id === item.id}
                   onReads={() => setReadsFor(item)}
                   onReactions={() => setReactFor(item)}
                   picking={!!picking && !item.recalled && item.senderId !== SYSTEM_SENDER}
@@ -205,7 +244,6 @@ export default function RoomScreen() {
                   onPick={() => togglePick(item.id)}
                   onLongPress={() => (isMember && item.senderId !== AI_SENDER && item.senderId !== BOT_SENDER ? setMenuFor(item) : undefined)}
                 />
-              </Pressable>
             )
           }
         />
@@ -214,7 +252,18 @@ export default function RoomScreen() {
             <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.bg }}>{toast}</Text>
           </View>
         ) : null}
-        {picking ? (
+        {search !== undefined ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm, borderTopWidth: 1, borderTopColor: c.line }}>
+            <Pressable accessibilityLabel="날짜로 찾기" hitSlop={8} onPress={() => setCalendar(true)} style={{ padding: space.sm }}>
+              <Icon name="calendar" color={c.text} size={24} />
+            </Pressable>
+            <Text style={{ flex: 1, textAlign: 'center', fontFamily: family.bold, fontSize: 16, color: c.text }}>
+              {query ? (hits.length ? `${hits.length - cursor}/${hits.length}` : '결과 없음') : ''}
+            </Text>
+            <SearchArrow dir="up" enabled={cursor > 0} onPress={() => setCursor((i) => i - 1)} />
+            <SearchArrow dir="down" enabled={cursor >= 0 && cursor < hits.length - 1} onPress={() => setCursor((i) => i + 1)} />
+          </View>
+        ) : picking ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: space.md, borderTopWidth: 1, borderTopColor: c.line }}>
             <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.text }}>{picking.length}개 선택</Text>
             <Pressable
@@ -320,8 +369,23 @@ export default function RoomScreen() {
       />
       <ReadersSheet m={readsFor} room={room} reads={s.reads} users={s.users} onClose={() => setReadsFor(undefined)} />
       <ReactionsSheet m={reactFor ? s.messages.find((x) => x.id === reactFor.id) : undefined} me={user} users={s.users} onClose={() => setReactFor(undefined)} />
+      {calendar ? <CalendarSheet open days={messageDays(messages)} onClose={() => setCalendar(false)} onPick={jumpToDay} /> : null}
       <ContactSheet open={contactPick} contacts={shareable} onClose={() => setContactPick(false)} onPick={(u) => actions.shareContact(room.id, u.id)} />
       <RoomDrawer open={drawer} onClose={() => setDrawer(false)} room={room} me={user} users={s.users} messages={messages} onError={setToast} />
     </Screen>
+  );
+}
+
+/** 검색 결과 이동: 위는 이전(오래된) 결과, 아래는 다음(최근) 결과 */
+function SearchArrow({ dir, enabled, onPress }: { dir: 'up' | 'down'; enabled: boolean; onPress: () => void }) {
+  const c = useColors();
+  return (
+    <Pressable
+      accessibilityLabel={dir === 'up' ? '이전 결과' : '다음 결과'}
+      disabled={!enabled}
+      onPress={onPress}
+      style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: dir === 'up' ? '-90deg' : '90deg' }] }}>
+      <Icon name="chevron" color={enabled ? c.text : c.line} size={20} />
+    </Pressable>
   );
 }

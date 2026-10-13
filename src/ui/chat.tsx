@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 
-import { dayLabel, displayName, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
+import { dayLabel, displayName, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
 import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
 import { Icon, type IconName } from './icons';
@@ -19,13 +19,24 @@ function nameOf(users: User[], id: string): string {
   return users.find((u) => u.id === id)?.nickname ?? '알 수 없음';
 }
 
-/** 본문: @멘션은 강조 */
-function Body({ text, names, color, mention }: { text: string; names: string[]; color: string; mention: string }) {
+/** 본문: @멘션은 강조, 검색어는 형광펜 */
+function Body({ text, names, color, mention, mark }: { text: string; names: string[]; color: string; mention: string; mark?: string }) {
+  const c = useColors();
   return (
     <Text style={{ fontFamily: family.regular, fontSize: 16, lineHeight: 23, color }}>
       {splitMentions(text, names).map((p, i) => (
         <Text key={i} style={p.mention ? { color: mention, fontFamily: family.semibold } : undefined}>
-          {p.text}
+          {mark
+            ? markParts(p.text, mark).map((q, j) =>
+                q.mark ? (
+                  <Text key={j} style={{ backgroundColor: c.mark, color: c.markText }}>
+                    {q.text}
+                  </Text>
+                ) : (
+                  q.text
+                ),
+              )
+            : p.text}
         </Text>
       ))}
     </Text>
@@ -46,6 +57,8 @@ export function Bubble({
   picking,
   picked,
   onPick,
+  mark,
+  current,
 }: {
   m: Message;
   me: User;
@@ -61,6 +74,10 @@ export function Bubble({
   picking?: boolean;
   picked?: boolean;
   onPick?: () => void;
+  /** 방 안 검색어 (형광펜) */
+  mark?: string;
+  /** 지금 보고 있는 검색 결과 */
+  current?: boolean;
 }) {
   const c = useColors();
   if (m.senderId === SYSTEM_SENDER) {
@@ -121,8 +138,8 @@ export function Bubble({
               flexShrink: 1,
               width: m.bundle ? 250 : undefined,
               backgroundColor: card ? c.bg : mine ? c.bubbleMine : isAi ? c.aiSoft : isBot ? c.accentSoft : c.bubbleOther,
-              borderWidth: card ? 1 : 0,
-              borderColor: c.line,
+              borderWidth: current ? 2 : card ? 1 : 0,
+              borderColor: current ? c.mark : c.line,
               borderRadius: radius.lg,
               paddingHorizontal: space.md,
               paddingVertical: space.sm + 2,
@@ -137,11 +154,11 @@ export function Bubble({
               </View>
             ) : null}
             {m.bundle ? (
-              <BundleCard m={m} users={users} />
+              <BundleCard m={m} users={users} mark={mark} />
             ) : m.forwardOf ? (
               <>
                 <Text style={{ fontFamily: family.semibold, fontSize: 12, color: c.sub }}>전달 · {nameOf(users, m.forwardOf.senderId)}</Text>
-                <Body text={m.forwardOf.text} names={names} color={c.text} mention={c.accent} />
+                <Body text={m.forwardOf.text} names={names} color={c.text} mention={c.accent} mark={mark} />
               </>
             ) : contact ? (
               <Pressable onPress={() => router.push({ pathname: '/contact/[id]', params: { id: contact.id } })} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minWidth: 200 }}>
@@ -153,7 +170,7 @@ export function Bubble({
                 <Icon name="chevron" color={c.faint} size={18} />
               </Pressable>
             ) : (
-              <Body text={m.text} names={names} color={fg} mention={mine ? c.bubbleMineText : c.accent} />
+              <Body text={m.text} names={names} color={fg} mention={mine ? c.bubbleMineText : c.accent} mark={mark} />
             )}
           </Pressable>
           {meta}
@@ -187,7 +204,7 @@ export function Bubble({
 }
 
 /** 묶어서 전달한 메시지: 미리보기 2줄 + '메시지 상세보기' */
-function BundleCard({ m, users }: { m: Message; users: User[] }) {
+function BundleCard({ m, users, mark }: { m: Message; users: User[]; mark?: string }) {
   const c = useColors();
   const b = m.bundle!;
   return (
@@ -197,7 +214,16 @@ function BundleCard({ m, users }: { m: Message; users: User[] }) {
       <View style={{ height: 1, backgroundColor: c.line }} />
       {b.items.slice(0, 2).map((i, k) => (
         <Text key={k} numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 14, color: c.text }}>
-          {nameOf(users, i.senderId)}: {i.text.split('\n')[0]}
+          {nameOf(users, i.senderId)}:{' '}
+          {markParts(i.text.split('\n')[0], mark ?? '').map((q, j) =>
+            q.mark ? (
+              <Text key={j} style={{ backgroundColor: c.mark, color: c.markText }}>
+                {q.text}
+              </Text>
+            ) : (
+              q.text
+            ),
+          )}
         </Text>
       ))}
       {b.items.length > 2 ? <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>외 {b.items.length - 2}개</Text> : null}
@@ -622,5 +648,83 @@ function DrawerRow({ icon, label, onPress, danger }: { icon: IconName; label: st
       <Icon name={icon} color={danger ? c.accent : c.text} size={20} />
       <Text style={{ fontFamily: family.semibold, fontSize: 15, color: danger ? c.accent : c.text }}>{label}</Text>
     </Pressable>
+  );
+}
+
+const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+const keyOf = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+/** 날짜로 대화 찾기: 대화가 있는 날만 고를 수 있습니다. */
+export function CalendarSheet({ open, days, onClose, onPick }: { open: boolean; days: Set<string>; onClose: () => void; onPick: (day: string) => void }) {
+  const c = useColors();
+  const latest = [...days].sort().at(-1);
+  const start = latest ? new Date(`${latest}T00:00:00`) : new Date();
+  const [month, setMonth] = useState({ y: start.getFullYear(), m: start.getMonth() });
+  const [picked, setPicked] = useState<string | undefined>(latest);
+  const first = new Date(month.y, month.m, 1).getDay();
+  const count = new Date(month.y, month.m + 1, 0).getDate();
+  const cells = [...Array(first).fill(0), ...Array.from({ length: count }, (_, i) => i + 1)];
+  const sorted = [...days].sort();
+  const monthKey = (y: number, m: number) => `${y}-${String(m + 1).padStart(2, '0')}`;
+  const hasBefore = sorted.some((d) => d.slice(0, 7) < monthKey(month.y, month.m));
+  const hasAfter = sorted.some((d) => d.slice(0, 7) > monthKey(month.y, month.m));
+  const move = (delta: number) => setMonth(({ y, m }) => ({ y: m + delta < 0 ? y - 1 : m + delta > 11 ? y + 1 : y, m: (m + delta + 12) % 12 }));
+  const NavBtn = ({ dir, enabled }: { dir: -1 | 1; enabled: boolean }) => (
+    <Pressable
+      accessibilityLabel={dir < 0 ? '이전 달' : '다음 달'}
+      disabled={!enabled}
+      onPress={() => move(dir)}
+      style={{ width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: enabled ? c.line : 'transparent', alignItems: 'center', justifyContent: 'center', transform: [{ rotate: dir < 0 ? '180deg' : '0deg' }] }}>
+      <Icon name="chevron" color={enabled ? c.text : c.line} size={18} />
+    </Pressable>
+  );
+  return (
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable accessibilityLabel="닫기" onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', padding: space.lg }}>
+        <Pressable onPress={() => undefined} style={{ width: '100%', maxWidth: 360, backgroundColor: c.bg, borderRadius: radius.lg, padding: space.lg, gap: space.md }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <NavBtn dir={-1} enabled={hasBefore} />
+            <Text style={{ fontFamily: family.bold, fontSize: 18, color: c.text }}>
+              {month.y}년 {month.m + 1}월
+            </Text>
+            <NavBtn dir={1} enabled={hasAfter} />
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {WEEK.map((w, i) => (
+              <View key={w} style={{ width: `${100 / 7}%`, alignItems: 'center', paddingVertical: 6 }}>
+                <Text style={{ fontFamily: family.semibold, fontSize: 13, color: i === 0 ? c.accent : c.sub }}>{w}</Text>
+              </View>
+            ))}
+            {cells.map((d, i) => {
+              if (!d) return <View key={`e${i}`} style={{ width: `${100 / 7}%`, height: 42 }} />;
+              const k = keyOf(month.y, month.m, d);
+              const on = days.has(k);
+              const sel = picked === k;
+              return (
+                <Pressable key={k} accessibilityLabel={`${month.m + 1}월 ${d}일`} disabled={!on} onPress={() => setPicked(k)} style={{ width: `${100 / 7}%`, height: 42, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: sel ? c.accent : 'transparent' }}>
+                    <Text style={{ fontFamily: on ? family.bold : family.regular, fontSize: 15, color: sel ? '#FFFFFF' : on ? c.text : c.line }}>{d}</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: space.xl }}>
+            <Pressable onPress={onClose} hitSlop={8}>
+              <Text style={{ fontFamily: family.semibold, fontSize: 16, color: c.sub }}>취소</Text>
+            </Pressable>
+            <Pressable
+              hitSlop={8}
+              disabled={!picked}
+              onPress={() => {
+                if (picked) onPick(picked);
+                onClose();
+              }}>
+              <Text style={{ fontFamily: family.bold, fontSize: 16, color: c.accent }}>확인</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }

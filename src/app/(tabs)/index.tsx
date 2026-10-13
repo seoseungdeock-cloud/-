@@ -1,16 +1,16 @@
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { contactsFor } from '@/core/contacts';
-import { externalContacts, isHidden, sortRooms, unreadCount, searchDirectory, type DirectoryHit } from '@/core/messenger';
+import { externalContacts, isHidden, markParts, searchAll, sortRooms, unreadCount, searchDirectory, type DirectoryHit } from '@/core/messenger';
 import { actions } from '@/core/store';
-import type { Room } from '@/core/types';
+import type { Message, Room } from '@/core/types';
 import { ContactRow, OrgBrowser, UnderlineTabs } from '@/ui/contacts';
 import { Icon } from '@/ui/icons';
 import { Avatar, Empty } from '@/ui/kit';
-import { roomTitle, RoomRow } from '@/ui/room-row';
+import { chatTime, roomTitle, RoomRow } from '@/ui/room-row';
 import { family, font, MAX_WIDTH, radius, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 
@@ -156,13 +156,8 @@ function RoomsPanel({ query, onSelecting }: { query: string; onSelecting: (v: bo
   const visible = useMemo(() => mine.filter((r) => !isHidden(r, user.id, s.messages)), [mine, user.id, s.messages]);
   const dots = Object.fromEntries(FILTERS.map(([k]) => [k, visible.some((r) => TEST[k](r) && unreadCount(r, user.id, s.messages, s.reads) > 0)])) as Record<RoomFilter, boolean>;
   const rooms = useMemo(() => {
-    const list = visible.filter((r) => {
-      if (!TEST[filter](r)) return false;
-      if (!query) return true;
-      return r.title.includes(query) || s.messages.some((m) => m.roomId === r.id && !m.recalled && m.text.includes(query));
-    });
-    return sortRooms(list, user.id, s.messages);
-  }, [visible, filter, query, s.messages, user.id]);
+    return sortRooms(visible.filter((r) => TEST[filter](r)), user.id, s.messages);
+  }, [visible, filter, s.messages, user.id]);
 
   const toggle = (id: string) => setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   const apply = (fn: (id: string) => unknown) => {
@@ -171,6 +166,8 @@ function RoomsPanel({ query, onSelecting }: { query: string; onSelecting: (v: bo
   };
   const allPinned = selected.every((id) => mine.find((r) => r.id === id)?.pinnedBy?.includes(user.id));
   const allMuted = selected.every((id) => mine.find((r) => r.id === id)?.notify?.[user.id] === 'off');
+
+  if (query) return <SearchResults query={query} />;
 
   return (
     <View style={{ flex: 1 }}>
@@ -195,7 +192,7 @@ function RoomsPanel({ query, onSelecting }: { query: string; onSelecting: (v: bo
         {rooms.length ? (
           rooms.map((r) => <RoomRow key={r.id} room={r} selecting={selecting} selected={selected.includes(r.id)} onToggle={() => toggle(r.id)} />)
         ) : (
-          <Empty text={query ? '검색 결과가 없습니다.' : '대화가 없습니다.'} />
+          <Empty text="대화가 없습니다." />
         )}
       </ScrollView>
       {selecting ? (
@@ -220,5 +217,88 @@ function BarButton({ icon, label, onPress }: { icon: 'pin' | 'mute' | 'hide' | '
       <Icon name={icon} color={c.accent} size={22} />
       <Text style={{ fontFamily: family.semibold, fontSize: 12, color: c.sub }}>{label}</Text>
     </Pressable>
+  );
+}
+
+// 대화 탭 전체 검색: 메시지방·멤버 이름 / 메시지 / 파일 (각각 접기, 최신순)
+function SearchResults({ query }: { query: string }) {
+  const s = useApp();
+  const user = useMe();
+  const c = useColors();
+  const [closed, setClosed] = useState<Record<string, boolean>>({});
+  const res = useMemo(() => searchAll(query, user.id, s.rooms, s.messages, s.users), [query, user.id, s.rooms, s.messages, s.users]);
+  const roomOf = (id: string) => s.rooms.find((r) => r.id === id);
+  const sender = (m: Message) => s.users.find((u) => u.id === m.senderId)?.nickname ?? '';
+  const Mark = ({ text, style }: { text: string; style: object }) => (
+    <Text numberOfLines={2} style={style}>
+      {markParts(text, query).map((p, i) =>
+        p.mark ? (
+          <Text key={i} style={{ backgroundColor: c.mark, color: c.markText }}>
+            {p.text}
+          </Text>
+        ) : (
+          p.text
+        ),
+      )}
+    </Text>
+  );
+  const Section = ({ k, title, count, children }: { k: string; title: string; count: number; children: ReactNode }) => (
+    <View style={{ borderBottomWidth: 1, borderBottomColor: c.line }}>
+      <Pressable accessibilityLabel={`${title} 접기`} onPress={() => setClosed((x) => ({ ...x, [k]: !x[k] }))} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: space.md }}>
+        <Text style={{ fontFamily: family.bold, fontSize: 16, color: c.text }}>{title}</Text>
+        <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.accent, marginLeft: 6 }}>{count}</Text>
+        <View style={{ marginLeft: 'auto', transform: [{ rotate: closed[k] ? '90deg' : '-90deg' }] }}>
+          <Icon name="chevron" color={c.faint} size={18} />
+        </View>
+      </Pressable>
+      {closed[k] ? null : count ? <View style={{ paddingBottom: space.sm }}>{children}</View> : <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.faint, paddingBottom: space.md }}>결과 없음</Text>}
+    </View>
+  );
+  return (
+    <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 96 }}>
+      <Section k="rooms" title="메시지방/멤버 이름" count={res.rooms.length}>
+        {res.rooms.map((r) => (
+          <RoomRow key={r.id} room={r} />
+        ))}
+      </Section>
+      <Section k="messages" title="메시지" count={res.messages.length}>
+        {res.messages.map((m) => {
+          const r = roomOf(m.roomId)!;
+          return (
+            <Pressable
+              key={m.id}
+              onPress={() => router.push({ pathname: '/room/[id]', params: { id: m.roomId, q: query, focus: m.id } })}
+              style={({ pressed }) => ({ flexDirection: 'row', gap: space.md, paddingVertical: space.sm, opacity: pressed ? 0.6 : 1 })}>
+              <Avatar name={r.title} size={44} group={r.memberIds.length > 2} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.bold, fontSize: 15, color: c.text }}>{roomTitle(r)}</Text>
+                  <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{chatTime(m.at)}</Text>
+                </View>
+                <Mark text={`${sender(m)}: ${m.bundle ? m.bundle.items.map((i) => i.text).join(' / ') : m.text}`} style={{ fontFamily: family.regular, fontSize: 14, lineHeight: 20, color: c.sub }} />
+              </View>
+            </Pressable>
+          );
+        })}
+      </Section>
+      <Section k="files" title="파일" count={res.files.length}>
+        {res.files.map((f, i) => (
+          <Pressable
+            key={`${f.room.id}${i}`}
+            onPress={() => router.push({ pathname: '/room/[id]', params: { id: f.room.id } })}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm, opacity: pressed ? 0.6 : 1 })}>
+            <View style={{ width: 44, height: 44, borderRadius: radius.sm, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="file" color={c.sub} size={22} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Mark text={f.name} style={{ fontFamily: family.semibold, fontSize: 15, color: c.text }} />
+              <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>
+                {roomTitle(f.room)} · {chatTime(f.at)}
+              </Text>
+            </View>
+          </Pressable>
+        ))}
+      </Section>
+    </ScrollView>
   );
 }

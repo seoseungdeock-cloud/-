@@ -2,7 +2,7 @@ import { checkCompliance } from '../compliance';
 import { PROCEDURE_MENU, procedureReply } from '../procedures';
 import { authorView, commentTree, score, searchPosts, sortPosts, unreadIn } from '../board';
 import { contactsFor } from '../contacts';
-import { dayLabel, isHidden, mentionQuery, orgGroups, parseDateQuery, parseMentions, reactionGroups, readCount, readers, searchDirectory, searchMessages, sortRooms, splitMentions, unreadCount } from '../messenger';
+import { dayKey, dayLabel, firstOfDay, isHidden, markParts, mentionQuery, messageDays, orgGroups, parseMentions, reactionGroups, readCount, readers, searchAll, searchDirectory, searchMessages, sortRooms, splitMentions, unreadCount } from '../messenger';
 import { opinionFor } from '../knowledge';
 import { planFromCommand, rankPerformance, mostSimilar } from '../marketing';
 import { summarizeMeeting } from '../meeting';
@@ -555,22 +555,35 @@ describe('메신저 (웍스식 주소록·대화)', () => {
     expect(actions.forwardMany([], to).ok).toBe(false);
   });
 
-  it('날짜 구분선과 날짜 검색', () => {
-    const now = new Date(2026, 9, 13, 15);
+  it('날짜 구분선, 캘린더로 고를 수 있는 날, 방 안 검색과 형광펜', () => {
     expect(dayLabel(new Date(2026, 9, 8, 10).toISOString())).toBe('2026년 10월 8일 목요일');
-    expect(parseDateQuery('10월 8일', now)).toBe('2026-10-08');
-    expect(parseDateQuery('10/8', now)).toBe('2026-10-08');
-    expect(parseDateQuery('2026.10.08', now)).toBe('2026-10-08');
-    expect(parseDateQuery('2025년 1월 3일', now)).toBe('2025-01-03');
-    expect(parseDateQuery('오늘', now)).toBe('2026-10-13');
-    expect(parseDateQuery('어제', now)).toBe('2026-10-12');
-    expect(parseDateQuery('13월 1일', now)).toBeUndefined();
-    expect(parseDateQuery('일정', now)).toBeUndefined();
     const list = st().messages.filter((m) => m.roomId === 'r_team');
-    const day = new Date(msg('mt1').at);
-    const hits = searchMessages(list, `${day.getMonth() + 1}월 ${day.getDate()}일`, day);
-    expect(hits.map((m) => m.id)).toContain('mt1');
-    expect(hits.map((m) => m.id)).not.toContain('mt5');
+    const days = messageDays(list);
+    expect(days.has(dayKey(msg('mt1').at))).toBe(true);
+    expect(firstOfDay(list, dayKey(msg('mt5').at))!.at <= msg('mt5').at).toBe(true);
     expect(searchMessages(list, '일정').map((m) => m.id)).toEqual(['mt2', 'mt4']);
+    expect(markParts('일정 공유, 일정표', '일정')).toEqual([
+      { text: '일정', mark: true },
+      { text: ' 공유, ', mark: false },
+      { text: '일정', mark: true },
+      { text: '표', mark: false },
+    ]);
+  });
+
+  it('대화 탭 전체 검색: 메시지방·멤버 / 메시지 / 파일, 최신순', () => {
+    as('lawyer');
+    const r1 = searchAll('샘플 매니저', 'u_lawyer', st().rooms, st().messages, st().users);
+    expect(r1.rooms.map((r) => r.id)).toContain('r_team');
+    const r2 = searchAll('일정', 'u_lawyer', st().rooms, st().messages, st().users);
+    expect(r2.messages.map((m) => m.id)).toEqual(['mt4', 'mt2']);
+    as('client');
+    const roomId = actions.requestRetain('lw_1', '이혼', '').roomId!;
+    as('lawyer');
+    actions.addCaseEntry(roomId, { type: 'document', label: '소장 초안.pdf' });
+    actions.addCaseEntry(roomId, { type: 'document', label: '소장 수정본.pdf' });
+    const r3 = searchAll('소장', 'u_lawyer', st().rooms, st().messages, st().users);
+    expect(r3.files.map((f) => f.name)).toEqual(['소장 수정본.pdf', '소장 초안.pdf']);
+    // 내가 없는 방은 나오지 않는다
+    expect(searchAll('일정', 'u_client', st().rooms, st().messages, st().users).messages).toEqual([]);
   });
 });
