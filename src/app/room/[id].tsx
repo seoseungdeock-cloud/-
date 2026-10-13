@@ -4,7 +4,7 @@ import { FlatList, KeyboardAvoidingView, Platform, Pressable, TextInput, View } 
 
 import { aiCanJoin, ROOM_KIND_LABEL } from '@/core/rooms';
 import { actions } from '@/core/store';
-import { AI_SENDER, SYSTEM_SENDER, type Message } from '@/core/types';
+import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Message } from '@/core/types';
 import { CasePanel } from '@/ui/case-panel';
 import { Icon } from '@/ui/icons';
 import { Button, Empty, Input, ModeBadge, ModeBanner, Notice, Screen, Sub, T } from '@/ui/kit';
@@ -105,13 +105,14 @@ function Bubble({ m, mine, sender }: { m: Message; mine: boolean; sender?: strin
     );
   }
   const isAi = m.senderId === AI_SENDER;
+  const isBot = m.senderId === BOT_SENDER;
   return (
     <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', marginVertical: space.xs }}>
-      {!mine ? <T size="tiny" color={isAi ? c.ai : c.sub}>{isAi ? '✦ AI' : sender}</T> : null}
+      {!mine ? <T size="tiny" color={isAi ? c.ai : isBot ? c.accent : c.sub}>{isAi ? '✦ AI' : isBot ? '✦ AI 알림' : sender}</T> : null}
       <View
         style={{
           maxWidth: '82%',
-          backgroundColor: mine ? c.bubbleMine : isAi ? c.aiSoft : c.bubbleOther,
+          backgroundColor: mine ? c.bubbleMine : isAi ? c.aiSoft : isBot ? c.accentSoft : c.bubbleOther,
           borderRadius: radius.lg,
           paddingHorizontal: space.md,
           paddingVertical: space.sm + 2,

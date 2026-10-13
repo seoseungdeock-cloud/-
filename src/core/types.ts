@@ -64,9 +64,10 @@ export type Room = {
   createdAt: string;
   caseInfo?: CaseInfo;
   officeId?: string; // 상담·사건방의 담당 사무소
+  lawyerId?: string; // 찾기에서 고른 담당 변호사 (배당 정보 안내용)
 };
 
-export type MessageKind = 'text' | 'ai' | 'system';
+export type MessageKind = 'text' | 'ai' | 'system' | 'bot';
 
 export type Message = {
   id: string;
@@ -79,6 +80,8 @@ export type Message = {
 
 export const AI_SENDER = 'ai';
 export const SYSTEM_SENDER = 'system';
+/** 사건 진행·배당 알림과 절차 안내 봇. 대화 내용을 AI에 보내지 않고 사건 기록과 정해진 안내문만 씁니다. */
+export const BOT_SENDER = 'bot';
 
 // ---- 익명 게시판 ----
 // 이용자 구분 없이 글마다 '익명 1, 2…'로만 보이고, 실제 작성자는 어드민만 봅니다.

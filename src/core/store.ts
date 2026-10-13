@@ -21,12 +21,15 @@ import {
   type Plan,
 } from './marketing';
 import { summarizeMeeting, type MeetingNotes } from './meeting';
+import { asksCaseInfo, assignmentText, caseStatusText } from './case-bot';
 import { formatUntil, reportTarget, restrictedUntil, toggleVote } from './board';
 import { findLawyer } from './offices';
+import { procedureReply } from './procedures';
 import { aiAnswerLevel, canCreateRoom, canUseAgents, type RoomCheck } from './rooms';
 import { latest, parseRows, refreshTemplate, type DataRow, type ImageTemplate } from './templates';
 import {
   AI_SENDER,
+  BOT_SENDER,
   SYSTEM_SENDER,
   type Account,
   type BoardPost,
@@ -198,6 +201,8 @@ function boardBlocked(): RoomCheck | undefined {
 function closeReports(reports: BoardReport[], match: (r: BoardReport) => boolean, resolution: string): BoardReport[] {
   return reports.map((r) => (r.status === 'open' && match(r) ? { ...r, status: 'resolved' as const, resolution } : r));
 }
+
+const PRIVATE_CASE_NOTE = '사건수행방입니다. AI는 대화에 참여하지 않고, 사건 진행·배당 알림과 절차 안내만 전해 드립니다.';
 
 function userById(id: string) {
   return state.users.find((u) => u.id === id);
@@ -408,11 +413,25 @@ export const actions = {
     const room = state.rooms.find((r) => r.id === roomId);
     if (!room || !text.trim()) return;
     pushMessage(roomId, me().id, 'text', text.trim());
+    // 의뢰인이 절차를 물으면 방 종류와 관계없이 정해진 절차 안내문을 보냅니다.
+    if (me().role === 'client') {
+      const guide = procedureReply(text, room.caseInfo?.field);
+      if (guide) {
+        pushMessage(roomId, BOT_SENDER, 'bot', guide);
+        return;
+      }
+    }
     if (!/@ai\b/i.test(text)) return;
     const members = room.memberIds.map(userById).filter((u): u is User => !!u);
     const level = aiAnswerLevel(room, members);
     if (level === 'none') {
-      pushMessage(roomId, SYSTEM_SENDER, 'system', '사건수행방에는 AI가 참여하지 않습니다. AI가 필요하면 AI 참여방을 따로 만들어 주세요.');
+      // 사건수행방: AI는 대화에 참여하지 않고 사건 기록에서 진행·배당 정보만 알려 줍니다.
+      const ask = asksCaseInfo(text);
+      if (ask && (room.kind === 'case' || room.kind === 'consult')) {
+        pushMessage(roomId, BOT_SENDER, 'bot', ask === 'assignment' ? assignmentText(room, state.users) : caseStatusText(room, state.users));
+        return;
+      }
+      pushMessage(roomId, SYSTEM_SENDER, 'system', "사건수행방에서는 AI가 대화에 참여하지 않습니다. '@AI 진행 상황', '@AI 배당 정보'로 사건 정보만 받을 수 있습니다.");
       return;
     }
     const cmd = parseAiCommand(text);
@@ -437,7 +456,8 @@ export const actions = {
   },
 
   // ---- 라잇나우 ----
-  requestConsult(lawyerId: string, summary: string, mode: RoomMode): RoomCheck & { roomId?: string } {
+  /** 찾기에서 고른 변호사와의 상담. 사건수행방으로만 열립니다. */
+  requestConsult(lawyerId: string, summary: string): RoomCheck & { roomId?: string } {
     const lawyer = findLawyer(lawyerId);
     if (!lawyer) return { ok: false, reason: '변호사 정보를 찾을 수 없습니다.' };
     const client = me();
@@ -445,21 +465,24 @@ export const actions = {
     const room: Room = {
       id: newId('r'),
       kind: 'consult',
-      mode,
+      mode: 'private',
       title: `${lawyer.name} 상담`,
       memberIds: [client.id, ...(lawyerUser ? [lawyerUser] : [])],
       createdBy: client.id,
       createdAt: nowIso(),
       officeId: lawyer.office.id,
+      lawyerId,
     };
     set((s) => ({ rooms: [room, ...s.rooms] }));
     pushMessage(room.id, SYSTEM_SENDER, 'system', `상담 신청이 접수되었습니다. ${lawyer.name} 변호사가 수락하면 대화가 시작됩니다.`);
+    pushMessage(room.id, SYSTEM_SENDER, 'system', PRIVATE_CASE_NOTE);
+    pushMessage(room.id, BOT_SENDER, 'bot', assignmentText(room, state.users));
     if (summary.trim()) pushMessage(room.id, client.id, 'text', summary.trim());
     if (!lawyerUser) pushMessage(room.id, SYSTEM_SENDER, 'system', '이 변호사는 아직 앱에 가입하지 않아 사무소 연락처로 안내됩니다.');
     return { ok: true, roomId: room.id };
   },
 
-  /** 대시보드에서 바로 수임 요청: 사건방이 곧바로 열립니다. */
+  /** 바로 수임 요청: 사건방이 곧바로 사건수행방으로 열립니다. */
   requestRetain(lawyerId: string, field: string, summary: string): RoomCheck & { roomId?: string } {
     const lawyer = findLawyer(lawyerId);
     if (!lawyer) return { ok: false, reason: '변호사 정보를 찾을 수 없습니다.' };
@@ -469,16 +492,19 @@ export const actions = {
     const room: Room = {
       id: newId('r'),
       kind: 'case',
-      mode: 'ai',
+      mode: 'private',
       title,
       memberIds: [client.id, ...(lawyerUser ? [lawyerUser] : [])],
       createdBy: client.id,
       createdAt: nowIso(),
       officeId: lawyer.office.id,
+      lawyerId,
       caseInfo: { title, field: field || lawyer.fields[0] || '', stage: '수임', deadlines: [], documents: [], costs: [], progress: [{ id: newId('p'), at: nowIso(), note: '수임 요청' }] },
     };
     set((s) => ({ rooms: [room, ...s.rooms] }));
     pushMessage(room.id, SYSTEM_SENDER, 'system', `${lawyer.name} 변호사에게 수임을 요청했습니다. 이 사건방에서 진행 상황을 함께 봅니다.`);
+    pushMessage(room.id, SYSTEM_SENDER, 'system', PRIVATE_CASE_NOTE);
+    pushMessage(room.id, BOT_SENDER, 'bot', assignmentText(room, state.users));
     if (summary.trim()) pushMessage(room.id, client.id, 'text', summary.trim());
     return { ok: true, roomId: room.id };
   },
@@ -501,6 +527,8 @@ export const actions = {
     const caseInfo: CaseInfo = { title: title || room.title, field, stage: '수임', deadlines: [], documents: [], costs: [], progress: [{ id: newId('p'), at: nowIso(), note: '수임' }] };
     updateRoom(roomId, (r) => ({ ...r, kind: 'case', title: caseInfo.title, caseInfo }));
     pushMessage(roomId, SYSTEM_SENDER, 'system', '사건방으로 전환되었습니다. 진행 상황·기일·서류가 이 방에서 공유됩니다.');
+    const promoted = state.rooms.find((r) => r.id === roomId);
+    if (promoted) pushMessage(roomId, BOT_SENDER, 'bot', assignmentText(promoted, state.users));
     return { ok: true };
   },
 
@@ -515,13 +543,15 @@ export const actions = {
       if (entry.type === 'progress') c.progress = [...c.progress, { id, at: nowIso(), note: entry.label }];
       return { ...r, caseInfo: c };
     });
-    const label = { deadline: '기일', document: '서류', cost: '비용', progress: '진행' }[entry.type];
-    pushMessage(roomId, SYSTEM_SENDER, 'system', `${label} 추가: ${entry.label}`);
+    if (entry.type === 'deadline') pushMessage(roomId, BOT_SENDER, 'bot', `기일 알림\n· ${entry.label}${entry.date ? ` (${entry.date})` : ''}`);
+    else if (entry.type === 'progress') pushMessage(roomId, BOT_SENDER, 'bot', `진행 알림\n· ${entry.label}`);
+    else pushMessage(roomId, SYSTEM_SENDER, 'system', `${entry.type === 'document' ? '서류' : '비용'} 추가: ${entry.label}`);
   },
 
   setCaseStage(roomId: string, stage: CaseInfo['stage']) {
     updateRoom(roomId, (r) => (r.caseInfo ? { ...r, caseInfo: { ...r.caseInfo, stage } } : r));
-    pushMessage(roomId, SYSTEM_SENDER, 'system', `사건 단계가 '${stage}'(으)로 바뀌었습니다.`);
+    const room = state.rooms.find((r) => r.id === roomId);
+    if (room) pushMessage(roomId, BOT_SENDER, 'bot', `진행 알림\n· 사건 단계가 '${stage}'(으)로 바뀌었습니다.\n\n${caseStatusText(room, state.users)}`);
   },
 
   // ---- 경영 에이전트 ----

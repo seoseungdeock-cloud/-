@@ -3,22 +3,19 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { findLawyer, formatFee, regionName } from '@/core/offices';
-import { ROOM_MODE_INFO } from '@/core/rooms';
 import { actions } from '@/core/store';
-import type { RoomMode } from '@/core/types';
-import { Badge, Button, Card, Chip, Chips, Empty, Input, ModeBanner, Notice, Screen, Section, Sub, T } from '@/ui/kit';
+import { Badge, Button, Card, Empty, Input, ModeBadge, Notice, Screen, Section, Sub, T } from '@/ui/kit';
 import { space } from '@/ui/theme';
 
 export default function LawyerScreen() {
   const params = useLocalSearchParams<{ id: string; summary?: string; field?: string }>();
   const l = findLawyer(params.id);
   const [summary, setSummary] = useState(params.summary ?? '');
-  const [mode, setMode] = useState<RoomMode>('ai');
   const [error, setError] = useState<string>();
   if (!l) return <Screen title="변호사" back><Empty text="정보를 찾을 수 없습니다." /></Screen>;
 
   const submit = (kind: 'consult' | 'retain') => {
-    const res = kind === 'consult' ? actions.requestConsult(l.id, summary, mode) : actions.requestRetain(l.id, params.field ?? '', summary);
+    const res = kind === 'consult' ? actions.requestConsult(l.id, summary) : actions.requestRetain(l.id, params.field ?? '', summary);
     if (!res.ok) return setError(res.reason);
     router.replace({ pathname: '/room/[id]', params: { id: res.roomId! } });
   };
@@ -40,13 +37,9 @@ export default function LawyerScreen() {
       </Section>
       <Section title="상담·수임">
         <Input label="어떤 일인지 짧게 적어 주세요 (선택)" multiline value={summary} onChangeText={setSummary} placeholder="예: 이혼 소송을 준비 중입니다" />
-        <Sub>상담방 방식</Sub>
-        <Chips>
-          {(['ai', 'private'] as RoomMode[]).map((m) => (
-            <Chip key={m} label={ROOM_MODE_INFO[m].label} active={mode === m} onPress={() => setMode(m)} />
-          ))}
-        </Chips>
-        <View style={{ height: space.md }} />
+        <View style={{ flexDirection: 'row', marginBottom: space.md }}>
+          <ModeBadge mode="private" />
+        </View>
         {error ? <Notice text={error} /> : null}
         <View style={{ gap: space.sm }}>
           <Button label="상담 신청하기" onPress={() => submit('consult')} />

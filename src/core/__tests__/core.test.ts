@@ -1,4 +1,5 @@
 import { checkCompliance } from '../compliance';
+import { PROCEDURE_MENU, procedureReply } from '../procedures';
 import { authorView, commentTree, score, searchPosts, sortPosts, unreadIn } from '../board';
 import { contactsFor } from '../contacts';
 import { opinionFor } from '../knowledge';
@@ -55,7 +56,7 @@ describe('메신저 흐름', () => {
     await actions.sendMessage('r_direct', '@AI 요약해줘');
     const last = getState().messages.at(-1)!;
     expect(last.kind).toBe('system');
-    expect(last.text).toContain('AI가 참여하지 않습니다');
+    expect(last.text).toContain('AI가 대화에 참여하지 않습니다');
   });
 
   it('AI 참여방에서는 AI가 답한다(미연결 표시)', async () => {
@@ -67,7 +68,7 @@ describe('메신저 흐름', () => {
 
   it('상담 신청 → 사건방 전환', () => {
     as('client');
-    const res = actions.requestConsult('lw_1', '이혼 상담 원합니다', 'ai');
+    const res = actions.requestConsult('lw_1', '이혼 상담 원합니다');
     expect(res.ok).toBe(true);
     const roomId = res.roomId!;
     expect(actions.promoteToCase(roomId, '이혼 사건', '이혼').ok).toBe(true);
@@ -365,5 +366,57 @@ describe('게시판 베스트·검색·신고', () => {
     actions.liftRestriction('u_client');
     as('client');
     expect(actions.commentPost('p2', '댓글').ok).toBe(true);
+  });
+});
+
+describe('사건수행방 알림·절차 안내', () => {
+  beforeEach(() => resetState());
+  const msgs = (roomId: string) => getState().messages.filter((m) => m.roomId === roomId);
+
+  it('찾기에서 상담·수임하면 사건수행방으로만 열리고 배당 정보가 온다', () => {
+    as('client');
+    for (const res of [actions.requestConsult('lw_1', ''), actions.requestRetain('lw_1', '이혼·가사', '')]) {
+      const room = getState().rooms.find((r) => r.id === res.roomId)!;
+      expect(room.mode).toBe('private');
+      const bot = msgs(room.id).find((m) => m.senderId === 'bot')!;
+      expect(bot.text).toContain('배당 정보');
+      expect(bot.text).toContain('담당 변호사');
+    }
+  });
+
+  it('사건수행방에서도 단계 변경·기일이 AI 알림으로 오고, @AI 진행 상황에 답한다', async () => {
+    as('client');
+    const roomId = actions.requestRetain('lw_1', '민사', '').roomId!;
+    as('lawyer');
+    actions.setCaseStage(roomId, '진행');
+    expect(msgs(roomId).at(-1)!.text).toContain("'진행'");
+    actions.addCaseEntry(roomId, { type: 'deadline', label: '1차 변론', date: '2099-01-10' });
+    expect(msgs(roomId).at(-1)!.text).toContain('기일 알림');
+    as('client');
+    await actions.sendMessage(roomId, '@AI 진행 상황 알려줘');
+    const last = msgs(roomId).at(-1)!;
+    expect(last.senderId).toBe('bot');
+    expect(last.text).toContain('다음 기일: 1차 변론 (2099-01-10)');
+    await actions.sendMessage(roomId, '@AI 이 사건 이길 수 있을까?');
+    expect(msgs(roomId).at(-1)!.senderId).toBe('system');
+  });
+
+  it('의뢰인이 절차를 물으면 분야별 안내를 보낸다', async () => {
+    expect(procedureReply('이혼 소송 절차가 궁금해요')).toContain('[이혼 절차 안내]');
+    expect(procedureReply('고소당했는데 앞으로 어떻게 진행되나요?')).toContain('[형사 절차 안내]');
+    expect(procedureReply('개인회생 순서 알려주세요')).toContain('■ 개인회생');
+    expect(procedureReply('영업정지 처분 받았는데 절차는?')).toContain('[행정 절차 안내]');
+    expect(procedureReply('상속포기 절차')).toContain('[상속 절차 안내]');
+    expect(procedureReply('절차가 어떻게 되나요?')).toBe(PROCEDURE_MENU);
+    expect(procedureReply('절차가 어떻게 되나요?', '부동산·임대차')).toContain('[민사 절차 안내]');
+    expect(procedureReply('안녕하세요')).toBeUndefined();
+
+    as('client');
+    const roomId = actions.requestRetain('lw_1', '음주운전·교통사고', '').roomId!;
+    await actions.sendMessage(roomId, '앞으로 절차가 어떻게 되나요?');
+    expect(msgs(roomId).at(-1)!.text).toContain('[형사 절차 안내]');
+    as('lawyer');
+    await actions.sendMessage(roomId, '다음 절차는 제가 설명드릴게요');
+    expect(msgs(roomId).at(-1)!.senderId).toBe('u_lawyer');
   });
 });
