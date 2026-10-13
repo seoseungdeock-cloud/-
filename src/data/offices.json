@@ -1,0 +1,34 @@
+{
+  "_안내": "법대륜 사무소·변호사 데이터를 받으면 이 파일을 교체합니다. sample: true 항목은 화면 확인용 샘플이며 실제 정보가 아닙니다. CSV로 주시면 scripts/import-offices.mjs 로 변환합니다.",
+  "offices": [
+    {
+      "id": "of_seoul", "name": "샘플 사무소 서울", "regionCode": "11", "address": "서울특별시 (샘플 주소)",
+      "phone": "02-000-0000", "lat": 37.5665, "lon": 126.978, "sample": true,
+      "lawyers": [
+        { "id": "lw_1", "name": "샘플 변호사 A", "fields": ["이혼", "상속"], "careerYears": 12, "consultFee": 50000, "intro": "가사 사건을 주로 다룹니다 (샘플)." },
+        { "id": "lw_2", "name": "샘플 변호사 B", "fields": ["형사"], "careerYears": 8, "consultFee": 0, "intro": "형사 사건 초기 대응 (샘플)." }
+      ]
+    },
+    {
+      "id": "of_daegu", "name": "샘플 사무소 대구", "regionCode": "22", "address": "대구광역시 (샘플 주소)",
+      "phone": "053-000-0000", "lat": 35.8714, "lon": 128.6014, "sample": true,
+      "lawyers": [
+        { "id": "lw_3", "name": "샘플 변호사 C", "fields": ["부동산", "민사"], "careerYears": 15, "consultFee": 30000, "intro": "부동산·임대차 분쟁 (샘플)." }
+      ]
+    },
+    {
+      "id": "of_busan", "name": "샘플 사무소 부산", "regionCode": "21", "address": "부산광역시 (샘플 주소)",
+      "phone": "051-000-0000", "lat": 35.1796, "lon": 129.0756, "sample": true,
+      "lawyers": [
+        { "id": "lw_4", "name": "샘플 변호사 D", "fields": ["교통사고", "손해배상"], "careerYears": 6, "consultFee": 0, "intro": "교통사고·손해배상 (샘플)." }
+      ]
+    },
+    {
+      "id": "of_gwangju", "name": "샘플 사무소 광주", "regionCode": "24", "address": "광주광역시 (샘플 주소)",
+      "phone": "062-000-0000", "lat": 35.1595, "lon": 126.8526, "sample": true,
+      "lawyers": [
+        { "id": "lw_5", "name": "샘플 변호사 E", "fields": ["노동", "형사"], "careerYears": 10, "consultFee": 30000, "intro": "임금·해고 분쟁 (샘플)." }
+      ]
+    }
+  ]
+}
