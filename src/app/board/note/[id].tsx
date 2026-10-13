@@ -2,7 +2,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { aliasIn, otherIn, timeAgo } from '@/core/board';
+import { boardOf, canSeeBoard, nameIn, otherIn, timeAgo } from '@/core/board';
 import { actions } from '@/core/store';
 import { Button, Empty, Input, Notice, Screen } from '@/ui/kit';
 import { family, radius, space, useColors } from '@/ui/theme';
@@ -21,11 +21,12 @@ export default function NoteScreen() {
   useEffect(() => {
     if (id) actions.readNote(id);
   }, [id, lastAt]);
-  if (!note) return <Screen title="쪽지" back><Empty text="쪽지를 찾을 수 없습니다." /></Screen>;
+  const notePost = note ? s.posts.find((p) => p.id === note.postId) : undefined;
+  if (!note || (notePost && !canSeeBoard(user, boardOf(notePost)))) return <Screen title="쪽지" back><Empty text="쪽지를 찾을 수 없습니다." /></Screen>;
 
   const post = s.posts.find((p) => p.id === note.postId);
   const other = otherIn(note, user.id);
-  const real = user.role === 'admin' ? s.users.find((u) => u.id === other)?.nickname : undefined;
+  const real = user.role === 'admin' && post && boardOf(post) === 'anon' ? s.users.find((u) => u.id === other)?.nickname : undefined;
   const send = () => {
     const res = actions.sendNote(note.id, text);
     if (!res.ok) return setError(res.reason);
@@ -34,7 +35,7 @@ export default function NoteScreen() {
   };
 
   return (
-    <Screen title={`${post ? aliasIn(post, other) : '익명'}${real ? ` (${real})` : ''}`} back>
+    <Screen title={`${nameIn(post, other, s.users)}${real ? ` (${real})` : ''}`} back>
       {post ? <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 13, color: c.faint, marginBottom: space.md }}>{post.title}</Text> : null}
       {note.messages.map((m) => {
         const mine = m.senderId === user.id;
@@ -48,7 +49,7 @@ export default function NoteScreen() {
         );
       })}
       <View style={{ marginTop: space.md }}>
-        <Input placeholder="익명으로 쪽지 쓰기" value={text} onChangeText={setText} multiline />
+        <Input placeholder={post && boardOf(post) === 'lawyer' ? '쪽지 쓰기' : '익명으로 쪽지 쓰기'} value={text} onChangeText={setText} multiline />
         {error ? <Notice tone="warn" text={error} /> : null}
         <Button label="보내기" onPress={send} />
       </View>

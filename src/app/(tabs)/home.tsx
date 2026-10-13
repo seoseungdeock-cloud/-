@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { boardOf } from '@/core/board';
 import home from '@/data/home.json';
 import { Icon } from '@/ui/icons';
 import { Badge, T } from '@/ui/kit';
@@ -62,7 +63,7 @@ export default function HomeScreen() {
             </View>
             <Text style={{ fontFamily: family.heavy, fontSize: 24, lineHeight: 32, color: '#FFFFFF' }}>이름은 지우고,{'\n'}변호사와 터놓고.</Text>
             <Text style={{ fontFamily: family.semibold, fontSize: 15, lineHeight: 22, color: '#FFFFFF', opacity: 0.9, marginTop: space.sm }}>완전 익명으로 묻고, 변호사와 격의 없이 나누는 대화</Text>
-            {s.posts.slice(0, 2).map((p) => (
+            {s.posts.filter((p) => boardOf(p) === 'anon').slice(0, 2).map((p) => (
               <Text key={p.id} numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 14, color: '#FFFFFF', marginTop: space.sm, opacity: 0.95 }}>
                 Q. {p.title} · 댓글 {p.comments.length}
               </Text>

@@ -16,6 +16,15 @@ export function canUseOpenChat(u: User): boolean {
   return u.role !== 'client';
 }
 
+/** 관리자어드민: 오픈대화방의 실제 이용자를 보고 관리합니다. */
+export function canManageOpen(u: User): boolean {
+  return u.role === 'admin' && !!u.superAdmin;
+}
+
+export function checkOpenPassword(pw: string): string | undefined {
+  return /^\S{4,16}$/.test(pw) ? undefined : '비밀번호는 띄어쓰기 없이 4~16자로 정해 주세요.';
+}
+
 /** 닉네임 규칙: 1~12자, 방 안에서 겹치지 않기, 실명과 같으면 안 됨 */
 export function checkAlias(room: OpenRoom | undefined, alias: string, me: User): string | undefined {
   const a = alias.trim();

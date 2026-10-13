@@ -2,16 +2,18 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
-import { authorView, BEST_MIN, isBest as isBestPost, BOARD_SORT_LABEL, formatUntil, notesFor, restrictedUntil, searchPosts, sortPosts, timeAgo, unreadIn, type BoardSort } from '@/core/board';
+import { authorView, BEST_MIN, BOARD_LABEL, boardOf, canSeeBoard, isBest as isBestPost, BOARD_SORT_LABEL, formatUntil, notesFor, restrictedUntil, searchPosts, sortPosts, timeAgo, unreadIn, type BoardSort } from '@/core/board';
 import { actions } from '@/core/store';
 import home from '@/data/home.json';
 import { BoardAuthor, VoteBar } from '@/ui/board';
+import type { BoardKind } from '@/core/types';
+import { UnderlineTabs } from '@/ui/contacts';
 import { Icon } from '@/ui/icons';
 import { Badge, Button, Empty, Notice, Screen } from '@/ui/kit';
 import { family, radius, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 
-// 익명 게시판 (레딧 r/legaladvice 구성 참고: 추천·비추천, 분야 태그, 정렬, 댓글 수, 검색)
+// 게시판: 익명 게시판 + (변호사 계정만) 변호사 게시판. 레딧 r/legaladvice 구성 참고: 추천·비추천, 분야 태그, 정렬, 댓글 수, 검색)
 export default function BoardScreen() {
   const s = useApp();
   const user = useMe();
@@ -19,10 +21,13 @@ export default function BoardScreen() {
   const [sort, setSort] = useState<BoardSort>('hot');
   const [field, setField] = useState<string>();
   const [q, setQ] = useState('');
-  const unread = notesFor(user.id, s.notes).reduce((a, n) => a + unreadIn(n, user.id), 0);
+  const [tab, setTab] = useState<BoardKind>('anon');
+  const board: BoardKind = canSeeBoard(user, tab) ? tab : 'anon';
+  const lawyer = canSeeBoard(user, 'lawyer');
+  const unread = notesFor(user.id, s.notes).filter((n) => { const p = s.posts.find((x) => x.id === n.postId); return !p || canSeeBoard(user, boardOf(p)); }).reduce((a, n) => a + unreadIn(n, user.id), 0);
   const openReports = user.role === 'admin' ? s.reports.filter((r) => r.status === 'open').length : 0;
   const until = restrictedUntil(s.boardBans, user.id);
-  const posts = useMemo(() => sortPosts(searchPosts(s.posts.filter((p) => !field || p.field === field), q), sort), [s.posts, field, sort, q]);
+  const posts = useMemo(() => sortPosts(searchPosts(s.posts.filter((p) => boardOf(p) === board && (!field || p.field === field)), q), sort), [s.posts, board, field, sort, q]);
   const dot = (n: number) =>
     n ? (
       <View style={{ position: 'absolute', top: -4, right: -6, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 }}>
@@ -42,12 +47,17 @@ export default function BoardScreen() {
         <Icon name="mail" color={c.text} size={26} />
         {dot(unread)}
       </Pressable>
-      <Button small label="글쓰기" onPress={() => router.push('/board/new')} />
+      <Button small label="글쓰기" onPress={() => router.push({ pathname: '/board/new', params: { board } })} />
     </View>
   );
 
   return (
-    <Screen title="익명 게시판" right={right}>
+    <Screen title={lawyer ? '게시판' : BOARD_LABEL.anon} right={right}>
+      {lawyer ? (
+        <View style={{ marginBottom: space.md }}>
+          <UnderlineTabs tabs={[['anon', BOARD_LABEL.anon], ['lawyer', BOARD_LABEL.lawyer]]} value={board} onChange={setTab} />
+        </View>
+      ) : null}
       {until ? <Notice tone="warn" text={`게시판 이용이 제한되었습니다. (${formatUntil(until)}까지)`} /> : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.surface, borderRadius: radius.pill, paddingHorizontal: space.md, marginBottom: space.md }}>
         <Icon name="search" color={c.faint} size={18} />

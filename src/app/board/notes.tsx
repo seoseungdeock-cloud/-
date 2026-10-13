@@ -1,17 +1,20 @@
 import { router } from 'expo-router';
 import { Text, View } from 'react-native';
 
-import { aliasIn, notesFor, otherIn, timeAgo, unreadIn } from '@/core/board';
+import { boardOf, canSeeBoard, nameIn, notesFor, otherIn, timeAgo, unreadIn } from '@/core/board';
 import { Badge, Empty, Row, Screen } from '@/ui/kit';
 import { family, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 
-// 익명 쪽지함
+// 쪽지함 (익명 게시판은 '익명 N', 변호사 게시판은 실명)
 export default function NotesScreen() {
   const s = useApp();
   const user = useMe();
   const c = useColors();
-  const notes = notesFor(user.id, s.notes).filter((n) => n.messages.length);
+  const notes = notesFor(user.id, s.notes).filter((n) => {
+    const p = s.posts.find((x) => x.id === n.postId);
+    return n.messages.length && (!p || canSeeBoard(user, boardOf(p)));
+  });
   return (
     <Screen title="쪽지함" back>
       {notes.length ? (
@@ -20,11 +23,11 @@ export default function NotesScreen() {
           const other = otherIn(n, user.id);
           const last = n.messages.at(-1)!;
           const unread = unreadIn(n, user.id);
-          const real = user.role === 'admin' ? s.users.find((u) => u.id === other)?.nickname : undefined;
+          const real = user.role === 'admin' && post && boardOf(post) === 'anon' ? s.users.find((u) => u.id === other)?.nickname : undefined;
           return (
             <Row
               key={n.id}
-              title={`${post ? aliasIn(post, other) : '익명'}${real ? ` (${real})` : ''}`}
+              title={`${nameIn(post, other, s.users)}${real ? ` (${real})` : ''}`}
               sub={`${post?.title ?? ''} · ${last.text}`}
               right={
                 <View style={{ alignItems: 'flex-end', gap: 4 }}>

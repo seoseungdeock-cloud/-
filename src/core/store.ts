@@ -22,10 +22,10 @@ import {
 } from './marketing';
 import { summarizeMeeting, type MeetingNotes } from './meeting';
 import { asksCaseInfo, assignmentText, caseStatusText } from './case-bot';
-import { formatUntil, reportTarget, restrictedUntil, toggleVote } from './board';
+import { boardOf, canSeeBoard, formatUntil, MAX_ATTACHMENTS, reportTarget, restrictedUntil, toggleVote } from './board';
 import { displayName, isMaster, parseMentions, roomMasters, type Reads } from './messenger';
 import { findLawyer } from './offices';
-import { aliasOf, canUseOpenChat, checkAlias, isOpenMember, OPEN_MAX_OPTIONS, parseTags } from './open-chat';
+import { aliasOf, canManageOpen, canUseOpenChat, checkAlias, checkOpenPassword, isOpenMember, OPEN_MAX_OPTIONS, parseTags } from './open-chat';
 import { procedureReply } from './procedures';
 import { aiAnswerLevel, canCreateRoom, canUseAgents, type RoomCheck } from './rooms';
 import { latest, parseRows, refreshTemplate, type DataRow, type ImageTemplate } from './templates';
@@ -34,6 +34,8 @@ import {
   BOT_SENDER,
   SYSTEM_SENDER,
   type Account,
+  type Attachment,
+  type BoardKind,
   type BoardPost,
   type NoteThread,
   type BoardReport,
@@ -85,10 +87,11 @@ const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOStr
 
 export function initialState(): State {
   const users: User[] = [
-    { id: 'u_admin', nickname: '승덕', role: 'admin', firm: '대륜', agentAccess: true, membership: 'basic', title: 'Admin', dept: '경영지원본부', branch: '본사', phone: '010-0000-0001', email: 'admin@example.com', joinedAt: '2026-06-15' },
+    { id: 'u_admin', superAdmin: true, nickname: '승덕', role: 'admin', firm: '대륜', agentAccess: true, membership: 'basic', title: 'Admin', dept: '경영지원본부', branch: '본사', phone: '010-0000-0001', email: 'admin@example.com', joinedAt: '2026-06-15' },
     { id: 'u_staff', nickname: '사무국 직원', role: 'staff', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Staff', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0002', email: 'staff@example.com', joinedAt: '2025-03-02' },
     { id: 'u_lawyer', nickname: '샘플 변호사 A', role: 'lawyer', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Partner Attorney', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0003', email: 'lawyer@example.com', joinedAt: '2020-09-01' },
     { id: 'u_client', nickname: '하늘', role: 'client', agentAccess: false, membership: 'basic' },
+    { id: 'u_admin2', nickname: '운영 어드민', role: 'admin', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Admin', dept: '경영지원본부', branch: '본사', phone: '010-0000-0007', email: 'subadmin@example.com', joinedAt: '2026-09-01' },
     // 조직도 확인용 샘플 구성원 (로그인 계정 없음)
     { id: 'u_l2', presence: 'court', nickname: '샘플 변호사 B', role: 'lawyer', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Junior Associate Attorney', dept: '실무수습변호사', branch: '서울강남', phone: '010-0000-0004', email: 'lawyer-b@example.com', joinedAt: '2026-06-15' },
     { id: 'u_l3', nickname: '샘플 변호사 C', role: 'lawyer', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Junior Associate Attorney', dept: '실무수습변호사', branch: '군산', phone: '010-0000-0005', email: 'lawyer-c@example.com', joinedAt: '2026-06-15' },
@@ -98,6 +101,7 @@ export function initialState(): State {
   const accounts: Account[] = [
     { userId: 'u_admin', loginId: 'admin', password: 'admin1234', active: true, createdAt: T0 },
     { userId: 'u_staff', loginId: 'staff', password: 'staff1234', active: true, createdAt: T0 },
+    { userId: 'u_admin2', loginId: 'subadmin', password: 'subadmin1234', active: true, createdAt: T0 },
     { userId: 'u_lawyer', loginId: 'lawyer', password: 'lawyer1234', active: true, createdAt: T0 },
     { userId: 'u_client', loginId: 'client', password: 'client1234', active: true, createdAt: T0 },
   ];
@@ -165,6 +169,13 @@ export function initialState(): State {
     lawyerAccounts: { lw_1: 'u_lawyer' },
     posts: [
       {
+        id: 'p_law1', board: 'lawyer', authorId: 'u_l2', at: ago(2), field: '기타 형사범죄',
+        title: '보석 심문 기일 잡힌 뒤 준비 서류 공유 부탁드립니다',
+        body: '첫 보석 사건이라 심문 기일 전에 어떤 소명자료를 더 내시는지 궁금합니다. 경험 있으신 분들 의견 부탁드립니다.',
+        votes: { u_lawyer: 1 },
+        comments: [{ id: 'cl1', authorId: 'u_lawyer', text: '가족 탄원서와 주거 확인 자료는 꼭 챙기세요. 출석 담보 계획도 정리해 두면 좋습니다.', at: ago(1), votes: {} }],
+      },
+      {
         id: 'p1', authorId: 'u_client', at: ago(3), field: '부동산·임대차',
         title: '전세 보증금을 못 돌려받고 있어요',
         body: '계약 만료가 지났는데 집주인이 새 세입자가 들어와야 준다고 합니다. 이사는 가야 하는데 어떻게 해야 하나요?',
@@ -200,7 +211,7 @@ export function initialState(): State {
         members: [{ userId: 'u_staff', alias: '새벽별', joinedAt: ago(40) }, { userId: 'u_l2', alias: '지나가는법조인', joinedAt: ago(10) }],
       },
       {
-        id: 'o2', title: '개업 변호사 정보방', description: '사무실 운영, 수임, 세무 이야기', tags: ['개업', '사무실'], hostId: 'u_l3', max: 300, createdAt: ago(80), banned: [],
+        id: 'o2', title: '개업 변호사 정보방', description: '사무실 운영, 수임, 세무 이야기', tags: ['개업', '사무실'], hostId: 'u_l3', max: 300, password: 'law2026', createdAt: ago(80), banned: [],
         members: [{ userId: 'u_l3', alias: '군산댁', joinedAt: ago(80) }],
       },
     ],
@@ -245,6 +256,20 @@ export function me(s: State = state): User {
 
 export function loggedIn(s: State = state): boolean {
   return s.users.some((x) => x.id === s.currentUserId);
+}
+
+/** 관리자어드민 계정은 관리자어드민만 손댈 수 있습니다 (일반 어드민의 권한 우회 방지). */
+function superGuard(userId: string): RoomCheck | undefined {
+  const target = userById(userId);
+  if (target?.superAdmin && target.role === 'admin' && !canManageOpen(me())) return { ok: false, reason: '관리자어드민 계정은 관리자어드민만 바꿀 수 있습니다.' };
+  return undefined;
+}
+
+/** 변호사 게시판 글은 변호사만 읽고 쓸 수 있습니다. */
+function boardDenied(postId: string): RoomCheck | undefined {
+  const post = state.posts.find((p) => p.id === postId);
+  if (!post || !canSeeBoard(me(), boardOf(post))) return { ok: false, reason: '글을 찾을 수 없습니다.' };
+  return undefined;
 }
 
 /** 게시판 이용 제한 중이면 거절 사유 */
@@ -424,6 +449,8 @@ export const actions = {
 
   resetPassword(userId: string, password: string): RoomCheck {
     if (me().role !== 'admin') return { ok: false, reason: '어드민만 바꿀 수 있습니다.' };
+    const sup = superGuard(userId);
+    if (sup) return sup;
     if (password.length < 8) return { ok: false, reason: '비밀번호는 8자 이상이어야 합니다.' };
     set((s) => ({ accounts: s.accounts.map((a) => (a.userId === userId ? { ...a, password } : a)) }));
     return { ok: true };
@@ -432,6 +459,8 @@ export const actions = {
   setAccountActive(userId: string, active: boolean): RoomCheck {
     if (me().role !== 'admin') return { ok: false, reason: '어드민만 바꿀 수 있습니다.' };
     if (userId === state.currentUserId) return { ok: false, reason: '내 계정은 중지할 수 없습니다.' };
+    const sup = superGuard(userId);
+    if (sup) return sup;
     set((s) => ({ accounts: s.accounts.map((a) => (a.userId === userId ? { ...a, active } : a)) }));
     return { ok: true };
   },
@@ -439,7 +468,10 @@ export const actions = {
   setRole(userId: string, role: Role): RoomCheck {
     if (me().role !== 'admin') return { ok: false, reason: '어드민만 바꿀 수 있습니다.' };
     if (userId === state.currentUserId) return { ok: false, reason: '내 역할은 바꿀 수 없습니다.' };
-    set((s) => ({ users: s.users.map((u) => (u.id === userId ? { ...u, role, agentAccess: role === 'client' ? false : u.agentAccess } : u)) }));
+    const sup = superGuard(userId);
+    if (sup) return sup;
+    // 어드민이 아닌 역할이 되면 관리자어드민도 풀립니다.
+    set((s) => ({ users: s.users.map((u) => (u.id === userId ? { ...u, role, agentAccess: role === 'client' ? false : u.agentAccess, superAdmin: role === 'admin' ? u.superAdmin : undefined } : u)) }));
     return { ok: true };
   },
 
@@ -798,7 +830,7 @@ export const actions = {
 
   // ---- 오픈대화방 ----
 
-  createOpenRoom(input: { title: string; description: string; tags: string; max: number; alias: string }): RoomCheck & { roomId?: string } {
+  createOpenRoom(input: { title: string; description: string; tags: string; max: number; alias: string; password?: string }): RoomCheck & { roomId?: string } {
     const u = me();
     if (!canUseOpenChat(u)) return { ok: false, reason: '오픈대화방을 쓸 수 없는 계정입니다.' };
     const title = input.title.trim();
@@ -807,7 +839,11 @@ export const actions = {
     if (!OPEN_MAX_OPTIONS.includes(input.max)) return { ok: false, reason: '최대 인원을 골라 주세요.' };
     const bad = checkAlias(undefined, input.alias, u);
     if (bad) return { ok: false, reason: bad };
+    const pw = input.password?.trim() ?? '';
+    const badPw = pw ? checkOpenPassword(pw) : undefined;
+    if (badPw) return { ok: false, reason: badPw };
     const room: OpenRoom = {
+      ...(pw ? { password: pw } : {}),
       id: newId('o'), title, description: input.description.trim().slice(0, 200), tags: parseTags(input.tags), hostId: u.id, max: input.max, createdAt: nowIso(), banned: [],
       members: [{ userId: u.id, alias: input.alias.trim(), joinedAt: nowIso() }],
     };
@@ -816,13 +852,14 @@ export const actions = {
     return { ok: true, roomId: room.id };
   },
 
-  joinOpenRoom(roomId: string, alias: string): RoomCheck {
+  joinOpenRoom(roomId: string, alias: string, password = ''): RoomCheck {
     const u = me();
     const room = state.openRooms.find((r) => r.id === roomId);
     if (!room || !canUseOpenChat(u)) return { ok: false, reason: '들어갈 수 없는 방입니다.' };
     if (isOpenMember(room, u.id)) return { ok: true };
     if (room.banned.includes(u.id)) return { ok: false, reason: '방장이 내보낸 방에는 다시 들어갈 수 없습니다.' };
     if (room.members.length >= room.max) return { ok: false, reason: '방이 가득 찼습니다.' };
+    if (room.password && room.password !== password.trim()) return { ok: false, reason: '비밀번호가 맞지 않습니다.' };
     const bad = checkAlias(room, alias, u);
     if (bad) return { ok: false, reason: bad };
     updateOpen(roomId, (r) => ({ ...r, members: [...r.members, { userId: u.id, alias: alias.trim(), joinedAt: nowIso() }] }));
@@ -857,15 +894,53 @@ export const actions = {
     return { ok: true };
   },
 
-  /** 방장: 참여자 내보내기 (다시 못 들어옴) */
+  /** 방장 또는 관리자어드민: 참여자 내보내기 (다시 못 들어옴) */
   kickOpen(roomId: string, userId: string): RoomCheck {
     const u = me();
     const room = state.openRooms.find((r) => r.id === roomId);
-    if (!room || room.hostId !== u.id) return { ok: false, reason: '방장만 내보낼 수 있습니다.' };
+    const manager = canManageOpen(u);
+    if (!room || (room.hostId !== u.id && !manager)) return { ok: false, reason: '방장만 내보낼 수 있습니다.' };
     if (userId === u.id || !isOpenMember(room, userId)) return { ok: false, reason: '내보낼 수 없는 참여자입니다.' };
     const alias = aliasOf(room, userId)!;
-    updateOpen(roomId, (r) => ({ ...r, members: r.members.filter((m) => m.userId !== userId), banned: [...r.banned, userId] }));
-    pushOpen(roomId, u.id, `방장이 ${alias}님을 내보냈습니다.`, true);
+    const members = room.members.filter((m) => m.userId !== userId);
+    if (!members.length) return actions.deleteOpenRoom(roomId);
+    const hostId = room.hostId === userId ? members[0].userId : room.hostId;
+    updateOpen(roomId, (r) => ({ ...r, members, hostId, banned: [...r.banned, userId] }));
+    pushOpen(roomId, u.id, `${room.hostId === u.id ? '방장' : '관리자'}이 ${alias}님을 내보냈습니다.`, true);
+    return { ok: true };
+  },
+
+  /** 방장: 비밀번호 설정·해제 (빈 값이면 해제) */
+  setOpenPassword(roomId: string, password: string): RoomCheck {
+    const room = state.openRooms.find((r) => r.id === roomId);
+    if (!room || room.hostId !== me().id) return { ok: false, reason: '방장만 비밀번호를 바꿀 수 있습니다.' };
+    const pw = password.trim();
+    const bad = pw ? checkOpenPassword(pw) : undefined;
+    if (bad) return { ok: false, reason: bad };
+    updateOpen(roomId, (r) => {
+      const next = { ...r };
+      if (pw) next.password = pw;
+      else delete next.password;
+      return next;
+    });
+    return { ok: true };
+  },
+
+  /** 방장 또는 관리자어드민: 방 없애기 */
+  deleteOpenRoom(roomId: string): RoomCheck {
+    const room = state.openRooms.find((r) => r.id === roomId);
+    if (!room || (room.hostId !== me().id && !canManageOpen(me()))) return { ok: false, reason: '방장만 방을 없앨 수 있습니다.' };
+    set((s) => ({ openRooms: s.openRooms.filter((r) => r.id !== roomId), openMessages: s.openMessages.filter((m) => m.roomId !== roomId) }));
+    return { ok: true };
+  },
+
+  /** 관리자어드민 지정·해제: 관리자어드민만, 어드민 계정에만, 한 명 이상 남아야 합니다. */
+  setSuperAdmin(userId: string, on: boolean): RoomCheck {
+    if (!canManageOpen(me())) return { ok: false, reason: '관리자어드민만 지정할 수 있습니다.' };
+    const target = userById(userId);
+    if (!target || target.role !== 'admin') return { ok: false, reason: '어드민 계정만 관리자어드민이 될 수 있습니다.' };
+    if (!on && state.users.filter((x) => x.superAdmin && x.role === 'admin').length <= 1 && target.superAdmin) return { ok: false, reason: '관리자어드민은 한 명 이상 있어야 합니다.' };
+    set((s) => ({ users: s.users.map((x) => (x.id === userId ? { ...x, superAdmin: on || undefined } : x)) }));
     return { ok: true };
   },
 
@@ -1012,17 +1087,26 @@ export const actions = {
 
   // ---- 익명 게시판 (모든 계정 이용 가능) ----
 
-  createPost(input: { title: string; body: string; field: string }): RoomCheck & { postId?: string } {
+  createPost(input: { title: string; body: string; field: string; board?: BoardKind; attachments?: Attachment[] }): RoomCheck & { postId?: string } {
     const blocked = boardBlocked();
     if (blocked) return blocked;
+    const board = input.board ?? 'anon';
+    if (!canSeeBoard(me(), board)) return { ok: false, reason: '변호사 게시판은 변호사 계정만 쓸 수 있습니다.' };
     if (!input.title.trim() || !input.body.trim()) return { ok: false, reason: '제목과 내용을 입력해 주세요.' };
     if (!input.field) return { ok: false, reason: '분야를 골라 주세요.' };
-    const post: BoardPost = { id: newId('p'), authorId: me().id, field: input.field, title: input.title.trim(), body: input.body.trim(), at: nowIso(), votes: {}, comments: [] };
+    const attachments = input.attachments ?? [];
+    if (attachments.length > MAX_ATTACHMENTS) return { ok: false, reason: `첨부는 ${MAX_ATTACHMENTS}개까지 올릴 수 있습니다.` };
+    const post: BoardPost = {
+      id: newId('p'), authorId: me().id, field: input.field, title: input.title.trim(), body: input.body.trim(), at: nowIso(), votes: {}, comments: [],
+      ...(board === 'lawyer' ? { board } : {}), ...(attachments.length ? { attachments } : {}),
+    };
     set((s) => ({ posts: [post, ...s.posts] }));
     return { ok: true, postId: post.id };
   },
 
   commentPost(postId: string, text: string, parentId?: string): RoomCheck {
+    const denied = boardDenied(postId);
+    if (denied) return denied;
     const blocked = boardBlocked();
     if (blocked) return blocked;
     if (!text.trim()) return { ok: false, reason: '댓글을 입력해 주세요.' };
@@ -1032,6 +1116,8 @@ export const actions = {
   },
 
   votePost(postId: string, v: 1 | -1): RoomCheck {
+    const denied = boardDenied(postId);
+    if (denied) return denied;
     const blocked = boardBlocked();
     if (blocked) return blocked;
     const uid = me().id;
@@ -1040,6 +1126,8 @@ export const actions = {
   },
 
   voteComment(postId: string, commentId: string, v: 1 | -1): RoomCheck {
+    const denied = boardDenied(postId);
+    if (denied) return denied;
     const blocked = boardBlocked();
     if (blocked) return blocked;
     const uid = me().id;
@@ -1053,6 +1141,8 @@ export const actions = {
 
   /** 게시판 글·댓글 작성자에게 익명 쪽지. 같은 글에서 같은 상대와의 쪽지는 이어서 씁니다. */
   openNote(postId: string, toUserId: string): RoomCheck & { noteId?: string } {
+    const denied = boardDenied(postId);
+    if (denied) return denied;
     const uid = me().id;
     if (toUserId === uid) return { ok: false, reason: '내 글에는 쪽지를 보낼 수 없습니다.' };
     const found = state.notes.find((n) => n.postId === postId && n.memberIds.includes(uid) && n.memberIds.includes(toUserId));
@@ -1083,6 +1173,8 @@ export const actions = {
 
   /** 글(commentId 없음) 또는 댓글 신고. 같은 대상은 한 번만 신고할 수 있습니다. */
   report(postId: string, reason: string, commentId?: string): RoomCheck {
+    const denied = boardDenied(postId);
+    if (denied) return denied;
     const uid = me().id;
     const target = reportTarget({ id: '', postId, commentId, reporterId: uid, reason, at: '', status: 'open' }, state.posts);
     if (!target) return { ok: false, reason: '신고할 글을 찾을 수 없습니다.' };

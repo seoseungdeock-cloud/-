@@ -22,6 +22,8 @@ export type User = {
   photo?: string; // 프로필 사진 (지금은 기기 안 주소, 서버가 붙으면 업로드 주소)
   status?: string; // 상태 메시지
   presence?: Presence; // 상태 (대화 가능, 회의 중 등)
+  /** 관리자어드민: 어드민 중에서도 오픈대화방 실제 이용자 확인·관리 권한 */
+  superAdmin?: boolean;
 };
 
 /** 방의 종류. 메신저·사건·업무·에이전트가 모두 같은 "방" 구조를 씁니다. */
@@ -142,7 +144,15 @@ export type BoardPost = {
   at: string;
   votes: Votes;
   comments: BoardComment[];
+  /** 'anon' 익명 게시판 (기본) / 'lawyer' 변호사 게시판 (변호사만, 메신저 프로필 공개) */
+  board?: BoardKind;
+  attachments?: Attachment[];
 };
+
+export type BoardKind = 'anon' | 'lawyer';
+
+/** 게시판 첨부 (사진·파일). 지금은 기기 안 주소이고, 서버가 붙으면 업로드 주소가 됩니다. */
+export type Attachment = { id: string; kind: 'image' | 'file'; name: string; uri: string; size?: number };
 
 /** 익명 쪽지: 게시판 글에서 시작한 두 사람의 대화. 서로 그 글의 '익명 N'으로만 보입니다. */
 export type NoteThread = {
@@ -187,5 +197,7 @@ export type OpenRoom = {
   createdAt: string;
   /** 내보낸 사람은 다시 들어올 수 없습니다. */
   banned: string[];
+  /** 있으면 참여할 때 비밀번호를 물어봅니다. (서버가 붙으면 서버에서 암호화해 보관) */
+  password?: string;
 };
 export type OpenMessage = { id: string; roomId: string; senderId: string; text: string; at: string; system?: boolean };

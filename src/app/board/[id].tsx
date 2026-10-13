@@ -2,10 +2,10 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { aliasIn, authorView, commentTree, RESTRICT_OPTIONS, timeAgo } from '@/core/board';
+import { authorView, BOARD_LABEL, boardOf, canSeeBoard, commentTree, nameIn, RESTRICT_OPTIONS, timeAgo } from '@/core/board';
 import { actions } from '@/core/store';
 import type { RoomCheck } from '@/core/rooms';
-import { BoardAuthor, ReportPanel, TextButton, VoteBar } from '@/ui/board';
+import { Attachments, BoardAuthor, ReportPanel, TextButton, VoteBar } from '@/ui/board';
 import { Badge, Button, Chip, Chips, Empty, Input, Notice, Screen } from '@/ui/kit';
 import { family, radius, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
@@ -23,7 +23,9 @@ export default function PostScreen() {
   const [restricting, setRestricting] = useState<Target>();
   const [msg, setMsg] = useState<{ tone: 'warn' | 'accent'; text: string; bottom?: boolean }>();
   const post = s.posts.find((p) => p.id === id);
-  if (!post) return <Screen title="익명 게시판" back><Empty text="글을 찾을 수 없습니다." /></Screen>;
+  // 변호사 게시판 글은 변호사 계정만 엽니다.
+  if (!post || !canSeeBoard(user, boardOf(post))) return <Screen title="게시판" back><Empty text="글을 찾을 수 없습니다." /></Screen>;
+  const lawyerBoard = boardOf(post) === 'lawyer';
   const admin = user.role === 'admin';
 
   const run = (res: RoomCheck, done?: string, bottom?: boolean) => {
@@ -57,7 +59,7 @@ export default function PostScreen() {
       ) : null}
       {restricting && restricting.commentId === t.commentId ? (
         <View style={{ backgroundColor: c.surface, borderRadius: radius.md, padding: space.md, marginVertical: space.sm, gap: space.sm }}>
-          <Text style={{ fontFamily: family.bold, fontSize: 14, color: c.text }}>{aliasIn(post, t.authorId)} 이용 제한</Text>
+          <Text style={{ fontFamily: family.bold, fontSize: 14, color: c.text }}>{nameIn(post, t.authorId, s.users)} 이용 제한</Text>
           <Chips>
             {RESTRICT_OPTIONS.map((o) => (
               <Chip
@@ -87,13 +89,14 @@ export default function PostScreen() {
   );
 
   return (
-    <Screen title="익명 게시판" back>
+    <Screen title={BOARD_LABEL[boardOf(post)]} back>
       <BoardAuthor v={authorView(user, post, post.authorId, s.users)} time={timeAgo(post.at)} />
       <Text style={{ fontFamily: family.bold, fontSize: 20, lineHeight: 28, color: c.text, marginTop: space.xs }}>{post.title}</Text>
       <View style={{ flexDirection: 'row', marginVertical: space.sm }}>
         <Badge label={post.field} />
       </View>
       <Text style={{ fontFamily: family.regular, fontSize: 16, lineHeight: 24, color: c.text }}>{post.body}</Text>
+      <Attachments items={post.attachments ?? []} />
       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.lg, marginTop: space.md }}>
         <VoteBar votes={post.votes} userId={user.id} onVote={(v) => run(actions.votePost(post.id, v))} />
         <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.sub }}>댓글 {post.comments.length}</Text>
@@ -125,11 +128,11 @@ export default function PostScreen() {
       <View style={{ marginTop: space.lg }}>
         {replyTarget ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm }}>
-            <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.accent }}>{aliasIn(post, replyTarget.authorId)}에게 답글</Text>
+            <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.accent }}>{nameIn(post, replyTarget.authorId, s.users)}에게 답글</Text>
             <TextButton label="취소" onPress={() => setReplyTo(undefined)} />
           </View>
         ) : null}
-        <Input placeholder="익명으로 댓글 달기" value={text} onChangeText={setText} multiline />
+        <Input placeholder={lawyerBoard ? '댓글 달기' : '익명으로 댓글 달기'} value={text} onChangeText={setText} multiline />
         {msg?.bottom ? <Notice tone={msg.tone} text={msg.text} /> : null}
         <Button label="등록" onPress={send} />
       </View>

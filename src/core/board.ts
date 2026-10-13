@@ -1,4 +1,4 @@
-import type { BoardComment, BoardPost, BoardReport, NoteThread, Role, User, Votes } from './types';
+import type { BoardComment, BoardKind, BoardPost, BoardReport, NoteThread, Role, User, Votes } from './types';
 
 const ROLE_LABEL: Record<Role, string> = { client: '의뢰인', lawyer: '변호사', staff: '직원', admin: '어드민' };
 
@@ -10,16 +10,39 @@ export function aliasIn(post: BoardPost, userId: string): string {
   return i < 0 ? '익명' : `익명 ${i + 1}`;
 }
 
+export const BOARD_LABEL: Record<BoardKind, string> = { anon: '익명 게시판', lawyer: '변호사 게시판' };
+
+export function boardOf(post: BoardPost): BoardKind {
+  return post.board ?? 'anon';
+}
+
+/** 변호사 게시판은 변호사 계정만 보고 씁니다. */
+export function canSeeBoard(u: User, board: BoardKind): boolean {
+  return board === 'anon' || u.role === 'lawyer';
+}
+
 export type AuthorView = {
   alias: string;
-  /** 어드민에게만 보이는 실제 작성자 */
+  /** 익명 게시판: 어드민에게만 보이는 실제 작성자 */
   real?: string;
+  /** 변호사 게시판: 공개되는 메신저 프로필 */
+  profile?: User;
 };
 
 export function authorView(viewer: User, post: BoardPost, authorId: string, users: User[]): AuthorView {
   const u = users.find((x) => x.id === authorId);
+  if (boardOf(post) === 'lawyer') return { alias: u?.nickname ?? '알 수 없음', profile: u };
   return { alias: aliasIn(post, authorId), real: viewer.role === 'admin' && u ? `${u.nickname} · ${ROLE_LABEL[u.role]}` : undefined };
 }
+
+/** 쪽지 상대 이름: 익명 게시판은 '익명 N', 변호사 게시판은 실명 */
+export function nameIn(post: BoardPost | undefined, userId: string, users: User[]): string {
+  if (!post) return '익명';
+  if (boardOf(post) === 'lawyer') return users.find((u) => u.id === userId)?.nickname ?? '알 수 없음';
+  return aliasIn(post, userId);
+}
+
+export const MAX_ATTACHMENTS = 5;
 
 export function score(votes: Votes): number {
   return Object.values(votes).reduce<number>((a, v) => a + v, 0);

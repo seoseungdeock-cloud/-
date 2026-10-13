@@ -7,7 +7,7 @@ import { Button, Chip, Chips, Input, Notice, Screen, Sub } from '@/ui/kit';
 
 // 오픈대화방 만들기: 방 이름·소개·태그·최대 인원, 이 방에서 쓸 내 닉네임
 export default function NewOpenRoomScreen() {
-  const [form, setForm] = useState({ title: '', description: '', tags: '', max: 100, alias: '' });
+  const [form, setForm] = useState({ title: '', description: '', tags: '', max: 100, alias: '', password: '' });
   const [error, setError] = useState('');
   const set = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
   const create = () => {
@@ -27,6 +27,7 @@ export default function NewOpenRoomScreen() {
           <Chip key={n} label={`${n}명`} active={form.max === n} onPress={() => setForm((f) => ({ ...f, max: n }))} />
         ))}
       </Chips>
+      <Input label="비밀번호 (선택)" placeholder="4~16자" value={form.password} onChangeText={set('password')} secureTextEntry autoCapitalize="none" />
       <Input label="이 방에서 쓸 내 닉네임" value={form.alias} onChangeText={set('alias')} />
       <Button label="만들기" onPress={create} />
     </Screen>

@@ -1,6 +1,6 @@
 import { checkCompliance } from '../compliance';
 import { PROCEDURE_MENU, procedureReply } from '../procedures';
-import { authorView, commentTree, score, searchPosts, sortPosts, unreadIn } from '../board';
+import { authorView, boardOf, commentTree, nameIn, score, searchPosts, sortPosts, unreadIn } from '../board';
 import { contactsFor } from '../contacts';
 import { clientCanSee, dayKey, dayLabel, firstOfDay, hasClient, isHidden, isMaster, presenceOf, markParts, mentionQuery, messageDays, orgGroups, parseMentions, reactionGroups, readCount, readers, searchAll, searchDirectory, searchMessages, sortRooms, splitMentions, unreadCount } from '../messenger';
 import { opinionFor } from '../knowledge';
@@ -232,7 +232,7 @@ describe('대화방 @AI 명령', () => {
 describe('주소록·대시보드', () => {
   it('변호사는 같은 법무법인, 의뢰인은 자기 사건의 의뢰인만 본다', () => {
     as('lawyer');
-    expect(contactsFor(me(), getState()).map((u) => u.id).sort()).toEqual(['u_admin', 'u_l2', 'u_l3', 'u_m1', 'u_staff']);
+    expect(contactsFor(me(), getState()).map((u) => u.id).sort()).toEqual(['u_admin', 'u_admin2', 'u_l2', 'u_l3', 'u_m1', 'u_staff']);
     as('client');
     expect(contactsFor(me(), getState())).toHaveLength(0);
   });
@@ -687,5 +687,88 @@ describe('오픈대화방', () => {
     as('lawyer');
     expect(actions.leaveOpenRoom('o1').ok).toBe(true);
     expect(st().openRooms.find((r) => r.id === 'o1')).toBeUndefined(); // 아무도 없으면 방이 사라짐
+  });
+});
+
+describe('오픈대화방 비밀번호·관리자어드민', () => {
+  const st = () => getState();
+  const open = (id: string) => st().openRooms.find((r) => r.id === id)!;
+
+  it('비밀번호 방은 맞는 비밀번호로만 들어가고, 방장이 바꾸거나 해제한다', () => {
+    as('lawyer');
+    expect(actions.createOpenRoom({ title: '비번방', description: '', tags: '', max: 30, alias: '문지기', password: '12' }).ok).toBe(false); // 너무 짧음
+    const res = actions.createOpenRoom({ title: '비번방', description: '', tags: '', max: 30, alias: '문지기', password: 'pass1' });
+    expect(res.ok).toBe(true);
+    as('staff');
+    expect(actions.joinOpenRoom(res.roomId!, '손님').ok).toBe(false);
+    expect(actions.joinOpenRoom(res.roomId!, '손님', 'wrong').ok).toBe(false);
+    expect(actions.setOpenPassword(res.roomId!, '').ok).toBe(false); // 방장만
+    expect(actions.joinOpenRoom(res.roomId!, '손님', 'pass1').ok).toBe(true);
+    as('lawyer');
+    expect(actions.setOpenPassword(res.roomId!, '').ok).toBe(true);
+    expect(open(res.roomId!).password).toBeUndefined();
+  });
+
+  it('관리자어드민만 남의 방에서 내보내기·방 없애기를 하고, 일반 어드민은 못 한다', () => {
+    as('subadmin');
+    expect(actions.kickOpen('o1', 'u_l2').ok).toBe(false);
+    expect(actions.deleteOpenRoom('o1').ok).toBe(false);
+    as('admin');
+    expect(actions.kickOpen('o1', 'u_l2').ok).toBe(true);
+    expect(open('o1').banned).toContain('u_l2');
+    expect(actions.deleteOpenRoom('o2').ok).toBe(true);
+    expect(st().openRooms.find((r) => r.id === 'o2')).toBeUndefined();
+  });
+
+  it('관리자어드민 지정은 관리자어드민만, 일반 어드민은 관리자어드민 계정을 못 건드린다', () => {
+    as('subadmin');
+    expect(actions.setSuperAdmin('u_admin2', true).ok).toBe(false);
+    expect(actions.resetPassword('u_admin', 'takeover123').ok).toBe(false);
+    expect(actions.setAccountActive('u_admin', false).ok).toBe(false);
+    expect(actions.setRole('u_admin', 'client').ok).toBe(false);
+    as('admin');
+    expect(actions.setSuperAdmin('u_lawyer', true).ok).toBe(false); // 어드민 계정만
+    expect(actions.setSuperAdmin('u_admin', false).ok).toBe(false); // 한 명은 남아야
+    expect(actions.setSuperAdmin('u_admin2', true).ok).toBe(true);
+    expect(actions.setSuperAdmin('u_admin', false).ok).toBe(true);
+  });
+});
+
+describe('게시판 분리 (익명 / 변호사)', () => {
+  const st = () => getState();
+  const law = () => st().posts.find((p) => p.id === 'p_law1')!;
+
+  it('변호사 게시판은 변호사만 읽고 쓰고, 다른 계정은 거절된다', () => {
+    for (const id of ['client', 'staff', 'admin']) {
+      as(id);
+      expect(actions.createPost({ title: '제목', body: '내용', field: '민사', board: 'lawyer' }).ok).toBe(false);
+      expect(actions.commentPost('p_law1', '댓글').ok).toBe(false);
+      expect(actions.votePost('p_law1', 1).ok).toBe(false);
+      expect(actions.openNote('p_law1', 'u_l2').ok).toBe(false);
+    }
+    as('lawyer');
+    const res = actions.createPost({ title: '변호사 글', body: '내용', field: '민사', board: 'lawyer' });
+    expect(res.ok).toBe(true);
+    expect(boardOf(st().posts.find((p) => p.id === res.postId)!)).toBe('lawyer');
+    expect(actions.commentPost('p_law1', '좋은 정보 감사합니다').ok).toBe(true);
+  });
+
+  it('변호사 게시판은 메신저 프로필이 보이고, 익명 게시판은 그대로 익명', () => {
+    as('lawyer');
+    const v = authorView(me(), law(), 'u_l2', st().users);
+    expect(v.alias).toBe('샘플 변호사 B');
+    expect(v.profile?.id).toBe('u_l2');
+    expect(nameIn(law(), 'u_l2', st().users)).toBe('샘플 변호사 B');
+    const anon = st().posts.find((p) => p.id === 'p1')!;
+    expect(authorView(me(), anon, 'u_client', st().users).alias).toMatch(/^익명/);
+    expect(nameIn(anon, 'u_client', st().users)).toMatch(/^익명/);
+  });
+
+  it('사진·파일은 5개까지 붙인다', () => {
+    const att = (i: number) => ({ id: `a${i}`, kind: 'file' as const, name: `f${i}.pdf`, uri: `file:///f${i}.pdf` });
+    expect(actions.createPost({ title: '제목', body: '내용', field: '민사', attachments: [0, 1, 2, 3, 4, 5].map(att) }).ok).toBe(false);
+    const res = actions.createPost({ title: '제목', body: '내용', field: '민사', attachments: [0, 1].map(att) });
+    expect(res.ok).toBe(true);
+    expect(st().posts.find((p) => p.id === res.postId)!.attachments).toHaveLength(2);
   });
 });

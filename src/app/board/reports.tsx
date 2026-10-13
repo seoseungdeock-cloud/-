@@ -21,12 +21,15 @@ export default function ReportsScreen() {
   const done = s.reports.filter((r) => r.status !== 'open').slice(0, 20);
   const banned = Object.keys(s.boardBans).filter((id) => restrictedUntil(s.boardBans, id));
 
+  // 변호사 게시판 글은 어드민도 열람하지 않고, 신고된 부분만 신고함에서 처리합니다.
+  const lawyerPost = (postId: string) => s.posts.find((p) => p.id === postId)?.board === 'lawyer';
   const item = (r: BoardReport) => {
     const t = reportTarget(r, s.posts);
     return (
       <Card key={r.id}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs, marginBottom: space.xs, flexWrap: 'wrap' }}>
           <Badge label={t?.kind ?? '삭제됨'} tone="plain" />
+          {lawyerPost(r.postId) ? <Badge label="변호사 게시판" tone="plain" /> : null}
           <Badge label={r.reason} tone="warn" />
           <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{timeAgo(r.at)} · 신고자 {name(r.reporterId)}</Text>
         </View>
@@ -41,7 +44,7 @@ export default function ReportsScreen() {
         {r.status === 'open' && t ? (
           <View style={{ marginTop: space.sm, gap: space.sm }}>
             <View style={{ flexDirection: 'row', gap: space.lg, flexWrap: 'wrap' }}>
-              <TextButton label="원문 보기" onPress={() => router.push({ pathname: '/board/[id]', params: { id: r.postId } })} />
+              {lawyerPost(r.postId) ? null : <TextButton label="원문 보기" onPress={() => router.push({ pathname: '/board/[id]', params: { id: r.postId } })} />}
               <TextButton danger label={`${t.kind} 삭제`} onPress={() => (r.commentId ? actions.deleteComment(r.postId, r.commentId) : actions.deletePost(r.postId))} />
               <TextButton label="문제없음" onPress={() => actions.closeReport(r.id, 'dismissed', '기각')} />
             </View>

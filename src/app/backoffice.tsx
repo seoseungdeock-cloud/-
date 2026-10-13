@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pressable, Switch, Text, useWindowDimensions, View } from 'react-native';
 
 import { OFFICES } from '@/core/offices';
+import { canManageOpen } from '@/core/open-chat';
 import { actions } from '@/core/store';
 import type { Role } from '@/core/types';
 import { Badge, Button, Card, Chip, Chips, Empty, Input, Notice, Screen, Section, Sub, T } from '@/ui/kit';
@@ -130,6 +131,7 @@ export default function BackofficeScreen() {
               <T bold>{u.nickname}</T>
               <Sub>{a.loginId}</Sub>
               <Badge label={a.active ? '사용 중' : '중지됨'} tone={a.active ? 'secure' : 'warn'} />
+              {u.role === 'admin' && u.superAdmin ? <Badge label="관리자어드민" tone="accent" /> : null}
             </View>
             <Sub>만든 날 {a.createdAt.slice(0, 10)} · 최근 로그인 {a.lastLoginAt ? a.lastLoginAt.slice(0, 16).replace('T', ' ') : '없음'}</Sub>
             <View style={{ marginTop: space.sm }}>
@@ -143,6 +145,12 @@ export default function BackofficeScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm }}>
                 <Switch value={u.agentAccess} onValueChange={(v) => report(actions.setAgentAccess(u.id, v), v ? `${u.nickname}님에게 업무 AI를 허용했습니다.` : `${u.nickname}님의 업무 AI 권한을 해제했습니다.`)} />
                 <Sub>경영 에이전트·마케팅 AI 사용</Sub>
+              </View>
+            ) : null}
+            {u.role === 'admin' && canManageOpen(user) ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm }}>
+                <Switch value={!!u.superAdmin} onValueChange={(v) => report(actions.setSuperAdmin(u.id, v), v ? `${u.nickname}님을 관리자어드민으로 지정했습니다.` : `${u.nickname}님의 관리자어드민을 해제했습니다.`)} />
+                <Sub>관리자어드민 (오픈대화방 실제 이용자 확인·관리)</Sub>
               </View>
             ) : null}
             {resetFor === u.id ? (

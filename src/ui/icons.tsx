@@ -2,7 +2,7 @@
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
 type Props = { name: IconName; color: string; size?: number };
-export type IconName = 'home' | 'search' | 'chat' | 'case' | 'map' | 'work' | 'me' | 'plus' | 'lock' | 'spark' | 'back' | 'send' | 'chevron' | 'board' | 'up' | 'down' | 'mail' | 'flag' | 'pin' | 'mute' | 'phone' | 'menu' | 'star' | 'check' | 'close' | 'reply' | 'copy' | 'notice' | 'forward' | 'trash' | 'hide' | 'exit' | 'people' | 'link' | 'file' | 'contact' | 'recall' | 'smile' | 'calendar';
+export type IconName = 'home' | 'search' | 'chat' | 'case' | 'map' | 'work' | 'me' | 'plus' | 'lock' | 'spark' | 'back' | 'send' | 'chevron' | 'board' | 'up' | 'down' | 'mail' | 'flag' | 'pin' | 'mute' | 'phone' | 'menu' | 'star' | 'check' | 'close' | 'reply' | 'copy' | 'notice' | 'forward' | 'trash' | 'hide' | 'exit' | 'people' | 'link' | 'file' | 'contact' | 'recall' | 'smile' | 'calendar' | 'image';
 
 export function Icon({ name, color, size = 24 }: Props) {
   const p = { stroke: color, strokeWidth: 1.8, fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -28,6 +28,13 @@ export function Icon({ name, color, size = 24 }: Props) {
         <>
           <Circle {...p} cx={12} cy={8} r={4} />
           <Path {...p} d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" />
+        </>
+      )}
+      {name === 'image' && (
+        <>
+          <Rect {...p} x={3} y={4} width={18} height={16} rx={2} />
+          <Circle {...p} cx={9} cy={10} r={1.8} />
+          <Path {...p} d="M4 18l5-5 4 4 3-3 4 4" />
         </>
       )}
       {name === 'board' && <Path {...p} d="M5 4h14v16H5zM8 9h8M8 13h8M8 17h5" />}
