@@ -147,6 +147,8 @@ export type Message = {
   contactId?: string;
   /** '나에게서 삭제'한 사용자 */
   deletedFor?: string[];
+  /** 방에 올린 사진·파일 */
+  attachments?: Attachment[];
 };
 
 export const AI_SENDER = 'ai';
@@ -187,8 +189,8 @@ export type BoardKind = 'notice' | 'anon' | 'lawyer' | 'advice' | 'event' | 'pra
 export type SuggestionStatus = 'open' | 'review' | 'done' | 'hold';
 export type Suggestion = { id: string; authorId: string; body: string; at: string; status: SuggestionStatus; answer?: string; answeredAt?: string };
 
-/** 게시판 첨부 (사진·파일). 지금은 기기 안 주소이고, 서버가 붙으면 업로드 주소가 됩니다. */
-export type Attachment = { id: string; kind: 'image' | 'file'; name: string; uri: string; size?: number };
+/** 첨부 (사진·파일). uri는 화면에 띄울 주소(기기 안 주소 또는 서버가 내준 임시 주소), path는 서버 저장소 경로입니다. */
+export type Attachment = { id: string; kind: 'image' | 'file'; name: string; uri: string; size?: number; mime?: string; path?: string };
 
 /** 익명 쪽지: 게시판 글에서 시작한 두 사람의 대화. 서로 그 글의 '익명 N'으로만 보입니다. */
 export type NoteThread = {

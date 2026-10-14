@@ -243,6 +243,23 @@ select unregister_push_token('ExponentPushToken[client-phone]');
 reset role;
 select tst.check('푸시 주소: 로그아웃하면 지움', (select count(*) = 0 from push_tokens));
 
+-- ── 방 사진·파일 (3단계) ──
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000e');
+select post_message('30000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'text', '',
+  p_attachments => '[{"id":"f1","kind":"image","name":"증거.jpg","path":"10000000-0000-0000-0000-000000000001/30000000-0000-0000-0000-000000000001/f1-증거.jpg","size":1000}]');
+select tst.check('의뢰인: 내 사건방에 사진 보냄 (글 없이)', (select jsonb_array_length(attachments) = 1 from messages where id = '30000000-0000-0000-0000-000000000001'));
+select tst.throws('의뢰인: 다른 방 경로 첨부 막힘', $$select post_message(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', 'text', '', p_attachments => '[{"id":"f2","kind":"file","name":"x","path":"99999999-0000-0000-0000-000000000001/a/x"}]')$$, '첨부를 올릴 수 없습니다');
+select tst.throws('의뢰인: 상위 경로 첨부 막힘', $$select post_message(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', 'text', '', p_attachments => '[{"id":"f2","kind":"file","name":"x","path":"10000000-0000-0000-0000-000000000001/../99999999-0000-0000-0000-000000000001/x"}]')$$, '첨부를 올릴 수 없습니다');
+select tst.throws('의뢰인: 빈 메시지 막힘', $$select post_message(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', 'text', '')$$, '메시지를 입력');
+select tst.check('저장소: 내 방 경로는 받을 수 있음', room_file_member('10000000-0000-0000-0000-000000000001/a/b.jpg'));
+select tst.check('저장소: 이상한 경로는 막힘', not room_file_member('../x') and not room_file_member('notauuid/x'));
+select recall_message('30000000-0000-0000-0000-000000000001');
+select tst.check('회수하면 첨부도 내려감', (select jsonb_array_length(attachments) = 0 and recalled from messages where id = '30000000-0000-0000-0000-000000000001'));
+select tst.as_user('00000000-0000-0000-0000-00000000000f');
+select tst.check('저장소: 다른 의뢰인은 남의 방 파일 못 받음', not room_file_member('10000000-0000-0000-0000-000000000001/a/b.jpg'));
+reset role;
+
 -- ── 로그인 안 한 사람 ──
 reset role;
 set role anon;

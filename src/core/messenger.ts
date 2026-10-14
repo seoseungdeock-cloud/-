@@ -104,6 +104,12 @@ export function previewText(m: Message | undefined, users: User[]): string {
   if (m.kind === 'contact') return `연락처: ${users.find((u) => u.id === m.contactId)?.nickname ?? ''}`;
   if (m.forwardOf) return `[전달] ${m.forwardOf.text.split('\n')[0]}`;
   if (m.hearingAlertId) return '[기일 알림] 확인이 필요합니다';
+  if (m.attachments?.length && !m.text) {
+    const photos = m.attachments.filter((a) => a.kind === 'image').length;
+    const files = m.attachments.length - photos;
+    if (!files) return `사진 ${photos}장`;
+    return photos ? `사진 ${photos}장, 파일 ${files}개` : files === 1 ? `파일: ${m.attachments[0].name}` : `파일 ${files}개`;
+  }
   return m.text.split('\n')[0];
 }
 

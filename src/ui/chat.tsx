@@ -1,13 +1,15 @@
 // 대화방 화면 조각 (웍스 대화방 구성: 읽음 수, 답장 인용, 전달, 회수, 공감, 멘션, 공지, 방 메뉴)
 import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { Image, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
 import { actions } from '@/core/store';
-import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
+import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Attachment, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
 import { Icon, type IconName } from './icons';
 import { HearingCard } from './hearing';
+import { fileSize } from './board';
 import { Avatar } from './kit';
 import { chatTime, clockTime, roomTitle } from './room-row';
 import { family, radius, space, useColors } from './theme';
@@ -173,7 +175,10 @@ export function Bubble({
                 <Icon name="chevron" color={c.faint} size={18} />
               </Pressable>
             ) : (
-              <Body text={m.text} names={names} color={fg} mention={mine ? c.bubbleMineText : c.accent} mark={mark} />
+              <>
+                {m.attachments?.length ? <MessageFiles items={m.attachments} mine={mine} /> : null}
+                {m.text ? <Body text={m.text} names={names} color={fg} mention={mine ? c.bubbleMineText : c.accent} mark={mark} /> : null}
+              </>
             )}
           </Pressable>
           {meta}
@@ -783,5 +788,38 @@ function SmallAction({ label, onPress, danger }: { label: string; onPress: () =>
     <Pressable onPress={onPress} style={({ pressed }) => ({ paddingHorizontal: space.md, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: danger ? c.accent : c.line, opacity: pressed ? 0.5 : 1 })}>
       <Text style={{ fontFamily: family.semibold, fontSize: 13, color: danger ? c.accent : c.text }}>{label}</Text>
     </Pressable>
+  );
+}
+
+/** 말풍선 안의 사진·파일. 누르면 크게 보거나 내려받습니다. 올리는 중에는 기기 안 사진을 그대로 보여 줍니다. */
+function MessageFiles({ items, mine }: { items: Attachment[]; mine: boolean }) {
+  const c = useColors();
+  const open = (a: Attachment) => {
+    if (a.uri) void WebBrowser.openBrowserAsync(a.uri);
+  };
+  const images = items.filter((a) => a.kind === 'image');
+  const files = items.filter((a) => a.kind === 'file');
+  const fg = mine ? c.bubbleMineText : c.text;
+  return (
+    <View style={{ gap: space.xs }}>
+      {images.length ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, maxWidth: 236 }}>
+          {images.map((a) => (
+            <Pressable key={a.id} accessibilityLabel={`사진 ${a.name}`} onPress={() => open(a)}>
+              <Image source={a.uri ? { uri: a.uri } : undefined} style={{ width: images.length === 1 ? 220 : 116, height: images.length === 1 ? 220 : 116, borderRadius: radius.md, backgroundColor: c.surface }} />
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      {files.map((a) => (
+        <Pressable key={a.id} accessibilityLabel={`파일 ${a.name}`} onPress={() => open(a)} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minWidth: 200, maxWidth: 236 }}>
+          <Icon name="file" color={fg} size={22} />
+          <View style={{ flex: 1 }}>
+            <Text numberOfLines={1} style={{ fontFamily: family.semibold, fontSize: 14, color: fg }}>{a.name}</Text>
+            {a.size ? <Text style={{ fontFamily: family.regular, fontSize: 12, color: mine ? c.bubbleMineText : c.sub }}>{fileSize(a.size)}</Text> : null}
+          </View>
+        </Pressable>
+      ))}
+    </View>
   );
 }

@@ -11,6 +11,7 @@ import { opinionFor } from './knowledge';
 import { titleFrom, type ProgramRequest } from './builder';
 import { newId, nowIso, useServerIds } from './ids';
 import { loadAll, remoteOps, type Remote, type Snapshot } from './remote';
+import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import { loginEmail, reasonOf, supabase } from './supabase';
 import {
   applyBudget,
@@ -404,6 +405,48 @@ export async function refresh(): Promise<void> {
   }
 }
 
+// 실시간 (3단계): 이 표들이 바뀌면 서버가 바로 알려 주고, 잠깐 모아서 새로 받습니다. 내가 볼 수 있는 행만 옵니다.
+const LIVE_TABLES = [
+  'messages', 'message_reactions', 'message_hides', 'room_members', 'room_notices', 'rooms',
+  'cases', 'hearings', 'case_progress', 'hearing_alerts', 'hearing_alert_recipients',
+];
+let live: RealtimeChannel | null = null;
+let liveTimer: ReturnType<typeof setTimeout> | undefined;
+let liveStarting = false;
+
+async function goLive() {
+  if (!supabase || live || liveStarting) return;
+  liveStarting = true;
+  try {
+    await startLive(supabase);
+  } finally {
+    liveStarting = false;
+  }
+}
+
+async function startLive(sb: SupabaseClient) {
+  // 실시간 연결에도 로그인 표를 넘겨야 행 보안(내 방만)이 적용된 알림이 옵니다
+  const token = (await sb.auth.getSession()).data.session?.access_token;
+  if (!token || live) return;
+  await sb.realtime.setAuth(token);
+  const ch = sb.channel('rightnow-live');
+  const kick = () => {
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => void refresh(), 250);
+  };
+  for (const table of LIVE_TABLES) ch.on('postgres_changes', { event: '*', schema: 'public', table }, kick);
+  live = ch.subscribe((status) => {
+    // 끊겼다 다시 붙으면 그사이 놓친 것을 받습니다
+    if (status === 'SUBSCRIBED') kick();
+  });
+}
+
+function stopLive() {
+  clearTimeout(liveTimer);
+  if (supabase && live) void supabase.removeChannel(live);
+  live = null;
+}
+
 /** 로그인한 계정으로 들어가기: 중지 계정 확인, 데이터 받기 */
 async function enter(userId: string): Promise<void> {
   const active = await remote!.touchLogin();
@@ -411,6 +454,7 @@ async function enter(userId: string): Promise<void> {
   const snap = await loadAll(supabase!, userId);
   if (!snap.users.some((u) => u.id === userId)) throw new Error('계정 정보를 찾을 수 없습니다. 관리자에게 문의하세요.');
   set({ ...snap, currentUserId: userId, syncError: undefined });
+  void goLive();
 }
 
 let started = false;
@@ -433,10 +477,11 @@ export async function startServer(): Promise<void> {
     set({ booted: true });
   }
   supabase.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT') stopLive();
     if (event === 'SIGNED_OUT' && state.currentUserId) set({ ...serverState(), booted: true });
   });
-  // 실시간 연결(3단계) 전까지는 30초마다, 그리고 앱으로 돌아올 때 새로 받습니다.
-  setInterval(() => void refresh(), 30_000);
+  // 실시간이 놓친 것(게시판·쪽지 등 실시간 대상이 아닌 것 포함)은 1분마다, 그리고 앱으로 돌아올 때 새로 받습니다.
+  setInterval(() => void refresh(), 60_000);
   AppState.addEventListener('change', (st) => {
     if (st === 'active') void refresh();
   });
@@ -653,6 +698,7 @@ export const actions = {
   logout() {
     if (supabase) {
       // 보내는 중인 변경을 마친 뒤 로그아웃합니다.
+      stopLive();
       signingOut = queue
         .then(() => beforeSignOut().catch(() => undefined))
         .then(() => supabase!.auth.signOut())
@@ -753,6 +799,20 @@ export const actions = {
         : 'AI 참여방이 만들어졌습니다. AI가 대화를 읽고 @AI 로 부르면 답합니다.',
     );
     return { ok: true, roomId: room.id };
+  },
+
+  /** 방에 사진·파일 보내기 (10개까지). 서버가 있으면 저장소에 올린 뒤 메시지를 남깁니다. */
+  sendFiles(roomId: string, files: Attachment[], opts: { replyTo?: string } = {}): RoomCheck {
+    const room = state.rooms.find((r) => r.id === roomId);
+    if (!room || !room.memberIds.includes(me().id)) return { ok: false, reason: '참여 중인 방이 아닙니다.' };
+    if (!files.length) return { ok: false, reason: '보낼 파일을 골라 주세요.' };
+    if (files.length > 10) return { ok: false, reason: '한 번에 10개까지 보낼 수 있습니다.' };
+    if (files.some((f) => (f.size ?? 0) > 50 * 1024 * 1024)) return { ok: false, reason: '파일은 50MB까지 올릴 수 있습니다.' };
+    const msg: Message = { id: newId('m'), roomId, senderId: me().id, kind: 'text', text: '', at: nowIso(), attachments: files, ...(opts.replyTo ? { replyTo: opts.replyTo } : {}) };
+    set((s) => ({ messages: [...s.messages, msg] }));
+    markReadAt(roomId, msg.senderId, msg.at);
+    mirror(async (r) => r.postMessage({ ...msg, attachments: await r.uploadRoomFiles(roomId, msg.id, files) }));
+    return { ok: true };
   },
 
   async sendMessage(roomId: string, text: string, opts: { replyTo?: string } = {}) {
@@ -884,7 +944,7 @@ export const actions = {
   recall(messageId: string): RoomCheck {
     const m = state.messages.find((x) => x.id === messageId);
     if (!m || m.senderId !== me().id) return { ok: false, reason: '내가 보낸 메시지만 회수할 수 있습니다.' };
-    updateMessage(messageId, (x) => ({ ...x, text: '', recalled: true, reactions: {}, mentions: [] }));
+    updateMessage(messageId, (x) => ({ ...x, text: '', recalled: true, reactions: {}, mentions: [], attachments: undefined }));
     mirror((r) => r.recall(messageId));
     return { ok: true };
   },

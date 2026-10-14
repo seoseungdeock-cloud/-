@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AuthCode } from './auth-codes';
 import type {
   Account,
+  Attachment,
   BoardComment,
   BoardPost,
   BoardReport,
@@ -93,6 +94,27 @@ export type Snapshot = {
 };
 
 /** 로그인한 사람이 볼 수 있는 모든 데이터를 받아 앱 상태 모양으로 바꿉니다. */
+export const ROOM_FILES = 'room-files';
+const signed = new Map<string, { url: string; until: number }>();
+
+/** 방 파일의 임시 주소 (6시간짜리를 받아 두고, 1시간 남으면 새로 받음) */
+async function signPaths(sb: SupabaseClient, paths: string[]): Promise<Map<string, string>> {
+  const now = Date.now();
+  const need = [...new Set(paths)].filter((p) => (signed.get(p)?.until ?? 0) < now + 3_600_000);
+  for (let i = 0; i < need.length; i += 500) {
+    const { data } = await sb.storage.from(ROOM_FILES).createSignedUrls(need.slice(i, i + 500), 6 * 3600);
+    for (const d of data ?? []) if (d.path && d.signedUrl) signed.set(d.path, { url: d.signedUrl, until: now + 6 * 3_600_000 });
+  }
+  return new Map(paths.map((p) => [p, signed.get(p)?.url ?? '']));
+}
+
+function attachmentsOf(raw: unknown, urls: Map<string, string>): Attachment[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((a): a is Row => !!a && typeof a.path === 'string')
+    .map((a) => ({ id: a.id, kind: a.kind, name: a.name, path: a.path, uri: urls.get(a.path) ?? '', ...(a.size ? { size: a.size } : {}), ...(a.mime ? { mime: a.mime } : {}) }));
+}
+
 export async function loadAll(sb: SupabaseClient, meId: string): Promise<Snapshot> {
   const [
     profiles, favorites, rooms, members, messages, reactions, hides, notices,
@@ -182,8 +204,10 @@ export async function loadAll(sb: SupabaseClient, meId: string): Promise<Snapsho
 
   const reactionsBy = group(reactions, (r) => r.message_id);
   const hidden = new Set(hides.map((h) => h.message_id));
+  const urls = await signPaths(sb, messages.flatMap((m) => (Array.isArray(m.attachments) ? m.attachments.map((a: Row) => a?.path).filter(Boolean) : [])));
   const messageList: Message[] = messages.map((m) => {
     const rs = reactionsBy.get(m.id);
+    const atts = attachmentsOf(m.attachments, urls);
     return {
       id: m.id, roomId: m.room_id, senderId: m.sender_kind === 'user' ? m.sender_id ?? '' : m.sender_kind, kind: m.kind, text: m.text, at: m.created_at,
       ...(m.reply_to ? { replyTo: m.reply_to } : {}),
@@ -194,6 +218,7 @@ export async function loadAll(sb: SupabaseClient, meId: string): Promise<Snapsho
       ...(m.mentions?.length ? { mentions: m.mentions } : {}),
       ...(m.hearing_alert_id ? { hearingAlertId: m.hearing_alert_id } : {}),
       ...(m.contact_id ? { contactId: m.contact_id } : {}),
+      ...(atts.length ? { attachments: atts } : {}),
       ...(hidden.has(m.id) ? { deletedFor: [meId] } : {}),
     };
   });
@@ -319,7 +344,21 @@ export function remoteOps(sb: SupabaseClient) {
       rpc(sb, 'post_message', {
         p_id: m.id, p_room: m.roomId, p_kind: m.kind, p_text: m.text, p_reply_to: m.replyTo ?? null, p_forward_of: m.forwardOf ?? null,
         p_bundle: m.bundle ?? null, p_mentions: m.mentions ?? [], p_contact: m.contactId ?? null,
+        p_attachments: (m.attachments ?? []).map(({ id, kind, name, size, mime, path }) => ({ id, kind, name, size, mime, path })),
       }),
+    /** 방 사진·파일 올리기: '방 id/메시지 id/첨부 id-이름' 경로. 올린 경로를 붙여 돌려줍니다. */
+    uploadRoomFiles: async (roomId: string, messageId: string, atts: Attachment[]): Promise<Attachment[]> => {
+      const out: Attachment[] = [];
+      for (const a of atts) {
+        const safe = a.name.replace(/[^\w.\-가-힣]+/g, '_').slice(-80) || 'file';
+        const path = `${roomId}/${messageId}/${a.id}-${safe}`;
+        const body = await (await fetch(a.uri)).arrayBuffer();
+        const { error } = await sb.storage.from(ROOM_FILES).upload(path, body, { contentType: a.mime ?? 'application/octet-stream', upsert: true });
+        if (error) throw new Error(/exceeded|too large|size/i.test(error.message) ? '파일은 50MB까지 올릴 수 있습니다.' : '파일을 올리지 못했습니다.');
+        out.push({ ...a, path });
+      }
+      return out;
+    },
     createRoom: (r: Room) => rpc(sb, 'create_room', { p_id: r.id, p_kind: r.kind, p_mode: r.mode, p_title: r.title, p_members: r.memberIds }),
     openLawyerRoom: (r: Room) =>
       rpc(sb, 'open_lawyer_room', {

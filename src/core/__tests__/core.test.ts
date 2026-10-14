@@ -2,7 +2,7 @@ import { checkCompliance } from '../compliance';
 import { PROCEDURE_MENU, procedureReply } from '../procedures';
 import { authorView, boardOf, boardsFor, canWriteBoard, commentTree, nameIn, pinNotices, unseenNotices, score, searchPosts, sortPosts, unreadIn } from '../board';
 import { contactsFor } from '../contacts';
-import { clientCanSee, dayKey, dayLabel, firstOfDay, hasClient, isHidden, isMaster, presenceOf, markParts, mentionQuery, messageDays, orgGroups, parseMentions, reactionGroups, readCount, readers, searchAll, searchDirectory, searchMessages, sortRooms, splitMentions, unreadCount } from '../messenger';
+import { clientCanSee, dayKey, dayLabel, firstOfDay, hasClient, isHidden, isMaster, presenceOf, markParts, mentionQuery, messageDays, orgGroups, parseMentions, previewText, reactionGroups, readCount, readers, searchAll, searchDirectory, searchMessages, sortRooms, splitMentions, unreadCount } from '../messenger';
 import { opinionFor } from '../knowledge';
 import { searchOpenRooms, splitOpenRooms } from '../open-chat';
 import { planFromCommand, rankPerformance, mostSimilar } from '../marketing';
@@ -57,6 +57,19 @@ describe('방 규칙', () => {
 });
 
 describe('메신저 흐름', () => {
+  it('방에 사진·파일을 보내면 목록에 사진·파일로 보인다', () => {
+    const files = [
+      { id: 'f1', kind: 'image' as const, name: 'a.jpg', uri: 'file:///a.jpg', size: 1000 },
+      { id: 'f2', kind: 'file' as const, name: '소장.pdf', uri: 'file:///b.pdf', size: 2000 },
+    ];
+    expect(actions.sendFiles('r_direct', files).ok).toBe(true);
+    const last = getState().messages.at(-1)!;
+    expect(last.attachments).toHaveLength(2);
+    expect(previewText(last, [])).toBe('사진 1장, 파일 1개');
+    expect(actions.sendFiles('r_direct', Array.from({ length: 11 }, (_, i) => ({ ...files[0], id: `x${i}` }))).ok).toBe(false);
+    expect(actions.sendFiles('r_direct', [{ ...files[1], size: 60 * 1024 * 1024 }])).toEqual({ ok: false, reason: expect.stringContaining('50MB') });
+  });
+
   it('사건수행방에서 @AI 를 부르면 안내만 나온다', async () => {
     await actions.sendMessage('r_direct', '@AI 요약해줘');
     const last = getState().messages.at(-1)!;

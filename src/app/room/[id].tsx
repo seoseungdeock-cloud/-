@@ -1,4 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
@@ -7,10 +9,11 @@ import { clientCanSee, dayKey, displayName, firstOfDay, lastReadAt, mentionQuery
 import { aiCanJoin, ROOM_KIND_LABEL } from '@/core/rooms';
 import { contactsFor } from '@/core/contacts';
 import { actions } from '@/core/store';
-import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Message, type User } from '@/core/types';
+import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Attachment, type Message, type User } from '@/core/types';
+import { newId } from '@/core/ids';
 import { CasePanel } from '@/ui/case-panel';
 import { Bubble, CalendarSheet, ContactSheet, DayDivider, ForwardSheet, MessageMenu, NoticeBar, ReactionsSheet, ReadersSheet, RoomDrawer } from '@/ui/chat';
-import { Icon } from '@/ui/icons';
+import { Icon, type IconName } from '@/ui/icons';
 import { Avatar, Button, Empty, Input, ModeBadge, ModeBanner, Notice, Screen, Sub } from '@/ui/kit';
 import { roomTitle } from '@/ui/room-row';
 import { family, font, radius, space, useColors } from '@/ui/theme';
@@ -125,6 +128,24 @@ export default function RoomScreen() {
     void actions.sendMessage(room.id, text, { replyTo: replyTo?.id });
     setText('');
     setReplyTo(undefined);
+  };
+
+  const sendFiles = (files: Attachment[]) => {
+    setPlus(false);
+    if (!files.length) return;
+    const res = actions.sendFiles(room.id, files, { replyTo: replyTo?.id });
+    if (!res.ok) setToast(res.reason);
+    else setReplyTo(undefined);
+  };
+  const pickPhotos = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: 10, quality: 0.8 });
+    if (res.canceled) return;
+    sendFiles(res.assets.map((a) => ({ id: newId('f'), kind: 'image', name: a.fileName ?? '사진.jpg', uri: a.uri, size: a.fileSize, mime: a.mimeType ?? 'image/jpeg' })));
+  };
+  const pickFiles = async () => {
+    const res = await DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true });
+    if (res.canceled) return;
+    sendFiles(res.assets.map((a) => ({ id: newId('f'), kind: a.mimeType?.startsWith('image/') ? 'image' : 'file', name: a.name, uri: a.uri, size: a.size, mime: a.mimeType })));
   };
 
   const jump = (messageId: string) => {
@@ -307,26 +328,24 @@ export default function RoomScreen() {
             ) : null}
             {plus ? (
               <View style={{ flexDirection: 'row', gap: space.lg, paddingVertical: space.md }}>
-                <Pressable
-                  accessibilityLabel="연락처 보내기"
-                  onPress={() => {
-                    setPlus(false);
-                    setContactPick(true);
-                  }}
-                  style={{ alignItems: 'center', gap: 6 }}>
-                  <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon name="contact" color={c.text} size={24} />
-                  </View>
-                  <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.text }}>연락처</Text>
-                </Pressable>
+                <PlusItem icon="image" label="사진" onPress={() => void pickPhotos()} />
+                <PlusItem icon="file" label="파일" onPress={() => void pickFiles()} />
+                {simple ? null : (
+                  <PlusItem
+                    icon="contact"
+                    label="연락처"
+                    onPress={() => {
+                      setPlus(false);
+                      setContactPick(true);
+                    }}
+                  />
+                )}
               </View>
             ) : null}
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, paddingVertical: space.sm }}>
-              {simple ? null : (
-                <Pressable accessibilityLabel="더하기" onPress={() => setPlus((v) => !v)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: plus ? '45deg' : '0deg' }] }}>
-                  <Icon name="plus" color={c.sub} size={24} />
-                </Pressable>
-              )}
+              <Pressable accessibilityLabel="더하기" onPress={() => setPlus((v) => !v)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: plus ? '45deg' : '0deg' }] }}>
+                <Icon name="plus" color={c.sub} size={24} />
+              </Pressable>
               <TextInput
                 value={text}
                 onChangeText={setText}
@@ -380,6 +399,18 @@ export default function RoomScreen() {
       <ContactSheet open={contactPick} contacts={shareable} onClose={() => setContactPick(false)} onPick={(u) => actions.shareContact(room.id, u.id)} />
       <RoomDrawer open={drawer} onClose={() => setDrawer(false)} room={room} me={user} users={s.users} messages={messages} onError={setToast} />
     </Screen>
+  );
+}
+
+function PlusItem({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+  const c = useColors();
+  return (
+    <Pressable accessibilityLabel={`${label} 보내기`} onPress={onPress} style={{ alignItems: 'center', gap: 6 }}>
+      <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name={icon} color={c.text} size={24} />
+      </View>
+      <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.text }}>{label}</Text>
+    </Pressable>
   );
 }
 
