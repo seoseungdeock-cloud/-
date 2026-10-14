@@ -356,6 +356,7 @@ export function remoteOps(sb: SupabaseClient) {
         p_notice_id: x.noticeId, p_notice_text: x.noticeText, p_progress_id: x.progressId, p_progress_note: x.progressNote, p_recipients: a.recipients,
       }),
     ackHearing: (id: string) => rpc(sb, 'ack_hearing', { p_alert: id }),
+    remindHearing: (id: string) => rpc(sb, 'remind_hearing', { p_alert: id }),
 
     // 오픈대화방
     createOpenRoom: (r: OpenRoom, alias: string, password: string) =>

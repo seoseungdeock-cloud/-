@@ -415,6 +415,12 @@ async function enter(userId: string): Promise<void> {
 
 let started = false;
 let signingOut: Promise<void> = Promise.resolve();
+let beforeSignOut: () => Promise<void> = async () => {};
+
+/** 로그아웃 직전에 할 일 (폰 푸시 주소 해제). 로그인이 살아 있을 때 불립니다. */
+export function onBeforeSignOut(fn: () => Promise<void>): void {
+  beforeSignOut = fn;
+}
 
 /** 앱을 열 때 한 번: 저장된 로그인이 있으면 이어서 들어가고, 주기적으로 새로 받습니다. */
 export async function startServer(): Promise<void> {
@@ -647,7 +653,10 @@ export const actions = {
   logout() {
     if (supabase) {
       // 보내는 중인 변경을 마친 뒤 로그아웃합니다.
-      signingOut = queue.then(() => supabase!.auth.signOut()).then(() => undefined, () => undefined);
+      signingOut = queue
+        .then(() => beforeSignOut().catch(() => undefined))
+        .then(() => supabase!.auth.signOut())
+        .then(() => undefined, () => undefined);
       set({ ...serverState(), booted: true });
       return;
     }
@@ -1340,6 +1349,7 @@ export const actions = {
     if (u.role === 'client' || !a.recipients.includes(u.id)) return { ok: false, reason: '담당 변호사·직원만 다시 알릴 수 있습니다.' };
     const missing = a.recipients.filter((id) => !a.ackedBy[id]).map(userById).filter((x): x is User => !!x);
     if (!missing.length) return { ok: false, reason: '모두 확인했습니다.' };
+    mirror((r) => r.remindHearing(alertId)); // 서버: 확인 안 한 사람 폰으로 다시 푸시
     pushMessage(a.roomId, BOT_SENDER, 'bot', `기일 알람 확인 요청\n${missing.map((x) => `@${x.nickname}`).join(' ')} ${a.label} ${whenLabel(a.date, a.time)} 알람을 확인해 주세요.`, { mentions: missing.map((x) => x.id) });
     return { ok: true };
   },
