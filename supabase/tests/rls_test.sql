@@ -210,7 +210,7 @@ select tst.throws('의뢰인: 다시 알리기 막힘', $$select remind_hearing(
 reset role;
 select tst.check('푸시: 변호사 입력 기일은 의뢰인에게만 (올린 변호사는 이미 확인)', (select count(*) = 1 from push_outbox o join hearing_alerts a on a.id = (o.data->>'alertId')::uuid where a.source = 'manual' and o.user_id = '00000000-0000-0000-0000-00000000000e'));
 select tst.check('푸시: 대륜탑 기일은 둘 다에게', (select count(*) = 2 from push_outbox o join hearing_alerts a on a.id = (o.data->>'alertId')::uuid where a.source = 'daeryuntop'));
-select tst.check('푸시: 문구에 날짜 (사건 이름 없음)', (select body like '변론기일 11월 19일(목) 10:00%' and body not like '%테스트 사건%' and title = '새 기일' from push_outbox order by id limit 1));
+select tst.check('푸시: 제목에 사건명, 본문에 날짜와 법원 장소', (select title = '새 기일 · 테스트 사건' and body like E'변론기일 11월 19일(목) 10:00\n서울중앙지법 제301호\n%' from push_outbox order by id limit 1));
 set role authenticated;
 select tst.as_user('00000000-0000-0000-0000-00000000000c');
 select tst.check('변호사: 다시 알리기 (확인 안 한 사람만)', remind_hearing((select id from hearing_alerts where source = 'daeryuntop')) = 2);
