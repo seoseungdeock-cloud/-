@@ -47,6 +47,7 @@ export default function RootLayout() {
           <Stack.Screen name="membership" />
           <Stack.Screen name="backoffice" />
           <Stack.Screen name="suggest/index" />
+          <Stack.Screen name="auth-codes" />
           <Stack.Screen name="suggest/inbox" />
           <Stack.Screen name="recommend" />
           <Stack.Screen name="service/[name]" />

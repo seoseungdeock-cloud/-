@@ -1,3 +1,4 @@
+import { LAW_BOT, LAW_BOT_NAME } from './law-digest';
 import type { BoardComment, BoardKind, BoardPost, BoardReport, NoteThread, Role, User, Votes } from './types';
 
 const ROLE_LABEL: Record<Role, string> = { client: '의뢰인', lawyer: '변호사', staff: '직원', admin: '어드민' };
@@ -10,25 +11,25 @@ export function aliasIn(post: BoardPost, userId: string): string {
   return i < 0 ? '익명' : `익명 ${i + 1}`;
 }
 
-export const BOARD_LABEL: Record<BoardKind, string> = { notice: '공지', anon: '익명 게시판', lawyer: '변호사 게시판', advice: '사건자문', skyzai: 'SKYZAI' };
+export const BOARD_LABEL: Record<BoardKind, string> = { notice: '공지', anon: '익명 게시판', lawyer: '변호사 게시판', advice: '사건자문', event: '경조사·공익', praise: '고객만족사례', lawnews: '법령개정·최신판례', skyzai: 'SKYZAI' };
 
 /** 게시판 탭에 쓰는 짧은 이름 */
-export const BOARD_TAB: Record<BoardKind, string> = { notice: '공지', anon: '익명', lawyer: '변호사', advice: '사건자문', skyzai: 'SKYZAI' };
+export const BOARD_TAB: Record<BoardKind, string> = { notice: '공지', anon: '익명', lawyer: '변호사', advice: '사건자문', event: '경조사·공익', praise: '고객만족', lawnews: '법령·판례', skyzai: 'SKYZAI' };
 
 /** 게시판 탭 순서: 공지가 맨 앞 */
-const BOARD_ORDER: BoardKind[] = ['notice', 'anon', 'lawyer', 'advice', 'skyzai'];
+const BOARD_ORDER: BoardKind[] = ['notice', 'anon', 'lawyer', 'advice', 'event', 'praise', 'lawnews', 'skyzai'];
 
 export function boardOf(post: BoardPost): BoardKind {
   return post.board ?? 'anon';
 }
 
 /**
- * 익명 게시판: 모든 계정. 변호사 게시판·사건자문: 변호사 계정만.
+ * 익명 게시판: 모든 계정. 변호사 게시판·사건자문·경조사·공익·고객만족사례·법령개정·최신판례: 변호사 계정만.
  * 공지·SKYZAI: 변호사 계정과, 공지를 올리는 어드민 계정.
  */
 export function canSeeBoard(u: User, board: BoardKind): boolean {
   if (board === 'anon') return true;
-  if (board === 'lawyer' || board === 'advice') return u.role === 'lawyer';
+  if (board === 'lawyer' || board === 'advice' || board === 'event' || board === 'praise' || board === 'lawnews') return u.role === 'lawyer';
   return u.role === 'lawyer' || u.role === 'admin';
 }
 
@@ -39,6 +40,8 @@ export function boardsFor(u: User): BoardKind[] {
 /** 공지 게시판 글과 SKYZAI 공지 글은 어드민만 씁니다. */
 export function canWriteBoard(u: User, board: BoardKind, notice = false): boolean {
   if (!canSeeBoard(u, board)) return false;
+  // 법령개정·최신판례는 매일 오전 7시 자동 글만 (댓글은 누구나)
+  if (board === 'lawnews') return false;
   if (board === 'notice' || (board === 'skyzai' && notice)) return u.role === 'admin';
   return true;
 }
@@ -50,7 +53,7 @@ export function isRealName(board: BoardKind): boolean {
 
 /** 분야 태그를 고르는 게시판 */
 export function needsField(board: BoardKind): boolean {
-  return board === 'anon' || board === 'lawyer' || board === 'advice';
+  return board === 'anon' || board === 'lawyer' || board === 'advice' || board === 'praise';
 }
 
 export function isNoticePost(p: BoardPost): boolean {
@@ -79,6 +82,7 @@ export type AuthorView = {
 
 export function authorView(viewer: User, post: BoardPost, authorId: string, users: User[]): AuthorView {
   const u = users.find((x) => x.id === authorId);
+  if (authorId === LAW_BOT) return { alias: LAW_BOT_NAME };
   if (isRealName(boardOf(post))) return { alias: u?.nickname ?? '알 수 없음', profile: u };
   return { alias: aliasIn(post, authorId), real: viewer.role === 'admin' && u ? `${u.nickname} · ${ROLE_LABEL[u.role]}` : undefined };
 }

@@ -62,7 +62,7 @@ export default function BoardScreen() {
       {notices.length ? <NoticePopup post={notices[0]} more={notices.length - 1} onOpen={(id) => { actions.markNoticesSeen([id]); router.push({ pathname: '/board/[id]', params: { id } }); }} onClose={() => actions.markNoticesSeen(notices.map((p) => p.id))} /> : null}
       {boards.length > 1 ? (
         <View style={{ marginBottom: space.md }}>
-          <UnderlineTabs tabs={boards.map((b) => [b, BOARD_TAB[b]] as [BoardKind, string])} value={board} onChange={setTab} dots={dots} />
+          <UnderlineTabs tabs={boards.map((b) => [b, BOARD_TAB[b]] as [BoardKind, string])} value={board} onChange={setTab} dots={dots} scroll={boards.length > 5} />
         </View>
       ) : null}
       {until ? <Notice tone="warn" text={`게시판 이용이 제한되었습니다. (${formatUntil(until)}까지)`} /> : null}

@@ -24,8 +24,6 @@ export type User = {
   presence?: Presence; // 상태 (대화 가능, 회의 중 등)
   /** 관리자어드민: 어드민 중에서도 오픈대화방 실제 이용자 확인·관리 권한 */
   superAdmin?: boolean;
-  /** 개발자어드민: 건의사항함을 봅니다 (어드민 계정에만) */
-  devAdmin?: boolean;
 };
 
 /** 방의 종류. 메신저·사건·업무·에이전트가 모두 같은 "방" 구조를 씁니다. */
@@ -151,9 +149,11 @@ export type BoardPost = {
   attachments?: Attachment[];
   /** SKYZAI 게시판의 공지 글 (어드민만) */
   notice?: boolean;
+  /** 법령·판례 자동 글의 출처 번호 (중복 게시 방지) */
+  sourceId?: string;
 };
 
-export type BoardKind = 'notice' | 'anon' | 'lawyer' | 'advice' | 'skyzai';
+export type BoardKind = 'notice' | 'anon' | 'lawyer' | 'advice' | 'event' | 'praise' | 'lawnews' | 'skyzai';
 
 export type SuggestionStatus = 'open' | 'review' | 'done' | 'hold';
 export type Suggestion = { id: string; authorId: string; body: string; at: string; status: SuggestionStatus; answer?: string; answeredAt?: string };

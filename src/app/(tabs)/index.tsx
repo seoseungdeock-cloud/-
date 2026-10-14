@@ -9,6 +9,7 @@ import { actions } from '@/core/store';
 import type { Message, Room } from '@/core/types';
 import { ContactRow, OrgBrowser, UnderlineTabs } from '@/ui/contacts';
 import { Icon } from '@/ui/icons';
+import { AuthBotRow } from '@/ui/auth-bot';
 import { OpenPanel } from '@/ui/open-chat';
 import { Avatar, Empty } from '@/ui/kit';
 import { chatTime, roomTitle, RoomRow } from '@/ui/room-row';
@@ -253,6 +254,7 @@ function RoomsPanel({ query, onSelecting, scope }: { query: string; onSelecting:
         </View>
       )}
       <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 96 }}>
+        {scope === 'internal' && filter === 'all' && !selecting ? <AuthBotRow /> : null}
         {rooms.length ? (
           rooms.map((r) => <RoomRow key={r.id} room={r} selecting={selecting} selected={selected.includes(r.id)} onToggle={() => toggle(r.id)} />)
         ) : (

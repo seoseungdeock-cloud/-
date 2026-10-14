@@ -14,7 +14,7 @@ import { useApp, useMe } from '@/ui/use-app';
 const ROLE_LABEL = { client: '의뢰인', lawyer: '변호사', staff: '직원', admin: '어드민' } as const;
 const STATUSES = Object.keys(SUGGESTION_STATUS) as SuggestionStatus[];
 
-// 건의사항함: 개발자어드민만. 처리 상태를 바꾸고 답변을 남깁니다.
+// 건의사항함: 관리자어드민만. 처리 상태를 바꾸고 답변을 남깁니다.
 export default function SuggestionInboxScreen() {
   const s = useApp();
   const user = useMe();
@@ -23,7 +23,7 @@ export default function SuggestionInboxScreen() {
   const [status, setStatus] = useState<SuggestionStatus>('review');
   const [answer, setAnswer] = useState('');
   const [error, setError] = useState('');
-  if (!canSeeSuggestions(user)) return <Screen title="건의사항함" back><Empty text="개발자어드민만 볼 수 있습니다." /></Screen>;
+  if (!canSeeSuggestions(user)) return <Screen title="건의사항함" back><Empty text="관리자어드민만 볼 수 있습니다." /></Screen>;
   const list = inbox(s.suggestions, filter);
   const author = (id: string) => {
     const u = s.users.find((x) => x.id === id);

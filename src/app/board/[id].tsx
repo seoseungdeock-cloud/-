@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { authorView, BOARD_LABEL, boardOf, canSeeBoard, commentTree, isNoticePost, nameIn, RESTRICT_OPTIONS, timeAgo } from '@/core/board';
+import { LAW_BOT } from '@/core/law-digest';
 import { actions } from '@/core/store';
 import type { RoomCheck } from '@/core/rooms';
 import { Attachments, BoardAuthor, ReportPanel, TextButton, VoteBar } from '@/ui/board';
@@ -85,8 +86,8 @@ export default function PostScreen() {
 
   const actionsFor = (t: Target) => (
     <>
-      {t.authorId !== user.id ? <TextButton icon="mail" label={t.commentId ? '쪽지' : '글쓴이에게 쪽지'} onPress={() => note(t.authorId)} /> : null}
-      {t.authorId !== user.id ? <TextButton icon="flag" label="신고" onPress={() => { setRestricting(undefined); setReporting(t); }} /> : null}
+      {t.authorId !== user.id && t.authorId !== LAW_BOT ? <TextButton icon="mail" label={t.commentId ? '쪽지' : '글쓴이에게 쪽지'} onPress={() => note(t.authorId)} /> : null}
+      {t.authorId !== user.id && t.authorId !== LAW_BOT ? <TextButton icon="flag" label="신고" onPress={() => { setRestricting(undefined); setReporting(t); }} /> : null}
       {admin ? (
         <TextButton danger label="삭제" onPress={() => (t.commentId ? run(actions.deleteComment(post.id, t.commentId), '댓글을 삭제했습니다.') : removePost())} />
       ) : null}

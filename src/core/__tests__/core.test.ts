@@ -14,6 +14,8 @@ import { layoutChart, parseRows } from '../templates';
 import { similarity } from '../text';
 import type { Room, User } from '../types';
 import { KOREA_REGIONS } from '../../data/korea-map';
+import { myCodes, secondsLeft, unreadCodes } from '../auth-codes';
+import { digestPosts, LAW_BOT, nextDigestAt, shortGist } from '../law-digest';
 
 const user = (p: Partial<User>): User => ({
   id: 'x', nickname: 'x', role: 'client', agentAccess: false, membership: 'basic', ...p,
@@ -791,9 +793,9 @@ describe('15차: 탭 정리, 공지·사건자문·SKYZAI, 건의사항', () => 
     expect(canSeeWorkTab(me())).toBe(true);
   });
 
-  it('게시판 탭: 변호사는 공지부터 다섯 개, 어드민은 공지·익명·SKYZAI, 나머지는 익명만', () => {
+  it('게시판 탭: 변호사는 공지부터 여덟 개, 어드민은 공지·익명·SKYZAI, 나머지는 익명만', () => {
     as('lawyer');
-    expect(boardsFor(me())).toEqual(['notice', 'anon', 'lawyer', 'advice', 'skyzai']);
+    expect(boardsFor(me())).toEqual(['notice', 'anon', 'lawyer', 'advice', 'event', 'praise', 'lawnews', 'skyzai']);
     as('admin');
     expect(boardsFor(me())).toEqual(['notice', 'anon', 'skyzai']);
     as('staff');
@@ -832,7 +834,7 @@ describe('15차: 탭 정리, 공지·사건자문·SKYZAI, 건의사항', () => 
     expect(unseenNotices(me(), st().posts, [])).toHaveLength(0); // 내가 쓴 공지는 안 뜸
   });
 
-  it('건의사항은 누구나 쓰고, 개발자어드민만 건의사항함에서 처리한다', () => {
+  it('건의사항은 누구나 쓰고, 관리자어드민만 건의사항함에서 처리한다 (개발자어드민 통합)', () => {
     as('client');
     expect(actions.submitSuggestion('  ').ok).toBe(false);
     expect(actions.submitSuggestion('글자를 크게 볼 수 있으면 좋겠어요').ok).toBe(true);
@@ -841,14 +843,70 @@ describe('15차: 탭 정리, 공지·사건자문·SKYZAI, 건의사항', () => 
     as('subadmin');
     expect(canSeeSuggestions(me())).toBe(false);
     expect(actions.answerSuggestion(id, 'done', '반영했습니다').ok).toBe(false);
-    expect(actions.setDevAdmin('u_admin2', true).ok).toBe(false); // 관리자어드민만 지정
     as('admin');
     expect(canSeeSuggestions(me())).toBe(true);
     expect(actions.answerSuggestion(id, 'done', '반영했습니다').ok).toBe(true);
     expect(st().suggestions.find((x) => x.id === id)).toMatchObject({ status: 'done', answer: '반영했습니다' });
-    expect(actions.setDevAdmin('u_lawyer', true).ok).toBe(false); // 어드민 계정만
-    expect(actions.setDevAdmin('u_admin2', true).ok).toBe(true);
+    expect(actions.setSuperAdmin('u_admin2', true).ok).toBe(true);
     as('subadmin');
     expect(canSeeSuggestions(me())).toBe(true);
+  });
+});
+
+describe('16차: 어드민 통합, 게시판 추가, 법령·판례 자동 글, 대륜탑 인증코드', () => {
+  const st = () => getState();
+
+  it('경조사·공익, 고객만족사례는 변호사만 실명으로 쓰고, 법령·판례는 자동 글만 (댓글 가능)', () => {
+    as('admin');
+    expect(actions.createPost({ title: '부고', body: '내용', field: '', board: 'event' }).ok).toBe(false);
+    as('lawyer');
+    expect(actions.createPost({ title: '결혼 소식', body: '내용', field: '', board: 'event' }).ok).toBe(true);
+    expect(actions.createPost({ title: '감사 인사', body: '내용', field: '', board: 'praise' }).ok).toBe(false); // 분야 필요
+    expect(actions.createPost({ title: '감사 인사', body: '내용', field: '민사', board: 'praise' }).ok).toBe(true);
+    expect(canWriteBoard(me(), 'lawnews')).toBe(false);
+    expect(actions.createPost({ title: '판례', body: '내용', field: '', board: 'lawnews' }).ok).toBe(false);
+    expect(actions.commentPost('p_law_ex1', '실무에 참고하겠습니다').ok).toBe(true);
+    expect(actions.openNote('p_law_ex1', LAW_BOT).ok).toBe(false);
+    const law = st().posts.find((p) => p.id === 'p_law_ex1')!;
+    expect(authorView(me(), law, LAW_BOT, st().users).alias).toBe('법령·판례 알림');
+  });
+
+  it('자동 글: 판결요지만 짧게, 이미 올린 출처는 다시 안 올리고, 다음 실행은 한국 시간 오전 7시', () => {
+    const long = '첫 문장입니다. '.repeat(80) + '\n\n둘째 단락은 빠집니다.';
+    expect(shortGist(long).length).toBeLessThanOrEqual(402);
+    expect(shortGist(long)).not.toContain('둘째 단락');
+    let n = 0;
+    const posts = digestPosts(
+      [
+        { kind: 'precedent', sourceId: 'example-precedent-1', title: '중복', date: '2026-10-13', gist: '요지' },
+        { kind: 'precedent', sourceId: 'p-2', title: '손해배상', date: '2026-10-13', court: '대법원', caseNo: '2026다1', gist: '요지' },
+      ],
+      st().posts, '2026-10-14T00:00:00.000Z', () => `x${n++}`,
+    );
+    expect(posts.map((p) => p.title)).toEqual(['[판례] 대법원 2026. 10. 13. 2026다1 손해배상']);
+    expect(posts[0]).toMatchObject({ board: 'lawnews', authorId: LAW_BOT, sourceId: 'p-2' });
+    expect(nextDigestAt(new Date('2026-10-13T21:00:00Z')).toISOString()).toBe('2026-10-13T22:00:00.000Z'); // 06시 KST → 같은 날 07시
+    expect(nextDigestAt(new Date('2026-10-13T23:00:00Z')).toISOString()).toBe('2026-10-14T22:00:00.000Z'); // 08시 KST → 다음 날
+    expect(actions.ingestLawUpdates([{ kind: 'law', sourceId: 'example-law-1', title: '중복', date: '2026-10-13', gist: '요지' }])).toBe(0);
+  });
+
+  it('대륜탑 인증코드는 로펌 구성원 본인에게만, 숫자만, 짧게 만료된다', () => {
+    as('subadmin');
+    expect(actions.deliverAuthCode('u_lawyer', '123456').ok).toBe(false); // 관리자어드민 시연만
+    as('admin');
+    expect(actions.deliverAuthCode('u_client', '123456').ok).toBe(false);
+    expect(actions.deliverAuthCode('u_lawyer', '12ab').ok).toBe(false);
+    expect(actions.deliverAuthCode('u_lawyer', '123456').ok).toBe(true);
+    as('lawyer');
+    const now = Date.now();
+    const mine = myCodes(st().authCodes, me().id, now);
+    expect(mine.at(-1)!.code).toBe('123456');
+    expect(secondsLeft(mine.at(-1)!, now)).toBeGreaterThan(170);
+    expect(secondsLeft(mine[0], now)).toBe(0); // 예전 코드는 만료
+    expect(unreadCodes(st().authCodes, me().id)).toBe(2);
+    actions.readAuthCodes();
+    expect(unreadCodes(st().authCodes, me().id)).toBe(0);
+    as('staff');
+    expect(myCodes(st().authCodes, me().id, now)).toHaveLength(0); // 남의 코드는 안 보임
   });
 });

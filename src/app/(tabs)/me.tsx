@@ -31,7 +31,6 @@ export default function MeScreen() {
               <Badge label={ROLE_LABEL[user.role]} tone="plain" />
               {user.membership === 'rightnow' ? <Badge label="라잇나우 멤버" tone="member" /> : null}
               {user.superAdmin && user.role === 'admin' ? <Badge label="관리자어드민" tone="accent" /> : null}
-              {user.devAdmin && user.role === 'admin' ? <Badge label="개발자어드민" tone="ai" /> : null}
             </View>
           </View>
           <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.accent }}>편집</Text>

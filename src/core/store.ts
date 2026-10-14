@@ -22,6 +22,8 @@ import {
 } from './marketing';
 import { summarizeMeeting, type MeetingNotes } from './meeting';
 import { asksCaseInfo, assignmentText, caseStatusText } from './case-bot';
+import { AUTH_TTL_MIN, canReceiveAuthCodes, checkAuthCode, type AuthCode } from './auth-codes';
+import { digestPosts, LAW_BOT, type LawUpdate } from './law-digest';
 import { boardOf, canSeeBoard, canWriteBoard, formatUntil, MAX_ATTACHMENTS, needsField, reportTarget, restrictedUntil, toggleVote } from './board';
 import { displayName, isMaster, parseMentions, roomMasters, type Reads } from './messenger';
 import { findLawyer } from './offices';
@@ -84,8 +86,10 @@ export type State = {
   openMessages: OpenMessage[];
   /** 사용자 id → 확인한 공지 글 id (게시판 공지 팝업) */
   noticeSeen: Record<string, string[]>;
-  /** 라잇나우 건의사항 (개발자어드민이 봄) */
+  /** 라잇나우 건의사항 (관리자어드민이 봄) */
   suggestions: Suggestion[];
+  /** 대륜탑 인증코드 (메신저 '대륜탑 인증' 봇) */
+  authCodes: AuthCode[];
 };
 
 const T0 = '2026-10-13T09:00:00.000Z';
@@ -93,7 +97,7 @@ const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOStr
 
 export function initialState(): State {
   const users: User[] = [
-    { id: 'u_admin', superAdmin: true, devAdmin: true, nickname: '승덕', role: 'admin', firm: '대륜', agentAccess: true, membership: 'basic', title: 'Admin', dept: '경영지원본부', branch: '본사', phone: '010-0000-0001', email: 'admin@example.com', joinedAt: '2026-06-15' },
+    { id: 'u_admin', superAdmin: true, nickname: '승덕', role: 'admin', firm: '대륜', agentAccess: true, membership: 'basic', title: 'Admin', dept: '경영지원본부', branch: '본사', phone: '010-0000-0001', email: 'admin@example.com', joinedAt: '2026-06-15' },
     { id: 'u_staff', nickname: '사무국 직원', role: 'staff', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Staff', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0002', email: 'staff@example.com', joinedAt: '2025-03-02' },
     { id: 'u_lawyer', nickname: '샘플 변호사 A', role: 'lawyer', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Partner Attorney', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0003', email: 'lawyer@example.com', joinedAt: '2020-09-01' },
     { id: 'u_client', nickname: '하늘', role: 'client', agentAccess: false, membership: 'basic' },
@@ -181,6 +185,30 @@ export function initialState(): State {
         votes: {}, comments: [],
       },
       {
+        id: 'p_event1', board: 'event', authorId: 'u_l2', at: ago(8), field: '',
+        title: '[부고] 예시: 샘플 변호사 C 부친상',
+        body: '빈소: 예시 장례식장 3호실 / 발인: 10월 16일 오전 7시. 마음으로 함께해 주시면 감사하겠습니다.',
+        votes: {}, comments: [],
+      },
+      {
+        id: 'p_praise1', board: 'praise', authorId: 'u_lawyer', at: ago(26), field: '이혼·가사',
+        title: '양육권 사건 종결 후 의뢰인이 남긴 감사 인사',
+        body: '진행 상황을 단계마다 사건방으로 알려 드린 점이 가장 안심됐다고 하셨습니다. 기일 전날 알림을 꼭 챙기는 방식이 효과가 있었습니다.',
+        votes: { u_l2: 1, u_l3: 1 }, comments: [],
+      },
+      {
+        id: 'p_law_ex1', board: 'lawnews', authorId: LAW_BOT, at: ago(1.5), field: '', sourceId: 'example-precedent-1',
+        title: '[판례] 대법원 2026. 10. 13. 2026다000000 (예시) 보증금 반환 지연손해금',
+        body: '예시 판결요지입니다. 임대차 종료 후 임차인이 목적물을 인도하지 않은 경우, 보증금 반환 의무의 지체 책임은 임차인의 인도 의무 이행 제공이 있은 때부터 발생한다.',
+        votes: {}, comments: [],
+      },
+      {
+        id: 'p_law_ex2', board: 'lawnews', authorId: LAW_BOT, at: ago(1.5), field: '', sourceId: 'example-law-1',
+        title: '[법령 개정] 예시법 일부개정법률',
+        body: '예시 개정 요지입니다. 신고 기한을 30일에서 60일로 늘리고, 기한을 넘긴 경우의 과태료 기준을 정비함.',
+        votes: {}, comments: [],
+      },
+      {
         id: 'p_sky1', board: 'skyzai', notice: true, authorId: 'u_admin', at: ago(6), field: '',
         title: 'SKYZAI 게시판 이용 안내',
         body: 'SKYZAI 관련 아이디어와 사용 후기를 자유롭게 올려 주세요. 공지는 어드민이 올립니다.',
@@ -232,6 +260,10 @@ export function initialState(): State {
     ],
     notes: [],
     noticeSeen: {},
+    authCodes: [
+      { id: 'ac1', userId: 'u_lawyer', code: '402917', at: ago(5), expiresAt: ago(5 - AUTH_TTL_MIN / 60), read: true },
+      { id: 'ac2', userId: 'u_lawyer', code: '815360', at: ago(0.005), expiresAt: ago(0.005 - AUTH_TTL_MIN / 60) },
+    ],
     suggestions: [
       { id: 'sg1', authorId: 'u_lawyer', body: '사건방 파일을 날짜별로 모아 보는 기능이 있으면 좋겠습니다.', at: ago(20), status: 'review', answer: '서버 연결 때 파일 모아보기와 함께 넣겠습니다.', answeredAt: ago(5) },
       { id: 'sg2', authorId: 'u_client', body: '진행 상황 알림을 카카오톡으로도 받고 싶어요.', at: ago(3), status: 'open' },
@@ -296,7 +328,7 @@ export function loggedIn(s: State = state): boolean {
 /** 관리자어드민 계정은 관리자어드민만 손댈 수 있습니다 (일반 어드민의 권한 우회 방지). */
 function superGuard(userId: string): RoomCheck | undefined {
   const target = userById(userId);
-  if ((target?.superAdmin || target?.devAdmin) && target.role === 'admin' && !canManageOpen(me())) return { ok: false, reason: '관리자어드민·개발자어드민 계정은 관리자어드민만 바꿀 수 있습니다.' };
+  if (target?.superAdmin && target.role === 'admin' && !canManageOpen(me())) return { ok: false, reason: '관리자어드민 계정은 관리자어드민만 바꿀 수 있습니다.' };
   return undefined;
 }
 
@@ -506,7 +538,7 @@ export const actions = {
     const sup = superGuard(userId);
     if (sup) return sup;
     // 어드민이 아닌 역할이 되면 관리자어드민도 풀립니다.
-    set((s) => ({ users: s.users.map((u) => (u.id === userId ? { ...u, role, agentAccess: role === 'client' ? false : u.agentAccess, superAdmin: role === 'admin' ? u.superAdmin : undefined, devAdmin: role === 'admin' ? u.devAdmin : undefined } : u)) }));
+    set((s) => ({ users: s.users.map((u) => (u.id === userId ? { ...u, role, agentAccess: role === 'client' ? false : u.agentAccess, superAdmin: role === 'admin' ? u.superAdmin : undefined } : u)) }));
     return { ok: true };
   },
 
@@ -1149,6 +1181,39 @@ export const actions = {
     set((s) => ({ noticeSeen: { ...s.noticeSeen, [uid]: [...new Set([...cur, ...postIds])] } }));
   },
 
+  // ---- 대륜탑 인증코드 ----
+
+  /**
+   * 대륜탑이 보낸 인증코드를 본인의 '대륜탑 인증' 봇으로 전달합니다.
+   * 서버가 붙으면 대륜탑 웹훅을 받은 서버만 이 동작을 부릅니다 (지금은 관리자어드민 시연용).
+   */
+  deliverAuthCode(userId: string, code: string, ttlMin = AUTH_TTL_MIN): RoomCheck {
+    if (!canManageOpen(me())) return { ok: false, reason: '관리자어드민만 시연할 수 있습니다.' };
+    const target = userById(userId);
+    if (!target || !canReceiveAuthCodes(target)) return { ok: false, reason: '로펌 구성원 계정에만 보낼 수 있습니다.' };
+    const bad = checkAuthCode(code);
+    if (bad) return { ok: false, reason: bad };
+    const at = nowIso();
+    const c: AuthCode = { id: newId('ac'), userId, code, at, expiresAt: new Date(Date.parse(at) + ttlMin * 60_000).toISOString() };
+    set((s) => ({ authCodes: [...s.authCodes, c] }));
+    return { ok: true };
+  },
+
+  readAuthCodes() {
+    const uid = me().id;
+    if (!state.authCodes.some((c) => c.userId === uid && !c.read)) return;
+    set((s) => ({ authCodes: s.authCodes.map((c) => (c.userId === uid ? { ...c, read: true } : c)) }));
+  },
+
+  // ---- 법령개정·최신판례 (매일 오전 7시 자동 게시, 서버 작업) ----
+
+  /** 서버의 매일 7시 작업이 가져온 개정 법령·판례를 게시판에 올립니다. 이미 올린 출처는 건너뜁니다. */
+  ingestLawUpdates(updates: LawUpdate[]): number {
+    const posts = digestPosts(updates, state.posts, nowIso(), () => newId('p'));
+    if (posts.length) set((s) => ({ posts: [...posts, ...s.posts] }));
+    return posts.length;
+  },
+
   // ---- 건의사항 ----
 
   submitSuggestion(body: string): RoomCheck {
@@ -1160,23 +1225,15 @@ export const actions = {
     return { ok: true };
   },
 
-  /** 개발자어드민: 처리 상태와 답변 */
+  /** 관리자어드민: 처리 상태와 답변 */
   answerSuggestion(id: string, status: SuggestionStatus, answer: string): RoomCheck {
-    if (!canSeeSuggestions(me())) return { ok: false, reason: '개발자어드민만 처리할 수 있습니다.' };
+    if (!canSeeSuggestions(me())) return { ok: false, reason: '관리자어드민만 처리할 수 있습니다.' };
     if (!state.suggestions.some((x) => x.id === id)) return { ok: false, reason: '건의사항을 찾을 수 없습니다.' };
     const a = answer.trim();
     set((s) => ({ suggestions: s.suggestions.map((x) => (x.id === id ? { ...x, status, answer: a || undefined, answeredAt: a ? nowIso() : x.answeredAt } : x)) }));
     return { ok: true };
   },
 
-  /** 개발자어드민 지정·해제: 관리자어드민만, 어드민 계정에만 */
-  setDevAdmin(userId: string, on: boolean): RoomCheck {
-    if (!canManageOpen(me())) return { ok: false, reason: '관리자어드민만 지정할 수 있습니다.' };
-    const target = userById(userId);
-    if (!target || target.role !== 'admin') return { ok: false, reason: '어드민 계정만 개발자어드민이 될 수 있습니다.' };
-    set((s) => ({ users: s.users.map((x) => (x.id === userId ? { ...x, devAdmin: on || undefined } : x)) }));
-    return { ok: true };
-  },
 
   commentPost(postId: string, text: string, parentId?: string): RoomCheck {
     const denied = boardDenied(postId);
@@ -1219,6 +1276,7 @@ export const actions = {
     if (denied) return denied;
     const uid = me().id;
     if (toUserId === uid) return { ok: false, reason: '내 글에는 쪽지를 보낼 수 없습니다.' };
+    if (toUserId === LAW_BOT) return { ok: false, reason: '자동 글에는 쪽지를 보낼 수 없습니다.' };
     const found = state.notes.find((n) => n.postId === postId && n.memberIds.includes(uid) && n.memberIds.includes(toUserId));
     if (found) return { ok: true, noteId: found.id };
     const note: NoteThread = { id: newId('n'), postId, memberIds: [uid, toUserId], messages: [], readAt: {} };

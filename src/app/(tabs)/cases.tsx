@@ -48,7 +48,8 @@ export default function CasesScreen() {
         ) : (
           <View style={{ gap: space.sm }}>
             <Empty text="상담 내역이 없습니다." />
-            <Button label="변호사 찾기" kind="soft" onPress={() => router.push('/find')} />
+            {/* 변호사 계정의 사건 탭은 추후 대륜탑 기능을 붙일 자리라 변호사 찾기를 두지 않습니다. */}
+            {user.role !== 'lawyer' ? <Button label="변호사 찾기" kind="soft" onPress={() => router.push('/find')} /> : null}
           </View>
         )}
       </Section>

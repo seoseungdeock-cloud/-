@@ -132,7 +132,6 @@ export default function BackofficeScreen() {
               <Sub>{a.loginId}</Sub>
               <Badge label={a.active ? '사용 중' : '중지됨'} tone={a.active ? 'secure' : 'warn'} />
               {u.role === 'admin' && u.superAdmin ? <Badge label="관리자어드민" tone="accent" /> : null}
-              {u.role === 'admin' && u.devAdmin ? <Badge label="개발자어드민" tone="ai" /> : null}
             </View>
             <Sub>만든 날 {a.createdAt.slice(0, 10)} · 최근 로그인 {a.lastLoginAt ? a.lastLoginAt.slice(0, 16).replace('T', ' ') : '없음'}</Sub>
             <View style={{ marginTop: space.sm }}>
@@ -151,13 +150,7 @@ export default function BackofficeScreen() {
             {u.role === 'admin' && canManageOpen(user) ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm }}>
                 <Switch value={!!u.superAdmin} onValueChange={(v) => report(actions.setSuperAdmin(u.id, v), v ? `${u.nickname}님을 관리자어드민으로 지정했습니다.` : `${u.nickname}님의 관리자어드민을 해제했습니다.`)} />
-                <Sub>관리자어드민 (오픈대화방 실제 이용자 확인·관리)</Sub>
-              </View>
-            ) : null}
-            {u.role === 'admin' && canManageOpen(user) ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm }}>
-                <Switch value={!!u.devAdmin} onValueChange={(v) => report(actions.setDevAdmin(u.id, v), v ? `${u.nickname}님을 개발자어드민으로 지정했습니다.` : `${u.nickname}님의 개발자어드민을 해제했습니다.`)} />
-                <Sub>개발자어드민 (건의사항함)</Sub>
+                <Sub>관리자어드민 (오픈대화방 실제 이용자 확인·관리, 건의사항함)</Sub>
               </View>
             ) : null}
             {resetFor === u.id ? (

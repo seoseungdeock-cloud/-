@@ -83,9 +83,9 @@ export function canJoinMembership(user: User): boolean {
   return user.role === 'client';
 }
 
-/** 건의사항함: 개발자어드민만 */
+/** 건의사항함: 관리자어드민만 (개발자어드민은 관리자어드민으로 통합) */
 export function canSeeSuggestions(user: User): boolean {
-  return user.role === 'admin' && !!user.devAdmin;
+  return user.role === 'admin' && !!user.superAdmin;
 }
 
 export function isWorkUser(user: User): boolean {

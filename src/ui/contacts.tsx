@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { displayName, orgGroups, presenceOf } from '@/core/messenger';
 import { actions } from '@/core/store';
@@ -95,10 +95,10 @@ export function OrgBrowser({ people, dept, onDept, renderMember }: { people: Use
 }
 
 // 밑줄 탭 (조직도/외부 연락처, 전체/구성원/조직·그룹 등)
-export function UnderlineTabs<K extends string>({ tabs, value, onChange, dots }: { tabs: [K, string][]; value: K; onChange: (k: K) => void; dots?: Partial<Record<K, boolean>> }) {
+export function UnderlineTabs<K extends string>({ tabs, value, onChange, dots, scroll }: { tabs: [K, string][]; value: K; onChange: (k: K) => void; dots?: Partial<Record<K, boolean>>; scroll?: boolean }) {
   const c = useColors();
-  return (
-    <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: c.line }}>
+  const row = (
+    <View style={{ flexDirection: 'row', borderBottomWidth: scroll ? 0 : 1, borderBottomColor: c.line }}>
       {tabs.map(([k, label]) => (
         <Pressable key={k} onPress={() => onChange(k)} style={{ paddingVertical: space.sm + 2, marginRight: space.xl, borderBottomWidth: 2.5, borderBottomColor: value === k ? c.accent : 'transparent', marginBottom: -1, flexDirection: 'row' }}>
           <Text style={{ fontFamily: value === k ? family.bold : family.regular, fontSize: 15, color: value === k ? c.accent : c.sub }}>{label}</Text>
@@ -106,5 +106,12 @@ export function UnderlineTabs<K extends string>({ tabs, value, onChange, dots }:
         </Pressable>
       ))}
     </View>
+  );
+  // 탭이 많으면 가로로 밀어 봅니다.
+  if (!scroll) return row;
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, borderBottomWidth: 1, borderBottomColor: c.line }}>
+      {row}
+    </ScrollView>
   );
 }
