@@ -8,7 +8,7 @@ import { actions } from '@/core/store';
 import type { OpenMessage, User } from '@/core/types';
 import { DayDivider, Sheet } from '@/ui/chat';
 import { Icon } from '@/ui/icons';
-import { Button, Empty, Input, Notice, Screen } from '@/ui/kit';
+import { Button, Empty, enterToSend, Input, Notice, Screen } from '@/ui/kit';
 import { OpenAvatar } from '@/ui/open-chat';
 import { clockTime } from '@/ui/room-row';
 import { family, font, radius, space, useColors } from '@/ui/theme';
@@ -183,6 +183,7 @@ export default function OpenRoomScreen() {
             placeholderTextColor={c.faint}
             multiline
             onSubmitEditing={send}
+                {...enterToSend(send)}
             style={{ flex: 1, backgroundColor: c.surface, color: c.text, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, fontSize: font.body, fontFamily: family.regular, maxHeight: 120 }}
           />
           <Pressable accessibilityLabel="보내기" onPress={send} style={{ backgroundColor: c.accent, borderRadius: 22, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>

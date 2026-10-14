@@ -14,7 +14,7 @@ import { newId } from '@/core/ids';
 import { CasePanel } from '@/ui/case-panel';
 import { Bubble, CalendarSheet, ContactSheet, DayDivider, ForwardSheet, MessageMenu, NoticeBar, ReactionsSheet, ReadersSheet, RoomDrawer } from '@/ui/chat';
 import { Icon, type IconName } from '@/ui/icons';
-import { Avatar, Button, Empty, Input, ModeBadge, ModeBanner, Notice, Screen, Sub } from '@/ui/kit';
+import { Avatar, Button, Empty, enterToSend, Input, ModeBadge, ModeBanner, Notice, Screen, Sub } from '@/ui/kit';
 import { roomTitle } from '@/ui/room-row';
 import { family, font, radius, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
@@ -353,6 +353,7 @@ export default function RoomScreen() {
                 placeholderTextColor={c.faint}
                 multiline
                 onSubmitEditing={send}
+                {...enterToSend(send)}
                 style={inputStyle}
               />
               <Pressable accessibilityLabel="보내기" onPress={send} style={{ backgroundColor: c.accent, borderRadius: 22, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>

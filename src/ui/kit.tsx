@@ -1,7 +1,7 @@
 // 공통 화면 부품
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps, type ViewStyle } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ROOM_MODE_INFO } from '@/core/rooms';
@@ -96,6 +96,22 @@ export function Button({ label, onPress, kind = 'primary', disabled, small }: { 
       <Text style={{ color: fg, fontSize: small ? font.small : font.body, fontFamily: family.bold }}>{label}</Text>
     </Pressable>
   );
+}
+
+// PC(웹)에서 엔터 = 보내기, Shift+엔터 = 줄바꿈. 한글 조합 중 엔터는 무시합니다(조합이 끝난 뒤 한 번 더 오는 엔터로 보냄).
+// 폰은 엔터가 줄바꿈 그대로입니다.
+type KeyEvent = { preventDefault?: () => void; nativeEvent: { key: string; shiftKey?: boolean; isComposing?: boolean; keyCode?: number } };
+export function enterToSend(send: () => void): Pick<TextInputProps, 'onKeyPress'> {
+  if (Platform.OS !== 'web') return {};
+  return {
+    onKeyPress: (e) => {
+      const k = e as unknown as KeyEvent;
+      const n = k.nativeEvent;
+      if (n.key !== 'Enter' || n.shiftKey || n.isComposing || n.keyCode === 229) return;
+      k.preventDefault?.();
+      send();
+    },
+  };
 }
 
 export function Input(props: TextInputProps & { label?: string }) {
