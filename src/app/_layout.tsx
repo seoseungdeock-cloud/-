@@ -5,8 +5,9 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
-import { loggedIn } from '@/core/store';
+import { loggedIn, startServer } from '@/core/store';
 import { HearingAlertModal } from '@/ui/hearing';
+import { SyncNotice } from '@/ui/sync-notice';
 import { FONT_FILES } from '@/ui/theme';
 import { useApp } from '@/ui/use-app';
 
@@ -15,8 +16,14 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const scheme = useColorScheme();
   const [fontsLoaded, fontError] = useFonts(FONT_FILES);
-  const signedIn = loggedIn(useApp());
-  const ready = fontsLoaded || !!fontError;
+  const app = useApp();
+  const signedIn = loggedIn(app);
+  // 서버 연결 시 저장된 로그인을 확인한 뒤에 화면을 엽니다
+  const ready = (fontsLoaded || !!fontError) && app.booted;
+
+  useEffect(() => {
+    void startServer();
+  }, []);
 
   useEffect(() => {
     if (ready) SplashScreen.hideAsync();
@@ -64,6 +71,7 @@ export default function RootLayout() {
       </Stack>
       {/* 기일 알람: 의뢰인·변호사 모두 확인할 때까지 어느 화면에서든 뜹니다 */}
       {signedIn ? <HearingAlertModal /> : null}
+      <SyncNotice />
     </ThemeProvider>
   );
 }

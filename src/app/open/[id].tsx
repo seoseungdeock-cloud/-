@@ -3,7 +3,7 @@ import { useMemo, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { dayKey, markParts } from '@/core/messenger';
-import { aliasOf, canManageOpen, canUseOpenChat, isOpenMember } from '@/core/open-chat';
+import { aliasOf, canManageOpen, canUseOpenChat, isLocked, isOpenMember } from '@/core/open-chat';
 import { actions } from '@/core/store';
 import type { OpenMessage, User } from '@/core/types';
 import { DayDivider, Sheet } from '@/ui/chat';
@@ -74,7 +74,7 @@ export default function OpenRoomScreen() {
           {room.description ? <Text style={{ fontFamily: family.regular, fontSize: 15, color: c.text, textAlign: 'center' }}>{room.description}</Text> : null}
         </View>
         {error ? <Notice text={error} /> : null}
-        {room.password && !banned ? (
+        {isLocked(room) && !banned ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: space.sm }}>
             <Icon name="lock" color={c.sub} size={16} />
             <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.sub }}>비밀번호 방</Text>
@@ -84,7 +84,7 @@ export default function OpenRoomScreen() {
           <Notice text="방장이 내보낸 방에는 다시 들어갈 수 없습니다." />
         ) : (
           <>
-            {room.password ? <Input label="비밀번호" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" /> : null}
+            {isLocked(room) ? <Input label="비밀번호" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" /> : null}
             <Input label="이 방에서 쓸 닉네임" value={alias} onChangeText={setAlias} />
             <Button
               label="참여하기"
@@ -223,13 +223,13 @@ export default function OpenRoomScreen() {
         {done ? <Notice text={done} tone="accent" /> : null}
         {isHost ? (
           <View style={{ gap: space.sm }}>
-            <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.text }}>비밀번호 {room.password ? '· 설정됨' : '· 없음'}</Text>
+            <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.text }}>비밀번호 {isLocked(room) ? '· 설정됨' : '· 없음'}</Text>
             <Input placeholder="새 비밀번호 4~16자" value={newPw} onChangeText={setNewPw} secureTextEntry autoCapitalize="none" />
             <View style={{ flexDirection: 'row', gap: space.sm }}>
               <View style={{ flex: 1 }}>
                 <Button
                   small
-                  label={room.password ? '바꾸기' : '설정'}
+                  label={isLocked(room) ? '바꾸기' : '설정'}
                   onPress={() => {
                     if (!newPw.trim()) return setError('새 비밀번호를 입력해 주세요.');
                     const r = actions.setOpenPassword(room.id, newPw);
@@ -239,7 +239,7 @@ export default function OpenRoomScreen() {
                   }}
                 />
               </View>
-              {room.password ? (
+              {isLocked(room) ? (
                 <View style={{ flex: 1 }}>
                   <Button
                     small

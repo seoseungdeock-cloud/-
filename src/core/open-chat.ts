@@ -7,6 +7,11 @@ export function aliasOf(room: OpenRoom, userId: string): string | undefined {
   return room.members.find((m) => m.userId === userId)?.alias;
 }
 
+/** 비밀번호가 걸린 방 */
+export function isLocked(room: OpenRoom): boolean {
+  return !!room.password || !!room.locked;
+}
+
 export function isOpenMember(room: OpenRoom, userId: string): boolean {
   return room.members.some((m) => m.userId === userId);
 }

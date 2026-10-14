@@ -178,6 +178,8 @@ export type BoardPost = {
   notice?: boolean;
   /** 법령·판례 자동 글의 출처 번호 (중복 게시 방지) */
   sourceId?: string;
+  /** 서버가 정한 글 안의 익명 번호 (사용자 id → N). 없으면 등장 순서로 셉니다. */
+  aliases?: Record<string, number>;
 };
 
 export type BoardKind = 'notice' | 'anon' | 'lawyer' | 'advice' | 'event' | 'praise' | 'lawnews' | 'skyzai';
@@ -233,5 +235,7 @@ export type OpenRoom = {
   banned: string[];
   /** 있으면 참여할 때 비밀번호를 물어봅니다. (서버가 붙으면 서버에서 암호화해 보관) */
   password?: string;
+  /** 서버 연결 시: 비밀번호가 걸린 방 (비밀번호 자체는 앱에 오지 않음) */
+  locked?: boolean;
 };
 export type OpenMessage = { id: string; roomId: string; senderId: string; text: string; at: string; system?: boolean };

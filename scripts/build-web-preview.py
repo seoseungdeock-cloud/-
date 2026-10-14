@@ -1,7 +1,8 @@
 # 웹 빌드를 파일 하나짜리 미리보기 페이지로 묶습니다 (claude.ai 아티팩트 게시용).
 # 사용:
 #   1) app.json 의 expo.web.output 을 잠시 "single" 로 바꾸고
-#      npx expo export --platform web --output-dir /tmp/webapp
+#      EXPO_PUBLIC_SUPABASE_URL= npx expo export --platform web --output-dir /tmp/webapp
+#      (서버 주소를 비워 미리보기는 기기 안 예시 데이터로 동작하게 합니다. 아티팩트 페이지는 외부 서버에 접속하지 못함)
 #   2) python3 scripts/build-web-preview.py /tmp/webapp preview.html
 import base64, glob, os, re, sys
 

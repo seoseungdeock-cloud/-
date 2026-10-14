@@ -1,5 +1,7 @@
-// 앱 상태 저장소. 서버가 붙기 전까지는 기기 메모리에만 있고 앱을 다시 열면 처음 상태로 돌아갑니다.
-// 서버 연결 시 이 파일의 동작들을 API 호출로 바꾸면 화면 코드는 그대로 둘 수 있습니다.
+// 앱 상태 저장소. 서버 주소가 없으면 기기 메모리에만 있고 앱을 다시 열면 처음 상태로 돌아갑니다.
+// 서버(Supabase)가 붙으면 로그인할 때 서버 데이터를 받아 오고, 동작마다 같은 변경을 서버에 보냅니다 (mirror).
+// 화면은 어느 쪽이든 이 상태만 봅니다.
+import { AppState } from 'react-native';
 import { getAi } from './ai';
 import { AI_HELP, needsAgentAccess, parseAiCommand, type AiCommand } from './commands';
 import { checkCompliance } from './compliance';
@@ -7,7 +9,9 @@ import { similarity } from './text';
 import type { DecisionRecord } from './knowledge';
 import { opinionFor } from './knowledge';
 import { titleFrom, type ProgramRequest } from './builder';
-import { newId, nowIso } from './ids';
+import { newId, nowIso, useServerIds } from './ids';
+import { loadAll, remoteOps, type Remote, type Snapshot } from './remote';
+import { loginEmail, reasonOf, supabase } from './supabase';
 import {
   applyBudget,
   CHANNEL_LABEL,
@@ -97,6 +101,10 @@ export type State = {
   authCodes: AuthCode[];
   /** 기일 알람 (의뢰인·변호사 모두 확인할 때까지) */
   hearingAlerts: HearingAlert[];
+  /** 서버 연결 시: 저장된 로그인을 확인하는 중이면 false */
+  booted: boolean;
+  /** 서버 연결 시: 서버에 저장하지 못한 사유 (화면 위에 잠깐 표시) */
+  syncError?: string;
 };
 
 const T0 = '2026-10-13T09:00:00.000Z';
@@ -161,6 +169,7 @@ export function initialState(): State {
     { id: 'mt5', roomId: 'r_team', senderId: 'u_l2', kind: 'text', text: '@승덕 대표님 확인 부탁드립니다.', at: ago(0.5), mentions: ['u_admin'] },
   ];
   return {
+    booted: true,
     currentUserId: null,
     users,
     accounts,
@@ -308,8 +317,20 @@ export function initialState(): State {
   };
 }
 
+/** 서버 연결 시 처음 상태: 서버에서 받을 데이터는 비우고, 아직 서버가 없는 업무 도구 예시만 남깁니다. */
+function serverState(): State {
+  return {
+    ...initialState(),
+    booted: false, syncError: undefined, currentUserId: null, users: [], accounts: [], rooms: [], messages: [], lawyerAccounts: {},
+    posts: [], notes: [], reports: [], boardBans: {}, reads: {}, favorites: {}, openRooms: [], openMessages: [],
+    noticeSeen: {}, suggestions: [], authCodes: [], hearingAlerts: [],
+  };
+}
+
 // ---- 구독 ----
-let state = initialState();
+const remote: Remote | null = supabase ? remoteOps(supabase) : null;
+if (remote) useServerIds(true);
+let state = remote ? serverState() : initialState();
 const listeners = new Set<() => void>();
 
 export function getState(): State {
@@ -328,8 +349,100 @@ function set(patch: Partial<State> | ((s: State) => Partial<State>)) {
 }
 
 export function resetState() {
-  state = initialState();
+  state = remote ? { ...serverState(), booted: true } : initialState();
   listeners.forEach((l) => l());
+}
+
+// ---- 서버 동기화 ----
+// 동작은 화면에 먼저 반영하고(빠른 반응), 같은 변경을 순서대로 서버에 보냅니다.
+// 서버가 거절하면 사유를 띄우고 서버의 최신 상태로 다시 불러옵니다.
+let queue: Promise<void> = Promise.resolve();
+let changes = 0;
+let quiet = 0;
+
+function mirror(op: (r: Remote) => Promise<unknown>) {
+  if (!remote || quiet) return;
+  changes += 1;
+  queue = queue.then(() => op(remote)).then(
+    () => undefined,
+    (e) => {
+      // 처음 실패한 사유를 보여 줍니다 (뒤따른 변경은 대개 같은 이유로 함께 실패).
+      set({ syncError: state.syncError ?? reasonOf(e, '서버에 저장하지 못했습니다. 최신 상태로 다시 불러왔습니다.') });
+      void refresh();
+    },
+  );
+}
+
+/** 서버 함수가 스스로 만드는 메시지 등, 서버로 따로 보내지 않을 변경 */
+function silently<T>(fn: () => T): T {
+  quiet += 1;
+  try {
+    return fn();
+  } finally {
+    quiet -= 1;
+  }
+}
+
+/** 보내는 중인 변경이 끝나면 서버의 최신 상태로 바꿉니다. 그사이 새 변경이 생기면 다시 받습니다. */
+export async function refresh(): Promise<void> {
+  if (!supabase) return;
+  for (let tries = 0; tries < 3; tries++) {
+    const meId = state.currentUserId;
+    if (!meId) return;
+    await queue;
+    const seen = changes;
+    let snap: Snapshot;
+    try {
+      snap = await loadAll(supabase, meId);
+    } catch {
+      return; // 연결이 끊기면 다음 새로고침에서 다시
+    }
+    if (changes === seen && state.currentUserId === meId) {
+      set(snap);
+      return;
+    }
+  }
+}
+
+/** 로그인한 계정으로 들어가기: 중지 계정 확인, 데이터 받기 */
+async function enter(userId: string): Promise<void> {
+  const active = await remote!.touchLogin();
+  if (!active) throw new Error('사용이 중지된 계정입니다. 관리자에게 문의하세요.');
+  const snap = await loadAll(supabase!, userId);
+  if (!snap.users.some((u) => u.id === userId)) throw new Error('계정 정보를 찾을 수 없습니다. 관리자에게 문의하세요.');
+  set({ ...snap, currentUserId: userId, syncError: undefined });
+}
+
+let started = false;
+let signingOut: Promise<void> = Promise.resolve();
+
+/** 앱을 열 때 한 번: 저장된 로그인이 있으면 이어서 들어가고, 주기적으로 새로 받습니다. */
+export async function startServer(): Promise<void> {
+  if (!supabase || started) return;
+  started = true;
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (data.session) await enter(data.session.user.id).catch(() => supabase!.auth.signOut());
+  } finally {
+    set({ booted: true });
+  }
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT' && state.currentUserId) set({ ...serverState(), booted: true });
+  });
+  // 실시간 연결(3단계) 전까지는 30초마다, 그리고 앱으로 돌아올 때 새로 받습니다.
+  setInterval(() => void refresh(), 30_000);
+  AppState.addEventListener('change', (st) => {
+    if (st === 'active') void refresh();
+  });
+}
+
+/** 보내는 중인 변경이 모두 끝날 때까지 (시험용) */
+export function settled(): Promise<void> {
+  return queue;
+}
+
+export function clearSyncError() {
+  set({ syncError: undefined });
 }
 
 /** 로그인한 사용자. 로그인 화면을 지난 뒤에만 부릅니다. */
@@ -376,6 +489,7 @@ function updateOpen(roomId: string, fn: (r: OpenRoom) => OpenRoom) {
 function pushOpen(roomId: string, senderId: string, text: string, system = false) {
   const m: OpenMessage = { id: newId('om'), roomId, senderId, text, at: nowIso(), ...(system ? { system } : {}) };
   set((s) => ({ openMessages: [...s.openMessages, m] }));
+  return m;
 }
 
 function userById(id: string) {
@@ -386,6 +500,7 @@ function pushMessage(roomId: string, senderId: string, kind: Message['kind'], te
   const msg: Message = { id: newId('m'), roomId, senderId, kind, text, at: nowIso(), ...extra };
   set((s) => ({ messages: [...s.messages, msg] }));
   if (senderId !== SYSTEM_SENDER && senderId !== AI_SENDER && senderId !== BOT_SENDER) markReadAt(roomId, senderId, msg.at);
+  mirror((r) => r.postMessage(msg));
   return msg;
 }
 
@@ -514,7 +629,28 @@ export const actions = {
     return { ok: true };
   },
 
+  /** 로그인 화면: 서버가 있으면 서버 계정으로, 없으면 기기 안 개발용 계정으로 */
+  async signIn(loginId: string, password: string): Promise<RoomCheck> {
+    if (!supabase) return actions.login(loginId, password);
+    await signingOut;
+    const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail(loginId), password });
+    if (error || !data.user) return { ok: false, reason: reasonOf(error) };
+    try {
+      await enter(data.user.id);
+      return { ok: true };
+    } catch (e) {
+      await supabase.auth.signOut();
+      return { ok: false, reason: reasonOf(e as Error) };
+    }
+  },
+
   logout() {
+    if (supabase) {
+      // 보내는 중인 변경을 마친 뒤 로그아웃합니다.
+      signingOut = queue.then(() => supabase!.auth.signOut()).then(() => undefined, () => undefined);
+      set({ ...serverState(), booted: true });
+      return;
+    }
     set({ currentUserId: null });
   },
 
@@ -529,6 +665,8 @@ export const actions = {
     const user: User = { id: newId('u'), nickname: input.nickname.trim(), role: input.role, officeId: input.officeId, firm: input.role === 'client' ? undefined : input.firm?.trim() || '대륜', agentAccess: false, membership: 'basic' };
     const acc: Account = { userId: user.id, loginId, password: input.password, active: true, createdAt: nowIso() };
     set((s) => ({ users: [...s.users, user], accounts: [...s.accounts, acc] }));
+    // 서버는 계정 id를 따로 정하므로 만든 뒤 다시 불러옵니다.
+    mirror((r) => r.accounts({ action: 'create', loginId, password: input.password, nickname: user.nickname, role: input.role, firm: user.firm, officeId: input.officeId }).then(() => void refresh()));
     return { ok: true };
   },
 
@@ -537,7 +675,8 @@ export const actions = {
     const sup = superGuard(userId);
     if (sup) return sup;
     if (password.length < 8) return { ok: false, reason: '비밀번호는 8자 이상이어야 합니다.' };
-    set((s) => ({ accounts: s.accounts.map((a) => (a.userId === userId ? { ...a, password } : a)) }));
+    set((s) => ({ accounts: s.accounts.map((a) => (a.userId === userId ? { ...a, password: remote ? '' : password } : a)) }));
+    mirror((r) => r.accounts({ action: 'reset', userId, password }));
     return { ok: true };
   },
 
@@ -547,6 +686,7 @@ export const actions = {
     const sup = superGuard(userId);
     if (sup) return sup;
     set((s) => ({ accounts: s.accounts.map((a) => (a.userId === userId ? { ...a, active } : a)) }));
+    mirror((r) => r.setActive(userId, active));
     return { ok: true };
   },
 
@@ -557,6 +697,7 @@ export const actions = {
     if (sup) return sup;
     // 어드민이 아닌 역할이 되면 관리자어드민도 풀립니다.
     set((s) => ({ users: s.users.map((u) => (u.id === userId ? { ...u, role, agentAccess: role === 'client' ? false : u.agentAccess, superAdmin: role === 'admin' ? u.superAdmin : undefined } : u)) }));
+    mirror((r) => r.setRole(userId, role));
     return { ok: true };
   },
 
@@ -565,9 +706,11 @@ export const actions = {
     const target = userById(userId);
     if (!target || target.role === 'client') return { ok: false, reason: '로펌 구성원에게만 허용할 수 있습니다.' };
     set((s) => ({ users: s.users.map((u) => (u.id === userId ? { ...u, agentAccess: allowed } : u)) }));
+    mirror((r) => r.setAgentAccess(userId, allowed));
     return { ok: true };
   },
 
+  /** 멤버십 결제가 붙기 전까지는 기기 안에서만 바뀝니다 (서버에서는 어드민·결제만 바꿈). */
   setMembership(level: User['membership']) {
     if (!canJoinMembership(me())) return;
     const id = me().id;
@@ -591,6 +734,7 @@ export const actions = {
       createdAt: nowIso(),
     };
     set((s) => ({ rooms: [room, ...s.rooms] }));
+    mirror((r) => r.createRoom(room));
     pushMessage(
       room.id,
       SYSTEM_SENDER,
@@ -668,6 +812,7 @@ export const actions = {
       lawyerId,
     };
     set((s) => ({ rooms: [room, ...s.rooms] }));
+    mirror((r) => r.openLawyerRoom(room));
     pushMessage(room.id, SYSTEM_SENDER, 'system', `상담 신청이 접수되었습니다. ${lawyer.name} 변호사가 수락하면 대화가 시작됩니다.`);
     pushMessage(room.id, SYSTEM_SENDER, 'system', PRIVATE_CASE_NOTE);
     pushMessage(room.id, BOT_SENDER, 'bot', assignmentText(room, state.users));
@@ -696,6 +841,7 @@ export const actions = {
       caseInfo: { title, field: field || lawyer.fields[0] || '', stage: '수임', deadlines: [], documents: [], costs: [], progress: [{ id: newId('p'), at: nowIso(), note: '수임 요청' }] },
     };
     set((s) => ({ rooms: [room, ...s.rooms] }));
+    mirror((r) => r.openLawyerRoom(room));
     pushMessage(room.id, SYSTEM_SENDER, 'system', `${lawyer.name} 변호사에게 수임을 요청했습니다. 이 사건방에서 진행 상황을 함께 봅니다.`);
     pushMessage(room.id, SYSTEM_SENDER, 'system', PRIVATE_CASE_NOTE);
     pushMessage(room.id, BOT_SENDER, 'bot', assignmentText(room, state.users));
@@ -707,18 +853,22 @@ export const actions = {
 
   markRead(roomId: string) {
     const last = [...state.messages].reverse().find((m) => m.roomId === roomId);
-    if (last) markReadAt(roomId, me().id, last.at);
+    if (!last || (state.reads[roomId]?.[me().id] ?? '') >= last.at) return;
+    markReadAt(roomId, me().id, last.at);
+    mirror((r) => r.markRead(roomId));
   },
 
   /** 같은 이모지를 다시 누르면 취소 */
   react(messageId: string, emoji: string) {
     const uid = me().id;
+    const undo = state.messages.find((m) => m.id === messageId)?.reactions?.[uid] === emoji;
     updateMessage(messageId, (m) => {
       const reactions = { ...m.reactions };
       if (reactions[uid] === emoji) delete reactions[uid];
       else reactions[uid] = emoji;
       return { ...m, reactions };
     });
+    mirror((r) => r.react(messageId, undo ? undefined : emoji));
   },
 
   /** 내가 보낸 메시지를 모두에게서 회수 */
@@ -726,6 +876,7 @@ export const actions = {
     const m = state.messages.find((x) => x.id === messageId);
     if (!m || m.senderId !== me().id) return { ok: false, reason: '내가 보낸 메시지만 회수할 수 있습니다.' };
     updateMessage(messageId, (x) => ({ ...x, text: '', recalled: true, reactions: {}, mentions: [] }));
+    mirror((r) => r.recall(messageId));
     return { ok: true };
   },
 
@@ -733,6 +884,7 @@ export const actions = {
   deleteForMe(messageId: string) {
     const uid = me().id;
     updateMessage(messageId, (m) => ({ ...m, deletedFor: [...(m.deletedFor ?? []), uid] }));
+    mirror((r) => r.hideMessage(messageId));
   },
 
   forward(messageId: string, toRoomId: string): RoomCheck {
@@ -771,34 +923,42 @@ export const actions = {
     if (!m || m.recalled || !m.text) return { ok: false, reason: '공지로 올릴 수 없는 메시지입니다.' };
     const notice = { id: newId('nt'), messageId, text: m.text, by: me().id, at: nowIso() };
     updateRoom(m.roomId, (r) => ({ ...r, notices: [notice, ...(r.notices ?? []).filter((n) => n.messageId !== messageId)].slice(0, 5), noticeHiddenBy: [] }));
+    mirror((r) => r.setNotice(notice.id, m.roomId, messageId, notice.text));
     pushMessage(m.roomId, SYSTEM_SENDER, 'system', `${me().nickname}님이 공지를 등록했습니다.`);
     return { ok: true };
   },
 
   removeNotice(roomId: string, noticeId: string) {
     updateRoom(roomId, (r) => ({ ...r, notices: (r.notices ?? []).filter((n) => n.id !== noticeId) }));
+    mirror((r) => r.removeNotice(noticeId));
   },
 
   /** 공지 '다시 보지 않기' */
   hideNotices(roomId: string) {
     const uid = me().id;
     updateRoom(roomId, (r) => ({ ...r, noticeHiddenBy: [...(r.noticeHiddenBy ?? []), uid] }));
+    mirror((r) => r.hideNotices(roomId));
   },
 
   togglePin(roomId: string) {
     const uid = me().id;
+    const on = !state.rooms.find((r) => r.id === roomId)?.pinnedBy?.includes(uid);
     updateRoom(roomId, (r) => ({ ...r, pinnedBy: r.pinnedBy?.includes(uid) ? r.pinnedBy.filter((x) => x !== uid) : [...(r.pinnedBy ?? []), uid] }));
+    mirror((r) => r.setPinned(roomId, on));
   },
 
   setNotify(roomId: string, level: NotifyLevel) {
     const uid = me().id;
     updateRoom(roomId, (r) => ({ ...r, notify: { ...r.notify, [uid]: level } }));
+    mirror((r) => r.setNotify(roomId, level));
   },
 
   /** 목록에서 숨기기. 새 메시지가 오면 다시 보입니다. */
   hideRoom(roomId: string) {
     const uid = me().id;
-    updateRoom(roomId, (r) => ({ ...r, hiddenAt: { ...r.hiddenAt, [uid]: nowIso() } }));
+    const at = nowIso();
+    updateRoom(roomId, (r) => ({ ...r, hiddenAt: { ...r.hiddenAt, [uid]: at } }));
+    mirror((r) => r.setHidden(roomId, at));
   },
 
   leaveRoom(roomId: string): RoomCheck {
@@ -815,6 +975,8 @@ export const actions = {
       updateRoom(roomId, (r) => ({ ...r, masters: [next] }));
       pushMessage(roomId, SYSTEM_SENDER, 'system', `${userById(next)?.nickname ?? ''}님이 마스터가 되었습니다.`);
     }
+    // 안내 메시지를 먼저 올리고 나갑니다 (나간 뒤에는 그 방에 쓸 수 없음). 마스터 넘기기는 서버도 같은 규칙.
+    mirror((r) => r.leaveRoom(roomId));
     return { ok: true };
   },
 
@@ -829,6 +991,7 @@ export const actions = {
     const next = on ? [...cur, userId] : cur.filter((x) => x !== userId);
     if (!next.length) return { ok: false, reason: '마스터는 한 명 이상 있어야 합니다.' };
     updateRoom(roomId, (r) => ({ ...r, masters: next }));
+    mirror((r) => r.setMaster(roomId, userId, on));
     const name = userById(userId)?.nickname ?? '';
     pushMessage(roomId, SYSTEM_SENDER, 'system', on ? `${u.nickname}님이 ${name}님을 마스터로 지정했습니다.` : `${name}님의 마스터 권한이 해제되었습니다.`);
     return { ok: true };
@@ -843,6 +1006,7 @@ export const actions = {
     if (!room.memberIds.includes(userId)) return { ok: false, reason: '대화 참여자가 아닙니다.' };
     if (room.kind === 'case' || room.kind === 'consult') return { ok: false, reason: '상담·사건방에서는 참여자를 내보낼 수 없습니다.' };
     updateRoom(roomId, (r) => ({ ...r, memberIds: r.memberIds.filter((x) => x !== userId), pinnedBy: r.pinnedBy?.filter((x) => x !== userId), masters: roomMasters(r).filter((x) => x !== userId) }));
+    mirror((r) => r.kick(roomId, userId));
     pushMessage(roomId, SYSTEM_SENDER, 'system', `${u.nickname}님이 ${userById(userId)?.nickname ?? ''}님을 내보냈습니다.`);
     return { ok: true };
   },
@@ -856,6 +1020,7 @@ export const actions = {
     if (!add.length) return { ok: false, reason: '초대할 사람을 골라 주세요.' };
     if (room.kind === 'direct') return actions.startChat([...room.memberIds.filter((x) => x !== u.id), ...add]);
     updateRoom(roomId, (r) => ({ ...r, memberIds: [...r.memberIds, ...add] }));
+    mirror((r) => r.addMembers(roomId, add));
     pushMessage(roomId, SYSTEM_SENDER, 'system', `${u.nickname}님이 ${add.map((id) => userById(id)!.nickname).join(', ')}님을 초대했습니다.`);
     return { ok: true, roomId };
   },
@@ -876,6 +1041,7 @@ export const actions = {
     const t = title.trim();
     if (t.length > 40) return { ok: false, reason: '직책은 40자 이내로 적어 주세요.' };
     set((s) => ({ users: s.users.map((x) => (ids.includes(x.id) ? { ...x, title: t || undefined } : x)) }));
+    mirror((r) => r.setTitles(ids, t));
     return { ok: true };
   },
 
@@ -911,6 +1077,10 @@ export const actions = {
     if (patch.photo !== undefined) next.photo = patch.photo ?? undefined;
     if (patch.presence !== undefined) next.presence = patch.presence;
     set((s) => ({ users: s.users.map((x) => (x.id === u.id ? next : x)) }));
+    // 사진은 파일 저장소(4단계)가 붙으면 함께 올립니다.
+    const keys = ['nickname', 'status', 'presence', 'phone', 'email', 'birthday'] as const;
+    const patchRow = Object.fromEntries(keys.filter((k) => patch[k] !== undefined).map((k) => [k, next[k] ?? null]));
+    if (Object.keys(patchRow).length) mirror((r) => r.updateProfile(patchRow));
     return { ok: true };
   },
 
@@ -933,7 +1103,13 @@ export const actions = {
       id: newId('o'), title, description: input.description.trim().slice(0, 200), tags: parseTags(input.tags), hostId: u.id, max: input.max, createdAt: nowIso(), banned: [],
       members: [{ userId: u.id, alias: input.alias.trim(), joinedAt: nowIso() }],
     };
+    if (remote) {
+      // 비밀번호는 서버에서 암호화해 보관하고 앱에는 '잠김'만 남깁니다.
+      delete room.password;
+      if (pw) room.locked = true;
+    }
     set((s) => ({ openRooms: [room, ...s.openRooms] }));
+    mirror((r) => r.createOpenRoom(room, input.alias.trim(), pw));
     pushOpen(room.id, u.id, `${input.alias.trim()}님이 방을 만들었습니다.`, true);
     return { ok: true, roomId: room.id };
   },
@@ -949,6 +1125,8 @@ export const actions = {
     const bad = checkAlias(room, alias, u);
     if (bad) return { ok: false, reason: bad };
     updateOpen(roomId, (r) => ({ ...r, members: [...r.members, { userId: u.id, alias: alias.trim(), joinedAt: nowIso() }] }));
+    // 서버 연결 시 비밀번호는 서버가 확인합니다 (틀리면 사유가 뜨고 방에서 다시 빠짐).
+    mirror((r) => r.joinOpenRoom(roomId, alias.trim(), password.trim()).then(() => void refresh()));
     pushOpen(roomId, u.id, `${alias.trim()}님이 들어왔습니다.`, true);
     return { ok: true };
   },
@@ -958,7 +1136,8 @@ export const actions = {
     const room = state.openRooms.find((r) => r.id === roomId);
     if (!room || !isOpenMember(room, u.id)) return { ok: false, reason: '참여 중인 방이 아닙니다.' };
     if (!text.trim()) return { ok: false, reason: '' };
-    pushOpen(roomId, u.id, text.trim());
+    const m = pushOpen(roomId, u.id, text.trim());
+    mirror((r) => r.sendOpen(m.id, roomId, m.text));
     return { ok: true };
   },
 
@@ -969,6 +1148,7 @@ export const actions = {
     if (!room || !isOpenMember(room, u.id)) return { ok: false, reason: '참여 중인 방이 아닙니다.' };
     const alias = aliasOf(room, u.id)!;
     const members = room.members.filter((m) => m.userId !== u.id);
+    mirror((r) => r.leaveOpenRoom(roomId));
     if (!members.length) {
       set((s) => ({ openRooms: s.openRooms.filter((r) => r.id !== roomId), openMessages: s.openMessages.filter((m) => m.roomId !== roomId) }));
       return { ok: true };
@@ -990,6 +1170,7 @@ export const actions = {
     const alias = aliasOf(room, userId)!;
     const members = room.members.filter((m) => m.userId !== userId);
     if (!members.length) return actions.deleteOpenRoom(roomId);
+    mirror((r) => r.kickOpen(roomId, userId));
     const hostId = room.hostId === userId ? members[0].userId : room.hostId;
     updateOpen(roomId, (r) => ({ ...r, members, hostId, banned: [...r.banned, userId] }));
     pushOpen(roomId, u.id, `${room.hostId === u.id ? '방장' : '관리자'}이 ${alias}님을 내보냈습니다.`, true);
@@ -1005,10 +1186,12 @@ export const actions = {
     if (bad) return { ok: false, reason: bad };
     updateOpen(roomId, (r) => {
       const next = { ...r };
-      if (pw) next.password = pw;
+      if (remote) next.locked = !!pw;
+      else if (pw) next.password = pw;
       else delete next.password;
       return next;
     });
+    mirror((r) => r.setOpenPassword(roomId, pw));
     return { ok: true };
   },
 
@@ -1017,6 +1200,7 @@ export const actions = {
     const room = state.openRooms.find((r) => r.id === roomId);
     if (!room || (room.hostId !== me().id && !canManageOpen(me()))) return { ok: false, reason: '방장만 방을 없앨 수 있습니다.' };
     set((s) => ({ openRooms: s.openRooms.filter((r) => r.id !== roomId), openMessages: s.openMessages.filter((m) => m.roomId !== roomId) }));
+    mirror((r) => r.deleteOpenRoom(roomId));
     return { ok: true };
   },
 
@@ -1027,6 +1211,7 @@ export const actions = {
     if (!target || target.role !== 'admin') return { ok: false, reason: '어드민 계정만 관리자어드민이 될 수 있습니다.' };
     if (!on && state.users.filter((x) => x.superAdmin && x.role === 'admin').length <= 1 && target.superAdmin) return { ok: false, reason: '관리자어드민은 한 명 이상 있어야 합니다.' };
     set((s) => ({ users: s.users.map((x) => (x.id === userId ? { ...x, superAdmin: on || undefined } : x)) }));
+    mirror((r) => r.setSuperAdmin(userId, on));
     return { ok: true };
   },
 
@@ -1034,6 +1219,7 @@ export const actions = {
     const uid = me().id;
     const cur = state.favorites[uid] ?? [];
     set((s) => ({ favorites: { ...s.favorites, [uid]: cur.includes(userId) ? cur.filter((x) => x !== userId) : [...cur, userId] } }));
+    mirror((r) => r.toggleFavorite(userId, !cur.includes(userId)));
   },
 
   shareContact(roomId: string, contactId: string): RoomCheck {
@@ -1048,7 +1234,10 @@ export const actions = {
     const my = me().id;
     const existing = state.rooms.find((r) => r.kind === 'direct' && r.memberIds.length === 2 && r.memberIds.includes(my) && r.memberIds.includes(otherId));
     if (existing) {
-      if (existing.hiddenAt?.[my]) updateRoom(existing.id, (r) => ({ ...r, hiddenAt: { ...r.hiddenAt, [my]: '' } }));
+      if (existing.hiddenAt?.[my]) {
+        updateRoom(existing.id, (r) => ({ ...r, hiddenAt: { ...r.hiddenAt, [my]: '' } }));
+        mirror((r) => r.setHidden(existing.id, null));
+      }
       return existing.id;
     }
     const res = actions.createRoom({ kind: 'direct', mode: 'private', title: '', memberIds: [otherId] });
@@ -1063,6 +1252,7 @@ export const actions = {
     if (!members.some((u) => u.role === 'lawyer')) return { ok: false, reason: '담당 변호사가 방에 있어야 수임할 수 있습니다.' };
     const caseInfo: CaseInfo = { title: title || room.title, field, stage: '수임', deadlines: [], documents: [], costs: [], progress: [{ id: newId('p'), at: nowIso(), note: '수임' }] };
     updateRoom(roomId, (r) => ({ ...r, kind: 'case', title: caseInfo.title, caseInfo }));
+    mirror((r) => r.promoteCase(roomId, caseInfo.title, field, caseInfo.progress[0].id));
     pushMessage(roomId, SYSTEM_SENDER, 'system', '사건방으로 전환되었습니다. 진행 상황·기일·서류가 이 방에서 공유됩니다.');
     const promoted = state.rooms.find((r) => r.id === roomId);
     if (promoted) pushMessage(roomId, BOT_SENDER, 'bot', assignmentText(promoted, state.users));
@@ -1081,6 +1271,7 @@ export const actions = {
       if (entry.type === 'progress') c.progress = [...c.progress, { id, at: nowIso(), note: entry.label }];
       return { ...r, caseInfo: c };
     });
+    mirror((r) => r.addCaseEntry(id, roomId, entry.type, entry.label, entry.amount));
     if (entry.type === 'progress') pushMessage(roomId, BOT_SENDER, 'bot', `진행 알림\n· ${entry.label}`);
     else pushMessage(roomId, SYSTEM_SENDER, 'system', `${entry.type === 'document' ? '서류' : '비용'} 추가: ${entry.label}`);
     return { ok: true };
@@ -1102,16 +1293,18 @@ export const actions = {
     const prev = update.hearingId ? room.caseInfo.deadlines.find((d) => d.id === update.hearingId) : undefined;
     if (update.change !== 'new' && !prev) return { ok: false, reason: '바꿀 기일을 찾을 수 없습니다.' };
     const hearing: Hearing = { id: prev?.id ?? newId('dl'), label: update.label.trim(), date: update.date, ...(update.time ? { time: update.time } : {}), ...(update.place?.trim() ? { place: update.place.trim() } : {}), source };
+    const progress = { id: newId('p'), at: nowIso(), note: `${CHANGE_LABEL[update.change]}: ${hearing.label} ${whenLabel(hearing.date, hearing.time)}` };
     updateRoom(roomId, (r) => {
       const c = { ...r.caseInfo! };
       if (update.change === 'cancelled') c.deadlines = c.deadlines.filter((d) => d.id !== hearing.id);
       else c.deadlines = prev ? c.deadlines.map((d) => (d.id === hearing.id ? hearing : d)) : [...c.deadlines, hearing];
-      c.progress = [...c.progress, { id: newId('p'), at: nowIso(), note: `${CHANGE_LABEL[update.change]}: ${hearing.label} ${whenLabel(hearing.date, hearing.time)}` }];
+      c.progress = [...c.progress, progress];
       return { ...r, caseInfo: c };
     });
     const alertId = newId('ha');
     const base = { change: update.change, label: hearing.label, date: hearing.date, time: hearing.time, place: hearing.place, prevDate: prev?.date, prevTime: prev?.time, source };
-    const msg = pushMessage(roomId, BOT_SENDER, 'bot', '', { hearingAlertId: alertId });
+    // 알람 카드 메시지는 서버의 sync_hearing이 같은 id로 만듭니다.
+    const msg = silently(() => pushMessage(roomId, BOT_SENDER, 'bot', '', { hearingAlertId: alertId }));
     const at = nowIso();
     const alert: HearingAlert = {
       id: alertId, roomId, hearingId: hearing.id, ...base, at, messageId: msg.id,
@@ -1121,7 +1314,9 @@ export const actions = {
     };
     const summary = alertText(base).split('\n').slice(0, 2).join('\n');
     set((s) => ({ hearingAlerts: [...s.hearingAlerts, alert] }));
-    updateRoom(roomId, (r) => ({ ...r, notices: [{ id: newId('nt'), messageId: msg.id, text: summary, by: BOT_SENDER, at }, ...(r.notices ?? []).filter((n) => n.by !== BOT_SENDER)].slice(0, 5), noticeHiddenBy: [] }));
+    const noticeId = newId('nt');
+    updateRoom(roomId, (r) => ({ ...r, notices: [{ id: noticeId, messageId: msg.id, text: summary, by: BOT_SENDER, at }, ...(r.notices ?? []).filter((n) => n.by !== BOT_SENDER)].slice(0, 5), noticeHiddenBy: [] }));
+    mirror((r) => r.syncHearing(alert, { prevId: prev?.id, noticeId, noticeText: summary, progressId: progress.id, progressNote: progress.note }));
     return { ok: true, alertId };
   },
 
@@ -1132,6 +1327,7 @@ export const actions = {
     if (!a || !a.recipients.includes(u.id)) return { ok: false, reason: '알람을 찾을 수 없습니다.' };
     if (a.ackedBy[u.id]) return { ok: true };
     set((s) => ({ hearingAlerts: s.hearingAlerts.map((x) => (x.id === alertId ? { ...x, ackedBy: { ...x.ackedBy, [u.id]: nowIso() } } : x)) }));
+    mirror((r) => r.ackHearing(alertId));
     pushMessage(a.roomId, SYSTEM_SENDER, 'system', `${u.nickname}님이 ${a.label} 알람을 확인했습니다.`);
     return { ok: true };
   },
@@ -1150,6 +1346,7 @@ export const actions = {
 
   setCaseStage(roomId: string, stage: CaseInfo['stage']) {
     updateRoom(roomId, (r) => (r.caseInfo ? { ...r, caseInfo: { ...r.caseInfo, stage } } : r));
+    mirror((r) => r.setCaseStage(roomId, stage));
     const room = state.rooms.find((r) => r.id === roomId);
     if (room) pushMessage(roomId, BOT_SENDER, 'bot', `진행 알림\n· 사건 단계가 '${stage}'(으)로 바뀌었습니다.\n\n${caseStatusText(room, state.users)}`);
   },
@@ -1252,6 +1449,7 @@ export const actions = {
       ...(board === 'skyzai' && input.notice ? { notice: true } : {}),
     };
     set((s) => ({ posts: [post, ...s.posts] }));
+    mirror((r) => r.createPost(post));
     return { ok: true, postId: post.id };
   },
 
@@ -1259,7 +1457,10 @@ export const actions = {
   markNoticesSeen(postIds: string[]) {
     const uid = me().id;
     const cur = state.noticeSeen[uid] ?? [];
-    set((s) => ({ noticeSeen: { ...s.noticeSeen, [uid]: [...new Set([...cur, ...postIds])] } }));
+    const fresh = postIds.filter((id) => !cur.includes(id));
+    if (!fresh.length) return;
+    set((s) => ({ noticeSeen: { ...s.noticeSeen, [uid]: [...cur, ...fresh] } }));
+    mirror((r) => r.noticesSeen(fresh));
   },
 
   // ---- 대륜탑 인증코드 ----
@@ -1284,6 +1485,7 @@ export const actions = {
     const uid = me().id;
     if (!state.authCodes.some((c) => c.userId === uid && !c.read)) return;
     set((s) => ({ authCodes: s.authCodes.map((c) => (c.userId === uid ? { ...c, read: true } : c)) }));
+    mirror((r) => r.readAuthCodes());
   },
 
   // ---- 법령개정·최신판례 (매일 오전 7시 자동 게시, 서버 작업) ----
@@ -1303,6 +1505,7 @@ export const actions = {
     if (text.length > 1000) return { ok: false, reason: '1000자 이내로 적어 주세요.' };
     const sg: Suggestion = { id: newId('sg'), authorId: me().id, body: text, at: nowIso(), status: 'open' };
     set((s) => ({ suggestions: [sg, ...s.suggestions] }));
+    mirror((r) => r.submitSuggestion(sg));
     return { ok: true };
   },
 
@@ -1312,6 +1515,7 @@ export const actions = {
     if (!state.suggestions.some((x) => x.id === id)) return { ok: false, reason: '건의사항을 찾을 수 없습니다.' };
     const a = answer.trim();
     set((s) => ({ suggestions: s.suggestions.map((x) => (x.id === id ? { ...x, status, answer: a || undefined, answeredAt: a ? nowIso() : x.answeredAt } : x)) }));
+    mirror((r) => r.answerSuggestion(id, status, a));
     return { ok: true };
   },
 
@@ -1324,6 +1528,7 @@ export const actions = {
     if (!text.trim()) return { ok: false, reason: '댓글을 입력해 주세요.' };
     const c = { id: newId('pc'), authorId: me().id, parentId, text: text.trim(), at: nowIso(), votes: {} };
     set((s) => ({ posts: s.posts.map((p) => (p.id === postId ? { ...p, comments: [...p.comments, c] } : p)) }));
+    mirror((r) => r.comment(c.id, postId, c.text, parentId).then(() => void refresh()));
     return { ok: true };
   },
 
@@ -1334,6 +1539,7 @@ export const actions = {
     if (blocked) return blocked;
     const uid = me().id;
     set((s) => ({ posts: s.posts.map((p) => (p.id === postId ? { ...p, votes: toggleVote(p.votes, uid, v) } : p)) }));
+    mirror((r) => r.votePost(postId, v));
     return { ok: true };
   },
 
@@ -1348,6 +1554,7 @@ export const actions = {
         p.id === postId ? { ...p, comments: p.comments.map((c) => (c.id === commentId ? { ...c, votes: toggleVote(c.votes, uid, v) } : c)) } : p,
       ),
     }));
+    mirror((r) => r.voteComment(commentId, v));
     return { ok: true };
   },
 
@@ -1362,6 +1569,10 @@ export const actions = {
     if (found) return { ok: true, noteId: found.id };
     const note: NoteThread = { id: newId('n'), postId, memberIds: [uid, toUserId], messages: [], readAt: {} };
     set((s) => ({ notes: [note, ...s.notes] }));
+    // 서버에는 상대를 id 대신 글(글쓴이) 또는 그 사람의 댓글로 알려 줍니다 (익명 게시판에서 id가 드러나지 않도록).
+    const post = state.posts.find((p) => p.id === postId);
+    const viaComment = post && post.authorId !== toUserId ? post.comments.find((c) => c.authorId === toUserId)?.id ?? null : null;
+    mirror((r) => r.openNote(note.id, postId, viaComment).then(() => void refresh()));
     return { ok: true, noteId: note.id };
   },
 
@@ -1373,6 +1584,7 @@ export const actions = {
     const at = nowIso();
     const msg = { id: newId('nm'), senderId: uid, text: text.trim(), at };
     set((s) => ({ notes: s.notes.map((n) => (n.id === noteId ? { ...n, messages: [...n.messages, msg], readAt: { ...n.readAt, [uid]: at } } : n)) }));
+    mirror((r) => r.sendNote(msg.id, noteId, msg.text));
     return { ok: true };
   },
 
@@ -1382,6 +1594,7 @@ export const actions = {
     const last = n?.messages.at(-1)?.at;
     if (!n || !last || (n.readAt[uid] ?? '') >= last) return;
     set((s) => ({ notes: s.notes.map((x) => (x.id === noteId ? { ...x, readAt: { ...x.readAt, [uid]: last } } : x)) }));
+    mirror((r) => r.readNote(noteId));
   },
 
   /** 글(commentId 없음) 또는 댓글 신고. 같은 대상은 한 번만 신고할 수 있습니다. */
@@ -1398,6 +1611,7 @@ export const actions = {
     }
     const r: BoardReport = { id: newId('rp'), postId, commentId, reporterId: uid, reason, at: nowIso(), status: 'open' };
     set((s) => ({ reports: [r, ...s.reports] }));
+    mirror((x) => x.report(r.id, postId, reason, commentId));
     return { ok: true };
   },
 
@@ -1409,6 +1623,7 @@ export const actions = {
       posts: s.posts.filter((p) => p.id !== postId),
       reports: closeReports(s.reports, (r) => r.postId === postId, '글 삭제'),
     }));
+    mirror((r) => r.deletePost(postId));
     return { ok: true };
   },
 
@@ -1419,6 +1634,7 @@ export const actions = {
       posts: s.posts.map((p) => (p.id === postId ? { ...p, comments: p.comments.map((c) => (c.id === commentId ? { ...c, text: '', deleted: true } : c)) } : p)),
       reports: closeReports(s.reports, (r) => r.postId === postId && r.commentId === commentId, '댓글 삭제'),
     }));
+    mirror((r) => r.deleteComment(commentId));
     return { ok: true };
   },
 
@@ -1426,7 +1642,17 @@ export const actions = {
     if (me().role !== 'admin') return { ok: false, reason: '어드민만 제한할 수 있습니다.' };
     if (userId === me().id) return { ok: false, reason: '자기 계정은 제한할 수 없습니다.' };
     const until = new Date(Date.now() + hours * 3_600_000).toISOString();
+    // 서버에는 대상을 그 사람의 글·댓글로 알려 줍니다.
+    let target: { postId: string; commentId: string | null } | undefined;
+    for (const p of state.posts) {
+      if (p.authorId === userId) target = { postId: p.id, commentId: null };
+      const c = p.comments.find((x) => x.authorId === userId);
+      if (!target && c) target = { postId: p.id, commentId: c.id };
+      if (target) break;
+    }
+    if (remote && !target) return { ok: false, reason: '제한할 사람의 글을 찾을 수 없습니다.' };
     set((s) => ({ boardBans: { ...s.boardBans, [userId]: until } }));
+    if (target) mirror((r) => r.restrict(target.postId, target.commentId, hours));
     return { ok: true };
   },
 
@@ -1437,6 +1663,7 @@ export const actions = {
       delete boardBans[userId];
       return { boardBans };
     });
+    mirror((r) => r.liftRestriction(userId));
     return { ok: true };
   },
 
@@ -1444,6 +1671,7 @@ export const actions = {
   closeReport(reportId: string, status: 'resolved' | 'dismissed', resolution: string): RoomCheck {
     if (me().role !== 'admin') return { ok: false, reason: '어드민만 처리할 수 있습니다.' };
     set((s) => ({ reports: s.reports.map((r) => (r.id === reportId ? { ...r, status, resolution } : r)) }));
+    mirror((r) => r.closeReport(reportId, status, resolution));
     return { ok: true };
   },
 

@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { useMemo } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
-import { aliasOf, lastOpenMessage, searchOpenRooms, splitOpenRooms } from '@/core/open-chat';
+import { aliasOf, isLocked, lastOpenMessage, searchOpenRooms, splitOpenRooms } from '@/core/open-chat';
 import type { OpenRoom } from '@/core/types';
 import { Icon } from './icons';
 import { Empty } from './kit';
@@ -36,7 +36,7 @@ function OpenRow({ room, mine }: { room: OpenRoom; mine: boolean }) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
           <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: family.bold, fontSize: 16, color: c.text }}>{room.title}</Text>
           <Text style={{ fontFamily: family.regular, fontSize: 13, color: c.faint }}>{room.members.length}</Text>
-          {room.password ? <Icon name="lock" color={c.faint} size={14} /> : null}
+          {isLocked(room) ? <Icon name="lock" color={c.faint} size={14} /> : null}
           {mine && last ? <Text style={{ marginLeft: 'auto', fontFamily: family.regular, fontSize: 12, color: c.faint }}>{chatTime(last.at)}</Text> : null}
         </View>
         <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 14, color: c.sub }}>

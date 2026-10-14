@@ -5,6 +5,8 @@ const ROLE_LABEL: Record<Role, string> = { client: '의뢰인', lawyer: '변호�
 
 /** 글 안에서의 익명 번호. 글쓴이가 익명 1, 댓글 단 사람은 처음 등장한 순서대로 2, 3… (의뢰인·변호사 구분 없음) */
 export function aliasIn(post: BoardPost, userId: string): string {
+  const n = post.aliases?.[userId];
+  if (n) return `익명 ${n}`;
   const order = [post.authorId];
   for (const c of post.comments) if (!order.includes(c.authorId)) order.push(c.authorId);
   const i = order.indexOf(userId);

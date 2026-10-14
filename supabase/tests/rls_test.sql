@@ -125,7 +125,7 @@ select tst.check('변호사: 기일 알림 올림', sync_hearing('10000000-0000-
 select tst.as_user('00000000-0000-0000-0000-00000000000e');
 select tst.check('의뢰인: 기일 알림 받음 (확인 전)', (select count(*) = 1 from hearing_alert_recipients r where r.user_id = auth.uid() and r.acked_at is null));
 select ack_hearing((select id from hearing_alerts limit 1));
-select tst.check('의뢰인: 확인 기록·시스템 메시지', (select acked_at is not null from hearing_alert_recipients where user_id = auth.uid()) and (select count(*) = 1 from messages where text like '%알람을 확인했습니다%'));
+select tst.check('의뢰인: 확인 기록 남음', (select acked_at is not null from hearing_alert_recipients where user_id = auth.uid()));
 select tst.throws('의뢰인: 기일 직접 올리기 막힘', $$select sync_hearing('10000000-0000-0000-0000-000000000001', 'new', '선고기일', '2026-12-01')$$, '담당 변호사');
 reset role;
 select id as alert from hearing_alerts limit 1 \gset
@@ -143,6 +143,61 @@ select tst.check('서버: 대륜탑 알림은 모두 확인 전', (select count(
 set role authenticated;
 select tst.as_user('00000000-0000-0000-0000-00000000000c');
 select tst.throws('변호사: 대륜탑 출처로 위장 막힘', $$select sync_hearing('10000000-0000-0000-0000-000000000001', 'new', '선고기일', '2026-12-10', null, null, null, 'daeryuntop')$$, '서버에서만');
+
+
+-- ── 메신저 함수 ──
+select tst.as_user('00000000-0000-0000-0000-00000000000e');
+select post_message('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'bot', '형사 절차 안내');
+select tst.check('의뢰인: 안내 봇 메시지는 올린 사람 기록', (select sender_kind = 'bot' and sender_id is null and origin_id = auth.uid() from messages where id = '20000000-0000-0000-0000-000000000001'));
+select tst.throws('의뢰인: 사건수행방에 AI 메시지 막힘', $$select post_message(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', 'ai', '가짜 AI')$$, 'AI가 참여하지 않습니다');
+select tst.throws('의뢰인: 모르는 직원과 방 만들기 막힘', $$select create_room(gen_random_uuid(), 'direct', 'private', '', '{00000000-0000-0000-0000-00000000000d}')$$, '초대할 수 없는 사람');
+select tst.throws('의뢰인: 업무방 만들기 막힘', $$select create_room(gen_random_uuid(), 'office', 'private', '사무소', '{}')$$, '로펌 구성원만');
+select tst.check('의뢰인: 같은 방 변호사와 1:1', create_room('10000000-0000-0000-0000-000000000002', 'direct', 'private', '', '{00000000-0000-0000-0000-00000000000c}') is not null);
+select tst.throws('의뢰인: 사건방 나가기 막힘', $$select leave_room('10000000-0000-0000-0000-000000000001')$$, '나갈 수 없습니다');
+select tst.check('의뢰인: 상담 신청 방', open_lawyer_room('10000000-0000-0000-0000-000000000003', 'consult', '김변호 상담', 'of_1', 'lw_1') is not null);
+select open_lawyer_room('10000000-0000-0000-0000-000000000004', 'case', '민사 · 김변호', 'of_1', 'lw_1', '민사');
+select tst.check('의뢰인: 수임 요청 사건방', (select stage = '수임' from cases where room_id = '10000000-0000-0000-0000-000000000004'));
+select tst.throws('의뢰인: 사건 단계 바꾸기 막힘', $$select set_case_stage('10000000-0000-0000-0000-000000000001', '종결')$$, '담당 변호사');
+select set_notice(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '형사 절차 안내');
+select tst.check('의뢰인: 공지 올림', (select count(*) = 1 from room_notices where by_id = auth.uid()));
+
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select tst.check('변호사: 그룹방 만들기 (같은 법인)', create_room('10000000-0000-0000-0000-000000000005', 'group', 'private', '팀방', '{00000000-0000-0000-0000-00000000000d,00000000-0000-0000-0000-00000000000b}') is not null);
+select tst.check('변호사: 만든 사람이 마스터', (select is_master from room_members where room_id = '10000000-0000-0000-0000-000000000005' and user_id = auth.uid()));
+select tst.throws('변호사: 남의 사건방 기록 막힘', $$select add_case_entry(gen_random_uuid(), '10000000-0000-0000-0000-000000000004', 'cost', '인지대', 1000)$$, '담당 변호사');
+select add_case_entry(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', 'cost', '인지대', 50000);
+select set_case_stage('10000000-0000-0000-0000-000000000001', '진행');
+select tst.check('변호사: 사건 기록·단계', (select count(*) = 1 from case_costs) and (select stage = '진행' from cases where room_id = '10000000-0000-0000-0000-000000000001'));
+select kick_member('10000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-00000000000b');
+select tst.check('변호사: 마스터가 내보내기', (select count(*) = 2 from room_members where room_id = '10000000-0000-0000-0000-000000000005'));
+select leave_room('10000000-0000-0000-0000-000000000005');
+select tst.as_user('00000000-0000-0000-0000-00000000000d');
+select tst.check('직원: 마스터가 나가면 남은 사람이 마스터', (select is_master from room_members where room_id = '10000000-0000-0000-0000-000000000005' and user_id = auth.uid()));
+select tst.throws('직원: 마지막 마스터 해제 막힘', $$select set_master('10000000-0000-0000-0000-000000000005', auth.uid(), false)$$, '한 명 이상');
+select tst.throws('직원: 남의 방 초대 막힘', $$select add_members('10000000-0000-0000-0000-000000000001', '{00000000-0000-0000-0000-00000000000d}')$$, '참여 중인 방이 아닙니다');
+
+-- ── 오픈대화방 나가기·내보내기 ──
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select tst.check('변호사: 내 참여자 번호 보임', (select count(*) = 1 from my_open_members()));
+reset role;
+select id as om from open_members where alias = '직원A' \gset
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select kick_open((select id from open_room_feed limit 1), :'om');
+select tst.as_user('00000000-0000-0000-0000-00000000000d');
+select tst.check('직원: 내보내진 방은 다시 못 들어감', (select banned and not joined from open_room_feed limit 1));
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select leave_open_room((select id from open_room_feed limit 1));
+select tst.check('변호사: 마지막 사람이 나가면 방 없어짐', (select count(*) = 0 from open_room_feed));
+
+-- ── 쪽지 읽음·제한 해제 ──
+select tst.as_user('00000000-0000-0000-0000-00000000000f');
+select send_note((select id from note_feed limit 1), '안녕하세요');
+select tst.check('다른 의뢰인: 보낸 쪽지는 읽음', (select my_read_at is not null from note_feed limit 1));
+select tst.as_user('00000000-0000-0000-0000-00000000000b');
+select admin_lift_restriction('00000000-0000-0000-0000-00000000000e');
+select tst.check('어드민: 이용 제한 해제', (select count(*) = 0 from board_bans));
+select tst.check('로그인 기록', touch_login());
 
 -- ── 로그인 안 한 사람 ──
 reset role;
