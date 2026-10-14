@@ -55,13 +55,38 @@ export type Account = {
   lastLoginAt?: string;
 };
 
+/** 기일. time·place는 대륜탑 연동이나 변호사가 입력하면 붙습니다. */
+export type Hearing = { id: string; label: string; date: string; time?: string; place?: string; source?: HearingSource };
+export type HearingSource = 'daeryuntop' | 'manual';
+export type HearingChange = 'new' | 'changed' | 'cancelled';
+
+/** 기일 알람: 방의 의뢰인·변호사 모두가 '확인했습니다'를 누를 때까지 앱 어디서나 뜹니다. */
+export type HearingAlert = {
+  id: string;
+  roomId: string;
+  hearingId: string;
+  change: HearingChange;
+  label: string;
+  date: string;
+  time?: string;
+  place?: string;
+  prevDate?: string;
+  prevTime?: string;
+  source: HearingSource;
+  at: string;
+  messageId: string;
+  recipients: string[];
+  /** 사용자 id → 확인한 시각 */
+  ackedBy: Record<string, string>;
+};
+
 export type CaseStage = '상담' | '수임' | '진행' | '종결';
 
 export type CaseInfo = {
   title: string;
   field: string;
   stage: CaseStage;
-  deadlines: { id: string; label: string; date: string }[];
+  deadlines: Hearing[];
   documents: { id: string; name: string; addedAt: string }[];
   costs: { id: string; label: string; amount: number }[];
   progress: { id: string; at: string; note: string }[];
@@ -116,6 +141,8 @@ export type Message = {
   reactions?: Record<string, string>;
   /** @멘션된 사용자 id ('all'은 전체) */
   mentions?: string[];
+  /** 기일 알람 카드 */
+  hearingAlertId?: string;
   /** 연락처 공유 메시지의 대상 */
   contactId?: string;
   /** '나에게서 삭제'한 사용자 */

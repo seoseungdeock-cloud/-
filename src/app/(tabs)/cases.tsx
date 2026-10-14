@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { View } from 'react-native';
 
+import { dDay, dDayLabel, whenLabel } from '@/core/hearings';
 import { Badge, Button, Card, Empty, ModeBadge, Screen, Section, Sub, T } from '@/ui/kit';
 import { space } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
@@ -18,15 +19,16 @@ export default function CasesScreen() {
         {cases.length ? (
           cases.map((r) => {
             const ci = r.caseInfo!;
-            const next = [...ci.deadlines].sort((a, b) => a.date.localeCompare(b.date))[0];
+            const next = [...ci.deadlines].filter((d) => dDay(d.date) >= 0).sort((a, b) => a.date.localeCompare(b.date))[0];
             return (
               <Card key={r.id} onPress={() => open(r.id)}>
                 <View style={{ flexDirection: 'row', gap: space.sm, marginBottom: space.xs }}>
                   <Badge label={ci.stage} />
                   <ModeBadge mode={r.mode} />
+                  {next ? <Badge label={dDayLabel(dDay(next.date))} tone={dDay(next.date) <= 7 ? 'accent' : 'plain'} /> : null}
                 </View>
                 <T size="h2" bold>{ci.title}</T>
-                <Sub>{ci.field}{next ? ` · 다음 기일 ${next.date} ${next.label}` : ''}</Sub>
+                <Sub>{ci.field}{next ? ` · 다음 기일 ${next.label} ${whenLabel(next.date, next.time)}` : ''}</Sub>
               </Card>
             );
           })

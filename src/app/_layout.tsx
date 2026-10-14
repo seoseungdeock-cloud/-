@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
 import { loggedIn } from '@/core/store';
+import { HearingAlertModal } from '@/ui/hearing';
 import { FONT_FILES } from '@/ui/theme';
 import { useApp } from '@/ui/use-app';
 
@@ -61,6 +62,8 @@ export default function RootLayout() {
           <Stack.Screen name="login" />
         </Stack.Protected>
       </Stack>
+      {/* 기일 알람: 의뢰인·변호사 모두 확인할 때까지 어느 화면에서든 뜹니다 */}
+      {signedIn ? <HearingAlertModal /> : null}
     </ThemeProvider>
   );
 }

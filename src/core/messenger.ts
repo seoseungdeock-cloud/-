@@ -103,6 +103,7 @@ export function previewText(m: Message | undefined, users: User[]): string {
   if (m.recalled) return '회수된 메시지입니다.';
   if (m.kind === 'contact') return `연락처: ${users.find((u) => u.id === m.contactId)?.nickname ?? ''}`;
   if (m.forwardOf) return `[전달] ${m.forwardOf.text.split('\n')[0]}`;
+  if (m.hearingAlertId) return '[기일 알림] 확인이 필요합니다';
   return m.text.split('\n')[0];
 }
 

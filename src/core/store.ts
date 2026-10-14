@@ -24,6 +24,7 @@ import { summarizeMeeting, type MeetingNotes } from './meeting';
 import { asksCaseInfo, assignmentText, caseStatusText } from './case-bot';
 import { AUTH_TTL_MIN, canReceiveAuthCodes, checkAuthCode, type AuthCode } from './auth-codes';
 import { digestPosts, LAW_BOT, type LawUpdate } from './law-digest';
+import { alertText, CHANGE_LABEL, recipientsOf, whenLabel } from './hearings';
 import { boardOf, canSeeBoard, canWriteBoard, formatUntil, MAX_ATTACHMENTS, needsField, reportTarget, restrictedUntil, toggleVote } from './board';
 import { displayName, isMaster, parseMentions, roomMasters, type Reads } from './messenger';
 import { findLawyer } from './offices';
@@ -38,6 +39,10 @@ import {
   type Account,
   type Attachment,
   type BoardKind,
+  type Hearing,
+  type HearingAlert,
+  type HearingChange,
+  type HearingSource,
   type Suggestion,
   type SuggestionStatus,
   type BoardPost,
@@ -90,6 +95,8 @@ export type State = {
   suggestions: Suggestion[];
   /** 대륜탑 인증코드 (메신저 '대륜탑 인증' 봇) */
   authCodes: AuthCode[];
+  /** 기일 알람 (의뢰인·변호사 모두 확인할 때까지) */
+  hearingAlerts: HearingAlert[];
 };
 
 const T0 = '2026-10-13T09:00:00.000Z';
@@ -127,10 +134,14 @@ export function initialState(): State {
     },
     // 의뢰인과의 사건방: 변호사·직원에게는 '클라이언트' 탭에만, 의뢰인에게는 대화 탭에 보입니다.
     {
+      notices: [{ id: 'nt_h1', messageId: 'mh1', text: '기일 변경\n· 변론기일: 11월 5일(목) 14:30 → 11월 19일(목) 10:00', by: BOT_SENDER, at: ago(0.3) }],
       id: 'r_case1', kind: 'case', mode: 'private', title: '임대차보증금 반환 · 샘플 변호사 A', memberIds: ['u_client', 'u_lawyer'], createdBy: 'u_client', createdAt: ago(30), lawyerId: 'lw_1',
       caseInfo: {
         title: '임대차보증금 반환', field: '부동산·임대차', stage: '진행',
-        deadlines: [{ id: 'dl1', label: '답변서 제출', date: '2026-10-27' }],
+        deadlines: [
+          { id: 'dl1', label: '답변서 제출', date: '2026-10-27', source: 'manual' },
+          { id: 'dl2', label: '변론기일', date: '2026-11-19', time: '10:00', place: '예시지방법원 제301호 법정', source: 'daeryuntop' },
+        ],
         documents: [{ id: 'dc1', name: '임대차계약서.pdf', addedAt: ago(29) }, { id: 'dc2', name: '내용증명 사본.pdf', addedAt: ago(20) }],
         costs: [], progress: [{ id: 'pg1', at: ago(30), note: '수임' }],
       },
@@ -145,6 +156,7 @@ export function initialState(): State {
     { id: 'mt3', roomId: 'r_team', senderId: 'u_staff', kind: 'text', text: '네, 오전 중에 올리겠습니다.', at: ago(26.9), replyTo: 'mt2' },
     { id: 'mt4', roomId: 'r_team', senderId: 'u_m1', kind: 'text', text: '상담 일정표 링크입니다 https://example.com/schedule', at: ago(1) },
     { id: 'mc1', roomId: 'r_case1', senderId: 'u_client', kind: 'text', text: '변호사님, 집주인에게서 아직 연락이 없습니다.', at: ago(6) },
+    { id: 'mh1', roomId: 'r_case1', senderId: BOT_SENDER, kind: 'bot', text: '', at: ago(0.3), hearingAlertId: 'ha1' },
     { id: 'mc2', roomId: 'r_case1', senderId: 'u_lawyer', kind: 'text', text: '네, 이번 주 안에 소장 초안 보내드리겠습니다. 계약서 원본은 보관해 두세요.', at: ago(5.5) },
     { id: 'mt5', roomId: 'r_team', senderId: 'u_l2', kind: 'text', text: '@승덕 대표님 확인 부탁드립니다.', at: ago(0.5), mentions: ['u_admin'] },
   ];
@@ -260,6 +272,12 @@ export function initialState(): State {
     ],
     notes: [],
     noticeSeen: {},
+    hearingAlerts: [
+      {
+        id: 'ha1', roomId: 'r_case1', hearingId: 'dl2', change: 'changed', label: '변론기일', date: '2026-11-19', time: '10:00', place: '예시지방법원 제301호 법정',
+        prevDate: '2026-11-05', prevTime: '14:30', source: 'daeryuntop', at: ago(0.3), messageId: 'mh1', recipients: ['u_client', 'u_lawyer'], ackedBy: {},
+      },
+    ],
     authCodes: [
       { id: 'ac1', userId: 'u_lawyer', code: '402917', at: ago(5), expiresAt: ago(5 - AUTH_TTL_MIN / 60), read: true },
       { id: 'ac2', userId: 'u_lawyer', code: '815360', at: ago(0.005), expiresAt: ago(0.005 - AUTH_TTL_MIN / 60) },
@@ -1051,20 +1069,83 @@ export const actions = {
     return { ok: true };
   },
 
-  addCaseEntry(roomId: string, entry: { type: 'deadline' | 'document' | 'cost' | 'progress'; label: string; date?: string; amount?: number }) {
+  addCaseEntry(roomId: string, entry: { type: 'deadline' | 'document' | 'cost' | 'progress'; label: string; date?: string; time?: string; place?: string; amount?: number }): RoomCheck {
+    // 기일은 알람과 함께 올립니다.
+    if (entry.type === 'deadline') return actions.syncHearing(roomId, { change: 'new', label: entry.label, date: entry.date ?? '', time: entry.time, place: entry.place });
     const id = newId('ce');
     updateRoom(roomId, (r) => {
       if (!r.caseInfo) return r;
       const c = { ...r.caseInfo };
-      if (entry.type === 'deadline') c.deadlines = [...c.deadlines, { id, label: entry.label, date: entry.date ?? '' }];
       if (entry.type === 'document') c.documents = [...c.documents, { id, name: entry.label, addedAt: nowIso() }];
       if (entry.type === 'cost') c.costs = [...c.costs, { id, label: entry.label, amount: entry.amount ?? 0 }];
       if (entry.type === 'progress') c.progress = [...c.progress, { id, at: nowIso(), note: entry.label }];
       return { ...r, caseInfo: c };
     });
-    if (entry.type === 'deadline') pushMessage(roomId, BOT_SENDER, 'bot', `기일 알림\n· ${entry.label}${entry.date ? ` (${entry.date})` : ''}`);
-    else if (entry.type === 'progress') pushMessage(roomId, BOT_SENDER, 'bot', `진행 알림\n· ${entry.label}`);
+    if (entry.type === 'progress') pushMessage(roomId, BOT_SENDER, 'bot', `진행 알림\n· ${entry.label}`);
     else pushMessage(roomId, SYSTEM_SENDER, 'system', `${entry.type === 'document' ? '서류' : '비용'} 추가: ${entry.label}`);
+    return { ok: true };
+  },
+
+  /**
+   * 기일 업데이트: 대륜탑 연동(서버가 붙으면 대륜탑이 보냄) 또는 담당 변호사 입력.
+   * 사건방 기일을 고치고, 알람 카드를 올려 공지로 고정하고, 방의 모든 사람에게 확인 요청을 겁니다.
+   */
+  syncHearing(roomId: string, update: { hearingId?: string; change: HearingChange; label: string; date: string; time?: string; place?: string }, source: HearingSource = 'manual'): RoomCheck & { alertId?: string } {
+    const room = state.rooms.find((r) => r.id === roomId);
+    const u = me();
+    if (!room?.caseInfo) return { ok: false, reason: '사건방에서만 기일을 올릴 수 있습니다.' };
+    const firmMember = u.role !== 'client' && room.memberIds.includes(u.id);
+    if (!firmMember && !(source === 'daeryuntop' && canManageOpen(u))) return { ok: false, reason: '담당 변호사·직원만 기일을 바꿀 수 있습니다.' };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(update.date) || Number.isNaN(Date.parse(update.date))) return { ok: false, reason: '날짜는 2026-11-02 형식으로 적어 주세요.' };
+    if (update.time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(update.time)) return { ok: false, reason: '시각은 14:30 형식으로 적어 주세요.' };
+    if (!update.label.trim()) return { ok: false, reason: '기일 이름을 적어 주세요.' };
+    const prev = update.hearingId ? room.caseInfo.deadlines.find((d) => d.id === update.hearingId) : undefined;
+    if (update.change !== 'new' && !prev) return { ok: false, reason: '바꿀 기일을 찾을 수 없습니다.' };
+    const hearing: Hearing = { id: prev?.id ?? newId('dl'), label: update.label.trim(), date: update.date, ...(update.time ? { time: update.time } : {}), ...(update.place?.trim() ? { place: update.place.trim() } : {}), source };
+    updateRoom(roomId, (r) => {
+      const c = { ...r.caseInfo! };
+      if (update.change === 'cancelled') c.deadlines = c.deadlines.filter((d) => d.id !== hearing.id);
+      else c.deadlines = prev ? c.deadlines.map((d) => (d.id === hearing.id ? hearing : d)) : [...c.deadlines, hearing];
+      c.progress = [...c.progress, { id: newId('p'), at: nowIso(), note: `${CHANGE_LABEL[update.change]}: ${hearing.label} ${whenLabel(hearing.date, hearing.time)}` }];
+      return { ...r, caseInfo: c };
+    });
+    const alertId = newId('ha');
+    const base = { change: update.change, label: hearing.label, date: hearing.date, time: hearing.time, place: hearing.place, prevDate: prev?.date, prevTime: prev?.time, source };
+    const msg = pushMessage(roomId, BOT_SENDER, 'bot', '', { hearingAlertId: alertId });
+    const at = nowIso();
+    const alert: HearingAlert = {
+      id: alertId, roomId, hearingId: hearing.id, ...base, at, messageId: msg.id,
+      recipients: recipientsOf(room, state.users),
+      // 변호사가 직접 올린 경우 본인은 이미 알고 있으므로 확인 처리
+      ackedBy: source === 'manual' ? { [u.id]: at } : {},
+    };
+    const summary = alertText(base).split('\n').slice(0, 2).join('\n');
+    set((s) => ({ hearingAlerts: [...s.hearingAlerts, alert] }));
+    updateRoom(roomId, (r) => ({ ...r, notices: [{ id: newId('nt'), messageId: msg.id, text: summary, by: BOT_SENDER, at }, ...(r.notices ?? []).filter((n) => n.by !== BOT_SENDER)].slice(0, 5), noticeHiddenBy: [] }));
+    return { ok: true, alertId };
+  },
+
+  /** '확인했습니다': 방에 확인 기록이 남아 상대도 압니다. */
+  ackHearing(alertId: string): RoomCheck {
+    const u = me();
+    const a = state.hearingAlerts.find((x) => x.id === alertId);
+    if (!a || !a.recipients.includes(u.id)) return { ok: false, reason: '알람을 찾을 수 없습니다.' };
+    if (a.ackedBy[u.id]) return { ok: true };
+    set((s) => ({ hearingAlerts: s.hearingAlerts.map((x) => (x.id === alertId ? { ...x, ackedBy: { ...x.ackedBy, [u.id]: nowIso() } } : x)) }));
+    pushMessage(a.roomId, SYSTEM_SENDER, 'system', `${u.nickname}님이 ${a.label} 알람을 확인했습니다.`);
+    return { ok: true };
+  },
+
+  /** 확인하지 않은 사람에게 다시 알리기 (담당 변호사·직원) */
+  remindHearing(alertId: string): RoomCheck {
+    const u = me();
+    const a = state.hearingAlerts.find((x) => x.id === alertId);
+    if (!a) return { ok: false, reason: '알람을 찾을 수 없습니다.' };
+    if (u.role === 'client' || !a.recipients.includes(u.id)) return { ok: false, reason: '담당 변호사·직원만 다시 알릴 수 있습니다.' };
+    const missing = a.recipients.filter((id) => !a.ackedBy[id]).map(userById).filter((x): x is User => !!x);
+    if (!missing.length) return { ok: false, reason: '모두 확인했습니다.' };
+    pushMessage(a.roomId, BOT_SENDER, 'bot', `기일 알람 확인 요청\n${missing.map((x) => `@${x.nickname}`).join(' ')} ${a.label} ${whenLabel(a.date, a.time)} 알람을 확인해 주세요.`, { mentions: missing.map((x) => x.id) });
+    return { ok: true };
   },
 
   setCaseStage(roomId: string, stage: CaseInfo['stage']) {

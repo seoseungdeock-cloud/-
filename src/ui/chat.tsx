@@ -7,6 +7,7 @@ import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups
 import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
 import { Icon, type IconName } from './icons';
+import { HearingCard } from './hearing';
 import { Avatar } from './kit';
 import { chatTime, clockTime, roomTitle } from './room-row';
 import { family, radius, space, useColors } from './theme';
@@ -118,7 +119,7 @@ export function Bubble({
     </View>
   );
 
-  const card = !!(contact || m.forwardOf || m.bundle);
+  const card = !!(contact || m.forwardOf || m.bundle || m.hearingAlertId);
   const row = (
     <View style={{ flex: 1, flexDirection: 'row', justifyContent: mine ? 'flex-end' : 'flex-start', gap: space.sm, marginVertical: space.xs, backgroundColor: highlight ? c.accentSoft : 'transparent', borderRadius: radius.sm }}>
       {!mine ? <Avatar name={isAi || isBot ? 'AI' : sender?.nickname ?? '?'} size={36} tone={isAi ? c.aiSoft : undefined} uri={isAi || isBot ? undefined : sender?.photo} /> : null}
@@ -153,7 +154,9 @@ export function Bubble({
                 </Text>
               </View>
             ) : null}
-            {m.bundle ? (
+            {m.hearingAlertId ? (
+              <HearingCard alertId={m.hearingAlertId} />
+            ) : m.bundle ? (
               <BundleCard m={m} users={users} mark={mark} />
             ) : m.forwardOf ? (
               <>

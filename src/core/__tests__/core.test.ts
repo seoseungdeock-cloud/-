@@ -15,6 +15,7 @@ import { similarity } from '../text';
 import type { Room, User } from '../types';
 import { KOREA_REGIONS } from '../../data/korea-map';
 import { myCodes, secondsLeft, unreadCodes } from '../auth-codes';
+import { ackStatus, alertText, clientUnackedHours, dDay, demoUpdate, pendingFor, reminderPlan, whenLabel } from '../hearings';
 import { digestPosts, LAW_BOT, nextDigestAt, shortGist } from '../law-digest';
 
 const user = (p: Partial<User>): User => ({
@@ -78,7 +79,9 @@ describe('메신저 흐름', () => {
     expect(actions.promoteToCase(roomId, '이혼 사건', '이혼').ok).toBe(true);
     const room = getState().rooms.find((r) => r.id === roomId)!;
     expect(room.kind).toBe('case');
-    actions.addCaseEntry(roomId, { type: 'deadline', label: '1차 변론', date: '2026-11-02' });
+    expect(actions.addCaseEntry(roomId, { type: 'deadline', label: '1차 변론', date: '2026-11-02' }).ok).toBe(false); // 의뢰인은 기일을 못 바꿈
+    as('lawyer');
+    expect(actions.addCaseEntry(roomId, { type: 'deadline', label: '1차 변론', date: '2026-11-02' }).ok).toBe(true);
     expect(getState().rooms.find((r) => r.id === roomId)!.caseInfo!.deadlines).toHaveLength(1);
   });
 
@@ -395,7 +398,8 @@ describe('사건수행방 알림·절차 안내', () => {
     actions.setCaseStage(roomId, '진행');
     expect(msgs(roomId).at(-1)!.text).toContain("'진행'");
     actions.addCaseEntry(roomId, { type: 'deadline', label: '1차 변론', date: '2099-01-10' });
-    expect(msgs(roomId).at(-1)!.text).toContain('기일 알림');
+    const card = msgs(roomId).at(-1)!;
+    expect(alertText(getState().hearingAlerts.find((x) => x.id === card.hearingAlertId)!)).toContain('새 기일');
     as('client');
     await actions.sendMessage(roomId, '@AI 진행 상황 알려줘');
     const last = msgs(roomId).at(-1)!;
@@ -908,5 +912,67 @@ describe('16차: 어드민 통합, 게시판 추가, 법령·판례 자동 글, 
     expect(unreadCodes(st().authCodes, me().id)).toBe(0);
     as('staff');
     expect(myCodes(st().authCodes, me().id, now)).toHaveLength(0); // 남의 코드는 안 보임
+  });
+});
+
+describe('17차: 기일 업데이트 알람', () => {
+  const st = () => getState();
+  const room = () => st().rooms.find((r) => r.id === 'r_case1')!;
+
+  it('대륜탑에서 바뀐 기일은 의뢰인·변호사 모두에게 확인 전까지 남고, 확인하면 방에 기록된다', () => {
+    as('client');
+    expect(pendingFor('u_client', st().hearingAlerts).map((a) => a.id)).toEqual(['ha1']);
+    expect(actions.ackHearing('ha1').ok).toBe(true);
+    expect(pendingFor('u_client', st().hearingAlerts)).toHaveLength(0);
+    expect(st().messages.at(-1)!.text).toContain('하늘님이 변론기일 알람을 확인했습니다');
+    expect(pendingFor('u_lawyer', st().hearingAlerts)).toHaveLength(1);
+    const status = ackStatus(st().hearingAlerts[0], st().users);
+    expect(status.map((x) => [x.user.id, !!x.at])).toEqual([['u_client', true], ['u_lawyer', false]]);
+    as('staff');
+    expect(actions.ackHearing('ha1').ok).toBe(false); // 방에 없는 사람
+  });
+
+  it('대륜탑 연동 시연: 다음 기일을 옮기면 기일·공지·알람이 함께 바뀐다', () => {
+    as('lawyer');
+    const d = demoUpdate(room().caseInfo!.deadlines, new Date('2026-10-14T00:00:00Z'));
+    expect(d).toMatchObject({ hearingId: 'dl2', change: 'changed', date: '2026-12-03' }); // 제출 기한(dl1)은 그대로
+    const res = actions.syncHearing('r_case1', d, 'daeryuntop');
+    expect(res.ok).toBe(true);
+    expect(room().caseInfo!.deadlines.find((x) => x.id === 'dl2')).toMatchObject({ date: '2026-12-03', time: '14:30', source: 'daeryuntop' });
+    const a = st().hearingAlerts.find((x) => x.id === res.alertId)!;
+    expect(alertText(a)).toContain('11월 19일(목) 10:00 → 12월 3일(목) 14:30');
+    expect(alertText(a)).toContain('대륜탑 자동 연동');
+    expect(room().notices![0].messageId).toBe(a.messageId);
+    expect(room().notices!.filter((n) => n.by === 'bot')).toHaveLength(1); // 이전 기일 공지는 교체
+    expect(pendingFor('u_lawyer', st().hearingAlerts).map((x) => x.id)).toContain(res.alertId); // 대륜탑에서 온 것은 변호사도 확인 필요
+  });
+
+  it('변호사가 직접 올린 기일은 본인은 확인된 것으로, 의뢰인은 확인 요청과 다시 알리기', () => {
+    as('lawyer');
+    const res = actions.syncHearing('r_case1', { change: 'new', label: '조정기일', date: '2026-12-01', time: '25:00' });
+    expect(res.ok).toBe(false); // 시각 형식
+    const ok = actions.syncHearing('r_case1', { change: 'new', label: '조정기일', date: '2026-12-01', time: '15:00', place: '예시 조정실' });
+    const a = () => st().hearingAlerts.find((x) => x.id === ok.alertId)!;
+    expect(a().ackedBy.u_lawyer).toBeTruthy();
+    expect(clientUnackedHours(a(), st().users)).toBe(0);
+    expect(actions.remindHearing(ok.alertId!).ok).toBe(true);
+    expect(st().messages.at(-1)!.mentions).toEqual(['u_client']);
+    as('client');
+    expect(actions.remindHearing(ok.alertId!).ok).toBe(false);
+    expect(actions.syncHearing('r_case1', { change: 'new', label: '변론', date: '2026-12-02' }).ok).toBe(false);
+    actions.ackHearing(ok.alertId!);
+    expect(clientUnackedHours(a(), st().users)).toBeUndefined();
+  });
+
+  it('기일 취소와 미리 알림 일정, D-day', () => {
+    as('lawyer');
+    expect(actions.syncHearing('r_case1', { hearingId: 'dl2', change: 'cancelled', label: '변론기일', date: '2026-11-19' }).ok).toBe(true);
+    expect(room().caseInfo!.deadlines.map((x) => x.id)).toEqual(['dl1']);
+    const plan = reminderPlan({ date: '2026-11-19', time: '10:00' }, new Date('2026-10-14T00:00:00Z'));
+    expect(plan.map((p) => p.label)).toEqual(['7일 전', '전날', '당일 아침', '2시간 전']);
+    expect(plan[3].at).toBe('2026-11-18T23:00:00.000Z'); // 10:00 KST(01:00Z)의 2시간 전
+    expect(reminderPlan({ date: '2026-11-19' }, new Date('2026-11-18T12:00:00Z')).map((p) => p.label)).toEqual(['당일 아침']);
+    expect(dDay('2026-10-21', new Date('2026-10-14T03:00:00Z'))).toBe(7);
+    expect(whenLabel('2026-11-19', '10:00')).toBe('11월 19일(목) 10:00');
   });
 });
