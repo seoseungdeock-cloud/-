@@ -39,8 +39,8 @@ export function alertText(a: Pick<HearingAlert, 'change' | 'label' | 'date' | 't
   return lines.join('\n');
 }
 
-/** 미리 알림: 기일 7일 전·전날 오전 9시, 당일 오전 8시, 시각이 있으면 2시간 전 (지난 것은 빼고) */
-export function reminderPlan(h: Pick<Hearing, 'date' | 'time'>, now = new Date()): { label: string; at: string }[] {
+/** 미리 알림 세 번: 기일 7일 전·전날 오전 9시, 당일 오전 8시 (지난 것은 빼고) */
+export function reminderPlan(h: Pick<Hearing, 'date'>, now = new Date()): { label: string; at: string }[] {
   const at = (date: string, hhmm: string) => new Date(`${date}T${hhmm}:00+09:00`);
   const base = at(h.date, '00:00');
   const day = (n: number) => new Date(base.getTime() - n * 86_400_000).toISOString().slice(0, 10);
@@ -49,7 +49,6 @@ export function reminderPlan(h: Pick<Hearing, 'date' | 'time'>, now = new Date()
     { label: '전날', at: at(day(1), '09:00') },
     { label: '당일 아침', at: at(h.date, '08:00') },
   ];
-  if (h.time && /^\d{2}:\d{2}$/.test(h.time)) plan.push({ label: '2시간 전', at: new Date(at(h.date, h.time).getTime() - 2 * 3_600_000) });
   return plan.filter((p) => p.at.getTime() > now.getTime()).map((p) => ({ label: p.label, at: p.at.toISOString() }));
 }
 

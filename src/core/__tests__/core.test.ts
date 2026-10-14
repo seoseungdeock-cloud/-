@@ -968,9 +968,9 @@ describe('17차: 기일 업데이트 알람', () => {
     as('lawyer');
     expect(actions.syncHearing('r_case1', { hearingId: 'dl2', change: 'cancelled', label: '변론기일', date: '2026-11-19' }).ok).toBe(true);
     expect(room().caseInfo!.deadlines.map((x) => x.id)).toEqual(['dl1']);
-    const plan = reminderPlan({ date: '2026-11-19', time: '10:00' }, new Date('2026-10-14T00:00:00Z'));
-    expect(plan.map((p) => p.label)).toEqual(['7일 전', '전날', '당일 아침', '2시간 전']);
-    expect(plan[3].at).toBe('2026-11-18T23:00:00.000Z'); // 10:00 KST(01:00Z)의 2시간 전
+    const plan = reminderPlan({ date: '2026-11-19' }, new Date('2026-10-14T00:00:00Z'));
+    expect(plan.map((p) => p.label)).toEqual(['7일 전', '전날', '당일 아침']); // 미리 알림은 세 번만
+    expect(plan[2].at).toBe('2026-11-18T23:00:00.000Z'); // 당일 08:00 KST
     expect(reminderPlan({ date: '2026-11-19' }, new Date('2026-11-18T12:00:00Z')).map((p) => p.label)).toEqual(['당일 아침']);
     expect(dDay('2026-10-21', new Date('2026-10-14T03:00:00Z'))).toBe(7);
     expect(whenLabel('2026-11-19', '10:00')).toBe('11월 19일(목) 10:00');
