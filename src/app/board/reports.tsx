@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { Text, View } from 'react-native';
 
-import { formatUntil, reportTarget, RESTRICT_OPTIONS, restrictedUntil, timeAgo } from '@/core/board';
+import { BOARD_LABEL, boardOf, canSeeBoard, formatUntil, reportTarget, RESTRICT_OPTIONS, restrictedUntil, timeAgo } from '@/core/board';
 import { actions } from '@/core/store';
 import type { BoardReport } from '@/core/types';
 import { TextButton } from '@/ui/board';
@@ -21,15 +21,22 @@ export default function ReportsScreen() {
   const done = s.reports.filter((r) => r.status !== 'open').slice(0, 20);
   const banned = Object.keys(s.boardBans).filter((id) => restrictedUntil(s.boardBans, id));
 
-  // 변호사 게시판 글은 어드민도 열람하지 않고, 신고된 부분만 신고함에서 처리합니다.
-  const lawyerPost = (postId: string) => s.posts.find((p) => p.id === postId)?.board === 'lawyer';
+  // 변호사 게시판·사건자문 글은 어드민도 열람하지 않고, 신고된 부분만 신고함에서 처리합니다.
+  const boardFor = (postId: string) => {
+    const p = s.posts.find((x) => x.id === postId);
+    return p ? boardOf(p) : undefined;
+  };
+  const lawyerPost = (postId: string) => {
+    const b = boardFor(postId);
+    return !!b && !canSeeBoard(user, b);
+  };
   const item = (r: BoardReport) => {
     const t = reportTarget(r, s.posts);
     return (
       <Card key={r.id}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs, marginBottom: space.xs, flexWrap: 'wrap' }}>
           <Badge label={t?.kind ?? '삭제됨'} tone="plain" />
-          {lawyerPost(r.postId) ? <Badge label="변호사 게시판" tone="plain" /> : null}
+          {boardFor(r.postId) && boardFor(r.postId) !== 'anon' ? <Badge label={BOARD_LABEL[boardFor(r.postId)!]} tone="plain" /> : null}
           <Badge label={r.reason} tone="warn" />
           <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{timeAgo(r.at)} · 신고자 {name(r.reporterId)}</Text>
         </View>

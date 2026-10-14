@@ -1,6 +1,6 @@
 import { checkCompliance } from '../compliance';
 import { PROCEDURE_MENU, procedureReply } from '../procedures';
-import { authorView, boardOf, commentTree, nameIn, score, searchPosts, sortPosts, unreadIn } from '../board';
+import { authorView, boardOf, boardsFor, canWriteBoard, commentTree, nameIn, pinNotices, unseenNotices, score, searchPosts, sortPosts, unreadIn } from '../board';
 import { contactsFor } from '../contacts';
 import { clientCanSee, dayKey, dayLabel, firstOfDay, hasClient, isHidden, isMaster, presenceOf, markParts, mentionQuery, messageDays, orgGroups, parseMentions, reactionGroups, readCount, readers, searchAll, searchDirectory, searchMessages, sortRooms, splitMentions, unreadCount } from '../messenger';
 import { opinionFor } from '../knowledge';
@@ -8,7 +8,7 @@ import { searchOpenRooms, splitOpenRooms } from '../open-chat';
 import { planFromCommand, rankPerformance, mostSimilar } from '../marketing';
 import { summarizeMeeting } from '../meeting';
 import { officeCountByRegion, searchLawyers } from '../offices';
-import { aiAnswerLevel, canCreateRoom, canUseAgents } from '../rooms';
+import { aiAnswerLevel, canCreateRoom, canJoinMembership, canSeeSuggestions, canSeeWorkTab, canUseAgents } from '../rooms';
 import { actions, getState, me, resetState } from '../store';
 import { layoutChart, parseRows } from '../templates';
 import { similarity } from '../text';
@@ -321,7 +321,7 @@ describe('게시판 베스트·검색·신고', () => {
   });
 
   it('제목·내용·분야로 검색한다', () => {
-    const posts = getState().posts;
+    const posts = getState().posts.filter((p) => boardOf(p) === 'anon');
     expect(searchPosts(posts, '보증금').map((p) => p.id)).toEqual(['p1']);
     expect(searchPosts(posts, '이혼 양육비').map((p) => p.id)).toEqual(['p3']);
     expect(searchPosts(posts, '없는단어')).toHaveLength(0);
@@ -770,5 +770,85 @@ describe('게시판 분리 (익명 / 변호사)', () => {
     const res = actions.createPost({ title: '제목', body: '내용', field: '민사', attachments: [0, 1].map(att) });
     expect(res.ok).toBe(true);
     expect(st().posts.find((p) => p.id === res.postId)!.attachments).toHaveLength(2);
+  });
+});
+
+describe('15차: 탭 정리, 공지·사건자문·SKYZAI, 건의사항', () => {
+  const st = () => getState();
+
+  it('멤버십은 의뢰인만, 업무 탭은 어드민만', () => {
+    as('client');
+    expect(canJoinMembership(me())).toBe(true);
+    expect(canSeeWorkTab(me())).toBe(false);
+    as('lawyer');
+    expect(canJoinMembership(me())).toBe(false);
+    expect(canSeeWorkTab(me())).toBe(false);
+    actions.setMembership('rightnow');
+    expect(me().membership).toBe('basic');
+    as('staff');
+    expect(canSeeWorkTab(me())).toBe(false);
+    as('admin');
+    expect(canSeeWorkTab(me())).toBe(true);
+  });
+
+  it('게시판 탭: 변호사는 공지부터 다섯 개, 어드민은 공지·익명·SKYZAI, 나머지는 익명만', () => {
+    as('lawyer');
+    expect(boardsFor(me())).toEqual(['notice', 'anon', 'lawyer', 'advice', 'skyzai']);
+    as('admin');
+    expect(boardsFor(me())).toEqual(['notice', 'anon', 'skyzai']);
+    as('staff');
+    expect(boardsFor(me())).toEqual(['anon']);
+    as('client');
+    expect(boardsFor(me())).toEqual(['anon']);
+  });
+
+  it('공지와 SKYZAI 공지는 어드민만 쓰고, 사건자문은 변호사가 실명으로 쓴다', () => {
+    as('lawyer');
+    expect(canWriteBoard(me(), 'notice')).toBe(false);
+    expect(actions.createPost({ title: '공지', body: '내용', field: '', board: 'notice' }).ok).toBe(false);
+    expect(actions.createPost({ title: 'SKYZAI 공지', body: '내용', field: '', board: 'skyzai', notice: true }).ok).toBe(false);
+    expect(actions.createPost({ title: 'SKYZAI 글', body: '내용', field: '', board: 'skyzai' }).ok).toBe(true);
+    const adv = actions.createPost({ title: '자문 구합니다', body: '내용', field: '민사', board: 'advice' });
+    expect(adv.ok).toBe(true);
+    expect(authorView(me(), st().posts.find((p) => p.id === adv.postId)!, me().id, st().users).profile?.id).toBe('u_lawyer');
+    as('admin');
+    expect(actions.createPost({ title: '사건자문', body: '내용', field: '민사', board: 'advice' }).ok).toBe(false);
+    expect(actions.createPost({ title: '새 공지', body: '내용', field: '', board: 'notice' }).ok).toBe(true);
+    const sky = actions.createPost({ title: 'SKYZAI 새 공지', body: '내용', field: '', board: 'skyzai', notice: true });
+    expect(sky.ok).toBe(true);
+    const skyPosts = pinNotices(st().posts.filter((p) => p.board === 'skyzai'));
+    expect(skyPosts.slice(0, 2).every((p) => p.notice)).toBe(true);
+  });
+
+  it('새 공지는 확인하기 전까지 팝업에 뜨고, 확인하면 사라진다', () => {
+    as('lawyer');
+    const seen = () => st().noticeSeen[me().id] ?? [];
+    expect(unseenNotices(me(), st().posts, seen()).map((p) => p.id)).toEqual(['p_notice1', 'p_sky1']);
+    actions.markNoticesSeen(['p_notice1']);
+    expect(unseenNotices(me(), st().posts, seen()).map((p) => p.id)).toEqual(['p_sky1']);
+    as('client');
+    expect(unseenNotices(me(), st().posts, [])).toHaveLength(0); // 의뢰인은 공지 게시판이 없음
+    as('admin');
+    expect(unseenNotices(me(), st().posts, [])).toHaveLength(0); // 내가 쓴 공지는 안 뜸
+  });
+
+  it('건의사항은 누구나 쓰고, 개발자어드민만 건의사항함에서 처리한다', () => {
+    as('client');
+    expect(actions.submitSuggestion('  ').ok).toBe(false);
+    expect(actions.submitSuggestion('글자를 크게 볼 수 있으면 좋겠어요').ok).toBe(true);
+    const id = st().suggestions[0].id;
+    expect(actions.answerSuggestion(id, 'done', '반영했습니다').ok).toBe(false);
+    as('subadmin');
+    expect(canSeeSuggestions(me())).toBe(false);
+    expect(actions.answerSuggestion(id, 'done', '반영했습니다').ok).toBe(false);
+    expect(actions.setDevAdmin('u_admin2', true).ok).toBe(false); // 관리자어드민만 지정
+    as('admin');
+    expect(canSeeSuggestions(me())).toBe(true);
+    expect(actions.answerSuggestion(id, 'done', '반영했습니다').ok).toBe(true);
+    expect(st().suggestions.find((x) => x.id === id)).toMatchObject({ status: 'done', answer: '반영했습니다' });
+    expect(actions.setDevAdmin('u_lawyer', true).ok).toBe(false); // 어드민 계정만
+    expect(actions.setDevAdmin('u_admin2', true).ok).toBe(true);
+    as('subadmin');
+    expect(canSeeSuggestions(me())).toBe(true);
   });
 });

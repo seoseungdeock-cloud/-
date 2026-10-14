@@ -10,15 +10,63 @@ export function aliasIn(post: BoardPost, userId: string): string {
   return i < 0 ? '익명' : `익명 ${i + 1}`;
 }
 
-export const BOARD_LABEL: Record<BoardKind, string> = { anon: '익명 게시판', lawyer: '변호사 게시판' };
+export const BOARD_LABEL: Record<BoardKind, string> = { notice: '공지', anon: '익명 게시판', lawyer: '변호사 게시판', advice: '사건자문', skyzai: 'SKYZAI' };
+
+/** 게시판 탭에 쓰는 짧은 이름 */
+export const BOARD_TAB: Record<BoardKind, string> = { notice: '공지', anon: '익명', lawyer: '변호사', advice: '사건자문', skyzai: 'SKYZAI' };
+
+/** 게시판 탭 순서: 공지가 맨 앞 */
+const BOARD_ORDER: BoardKind[] = ['notice', 'anon', 'lawyer', 'advice', 'skyzai'];
 
 export function boardOf(post: BoardPost): BoardKind {
   return post.board ?? 'anon';
 }
 
-/** 변호사 게시판은 변호사 계정만 보고 씁니다. */
+/**
+ * 익명 게시판: 모든 계정. 변호사 게시판·사건자문: 변호사 계정만.
+ * 공지·SKYZAI: 변호사 계정과, 공지를 올리는 어드민 계정.
+ */
 export function canSeeBoard(u: User, board: BoardKind): boolean {
-  return board === 'anon' || u.role === 'lawyer';
+  if (board === 'anon') return true;
+  if (board === 'lawyer' || board === 'advice') return u.role === 'lawyer';
+  return u.role === 'lawyer' || u.role === 'admin';
+}
+
+export function boardsFor(u: User): BoardKind[] {
+  return BOARD_ORDER.filter((b) => canSeeBoard(u, b));
+}
+
+/** 공지 게시판 글과 SKYZAI 공지 글은 어드민만 씁니다. */
+export function canWriteBoard(u: User, board: BoardKind, notice = false): boolean {
+  if (!canSeeBoard(u, board)) return false;
+  if (board === 'notice' || (board === 'skyzai' && notice)) return u.role === 'admin';
+  return true;
+}
+
+/** 익명 게시판만 익명, 나머지는 메신저 프로필 공개 */
+export function isRealName(board: BoardKind): boolean {
+  return board !== 'anon';
+}
+
+/** 분야 태그를 고르는 게시판 */
+export function needsField(board: BoardKind): boolean {
+  return board === 'anon' || board === 'lawyer' || board === 'advice';
+}
+
+export function isNoticePost(p: BoardPost): boolean {
+  return boardOf(p) === 'notice' || (boardOf(p) === 'skyzai' && !!p.notice);
+}
+
+/** 아직 확인하지 않은 공지 (게시판 맨 위 팝업), 최신순. 내가 쓴 공지는 빼고. */
+export function unseenNotices(u: User, posts: BoardPost[], seen: string[]): BoardPost[] {
+  return posts
+    .filter((p) => isNoticePost(p) && p.authorId !== u.id && canSeeBoard(u, boardOf(p)) && !seen.includes(p.id))
+    .sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/** SKYZAI 공지 글은 목록 맨 위에 고정 */
+export function pinNotices(posts: BoardPost[]): BoardPost[] {
+  return [...posts.filter((p) => p.notice), ...posts.filter((p) => !p.notice)];
 }
 
 export type AuthorView = {
@@ -31,14 +79,14 @@ export type AuthorView = {
 
 export function authorView(viewer: User, post: BoardPost, authorId: string, users: User[]): AuthorView {
   const u = users.find((x) => x.id === authorId);
-  if (boardOf(post) === 'lawyer') return { alias: u?.nickname ?? '알 수 없음', profile: u };
+  if (isRealName(boardOf(post))) return { alias: u?.nickname ?? '알 수 없음', profile: u };
   return { alias: aliasIn(post, authorId), real: viewer.role === 'admin' && u ? `${u.nickname} · ${ROLE_LABEL[u.role]}` : undefined };
 }
 
 /** 쪽지 상대 이름: 익명 게시판은 '익명 N', 변호사 게시판은 실명 */
 export function nameIn(post: BoardPost | undefined, userId: string, users: User[]): string {
   if (!post) return '익명';
-  if (boardOf(post) === 'lawyer') return users.find((u) => u.id === userId)?.nickname ?? '알 수 없음';
+  if (isRealName(boardOf(post))) return users.find((u) => u.id === userId)?.nickname ?? '알 수 없음';
   return aliasIn(post, userId);
 }
 

@@ -1,8 +1,9 @@
 import { View } from 'react-native';
 
 import { MEMBERSHIP_BENEFITS } from '@/core/membership';
+import { canJoinMembership } from '@/core/rooms';
 import { actions } from '@/core/store';
-import { Badge, Button, Card, Screen, Sub, T } from '@/ui/kit';
+import { Badge, Button, Card, Empty, Screen, Sub, T } from '@/ui/kit';
 import { space, useColors } from '@/ui/theme';
 import { useMe } from '@/ui/use-app';
 
@@ -10,6 +11,7 @@ export default function MembershipScreen() {
   const user = useMe();
   const c = useColors();
   const isMember = user.membership === 'rightnow';
+  if (!canJoinMembership(user)) return <Screen title="라잇나우 멤버십" back><Empty text="의뢰인 계정만 가입할 수 있습니다." /></Screen>;
   return (
     <Screen title="라잇나우 멤버십" back>
       <Card style={{ backgroundColor: isMember ? c.text : c.surface, paddingVertical: space.xl }}>

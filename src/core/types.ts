@@ -24,6 +24,8 @@ export type User = {
   presence?: Presence; // 상태 (대화 가능, 회의 중 등)
   /** 관리자어드민: 어드민 중에서도 오픈대화방 실제 이용자 확인·관리 권한 */
   superAdmin?: boolean;
+  /** 개발자어드민: 건의사항함을 봅니다 (어드민 계정에만) */
+  devAdmin?: boolean;
 };
 
 /** 방의 종류. 메신저·사건·업무·에이전트가 모두 같은 "방" 구조를 씁니다. */
@@ -144,12 +146,17 @@ export type BoardPost = {
   at: string;
   votes: Votes;
   comments: BoardComment[];
-  /** 'anon' 익명 게시판 (기본) / 'lawyer' 변호사 게시판 (변호사만, 메신저 프로필 공개) */
+  /** 게시판 종류 (없으면 익명 게시판). 익명 게시판 말고는 메신저 프로필 공개 */
   board?: BoardKind;
   attachments?: Attachment[];
+  /** SKYZAI 게시판의 공지 글 (어드민만) */
+  notice?: boolean;
 };
 
-export type BoardKind = 'anon' | 'lawyer';
+export type BoardKind = 'notice' | 'anon' | 'lawyer' | 'advice' | 'skyzai';
+
+export type SuggestionStatus = 'open' | 'review' | 'done' | 'hold';
+export type Suggestion = { id: string; authorId: string; body: string; at: string; status: SuggestionStatus; answer?: string; answeredAt?: string };
 
 /** 게시판 첨부 (사진·파일). 지금은 기기 안 주소이고, 서버가 붙으면 업로드 주소가 됩니다. */
 export type Attachment = { id: string; kind: 'image' | 'file'; name: string; uri: string; size?: number };

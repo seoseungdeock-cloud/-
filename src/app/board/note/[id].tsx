@@ -49,7 +49,7 @@ export default function NoteScreen() {
         );
       })}
       <View style={{ marginTop: space.md }}>
-        <Input placeholder={post && boardOf(post) === 'lawyer' ? '쪽지 쓰기' : '익명으로 쪽지 쓰기'} value={text} onChangeText={setText} multiline />
+        <Input placeholder={post && boardOf(post) !== 'anon' ? '쪽지 쓰기' : '익명으로 쪽지 쓰기'} value={text} onChangeText={setText} multiline />
         {error ? <Notice tone="warn" text={error} /> : null}
         <Button label="보내기" onPress={send} />
       </View>

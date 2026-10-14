@@ -1,6 +1,6 @@
 import { router, type Href } from 'expo-router';
 
-import { canUseAgents, isWorkUser } from '@/core/rooms';
+import { canSeeWorkTab, canUseAgents } from '@/core/rooms';
 import { Card, Empty, Notice, Screen, Section, T } from '@/ui/kit';
 import { useMe } from '@/ui/use-app';
 
@@ -13,7 +13,7 @@ const AGENT: { href: Href; title: string; sub: string }[] = [
 
 export default function WorkScreen() {
   const user = useMe();
-  if (!isWorkUser(user)) return <Screen title="업무"><Empty text="로펌 구성원만 쓸 수 있습니다." /></Screen>;
+  if (!canSeeWorkTab(user)) return <Screen title="업무"><Empty text="어드민 계정만 쓸 수 있습니다." /></Screen>;
   const allowed = canUseAgents(user);
   return (
     <Screen title="업무">

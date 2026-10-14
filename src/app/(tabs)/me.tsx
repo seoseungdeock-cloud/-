@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { Text, View } from 'react-native';
 
 import { presenceOf } from '@/core/messenger';
+import { canJoinMembership, canSeeSuggestions } from '@/core/rooms';
 import { actions } from '@/core/store';
 import { usePresenceColor } from '@/ui/presence';
 import { Avatar, Badge, Button, Card, Screen, Section, Sub, T } from '@/ui/kit';
@@ -16,6 +17,7 @@ export default function MeScreen() {
   const c = useColors();
   const dot = usePresenceColor();
   const account = s.accounts.find((a) => a.userId === user.id);
+  const open = s.suggestions.filter((x) => x.status === 'open').length;
   return (
     <Screen title="나">
       <Card onPress={() => router.push('/profile')}>
@@ -28,14 +30,23 @@ export default function MeScreen() {
             <View style={{ flexDirection: 'row', gap: space.xs, marginTop: space.xs, flexWrap: 'wrap' }}>
               <Badge label={ROLE_LABEL[user.role]} tone="plain" />
               {user.membership === 'rightnow' ? <Badge label="라잇나우 멤버" tone="member" /> : null}
+              {user.superAdmin && user.role === 'admin' ? <Badge label="관리자어드민" tone="accent" /> : null}
+              {user.devAdmin && user.role === 'admin' ? <Badge label="개발자어드민" tone="ai" /> : null}
             </View>
           </View>
           <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.accent }}>편집</Text>
         </View>
       </Card>
-      <Section title="라잇나우 멤버십">
-        <Card onPress={() => router.push('/membership')}>
-          <T bold>{user.membership === 'rightnow' ? '멤버 혜택 보기' : '멤버십 알아보기'}</T>
+      {canJoinMembership(user) ? (
+        <Section title="라잇나우 멤버십">
+          <Card onPress={() => router.push('/membership')}>
+            <T bold>{user.membership === 'rightnow' ? '멤버 혜택 보기' : '멤버십 알아보기'}</T>
+          </Card>
+        </Section>
+      ) : null}
+      <Section title="라잇나우 건의사항">
+        <Card onPress={() => router.push('/suggest')}>
+          <T bold>건의사항 쓰기</T>
         </Card>
       </Section>
       {user.role === 'admin' ? (
@@ -43,6 +54,14 @@ export default function MeScreen() {
           <Card onPress={() => router.push('/backoffice')}>
             <T bold>백오피스</T>
           </Card>
+          {canSeeSuggestions(user) ? (
+            <Card onPress={() => router.push('/suggest/inbox')}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+                <T bold>건의사항함</T>
+                {open ? <Badge label={`새 건의 ${open}`} /> : null}
+              </View>
+            </Card>
+          ) : null}
         </Section>
       ) : null}
       <View style={{ marginTop: space.xl }}>

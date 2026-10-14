@@ -73,6 +73,21 @@ export function canUseAgents(user: User): boolean {
   return user.role === 'admin' || ((user.role === 'staff' || user.role === 'lawyer') && user.agentAccess);
 }
 
+/** 업무 탭(경영 에이전트·마케팅 지휘실)은 어드민 계정만 */
+export function canSeeWorkTab(user: User): boolean {
+  return user.role === 'admin';
+}
+
+/** 멤버십 가입은 의뢰인 계정만 */
+export function canJoinMembership(user: User): boolean {
+  return user.role === 'client';
+}
+
+/** 건의사항함: 개발자어드민만 */
+export function canSeeSuggestions(user: User): boolean {
+  return user.role === 'admin' && !!user.devAdmin;
+}
+
 export function isWorkUser(user: User): boolean {
   return user.role !== 'client';
 }

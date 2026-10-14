@@ -1,8 +1,8 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { authorView, BOARD_LABEL, boardOf, canSeeBoard, commentTree, nameIn, RESTRICT_OPTIONS, timeAgo } from '@/core/board';
+import { authorView, BOARD_LABEL, boardOf, canSeeBoard, commentTree, isNoticePost, nameIn, RESTRICT_OPTIONS, timeAgo } from '@/core/board';
 import { actions } from '@/core/store';
 import type { RoomCheck } from '@/core/rooms';
 import { Attachments, BoardAuthor, ReportPanel, TextButton, VoteBar } from '@/ui/board';
@@ -23,9 +23,15 @@ export default function PostScreen() {
   const [restricting, setRestricting] = useState<Target>();
   const [msg, setMsg] = useState<{ tone: 'warn' | 'accent'; text: string; bottom?: boolean }>();
   const post = s.posts.find((p) => p.id === id);
+  const visible = !!post && canSeeBoard(user, boardOf(post));
+  const isNotice = visible && isNoticePost(post!);
+  // 공지를 열면 팝업에서도 확인한 것으로
+  useEffect(() => {
+    if (isNotice && id) actions.markNoticesSeen([id]);
+  }, [isNotice, id]);
   // 변호사 게시판 글은 변호사 계정만 엽니다.
-  if (!post || !canSeeBoard(user, boardOf(post))) return <Screen title="게시판" back><Empty text="글을 찾을 수 없습니다." /></Screen>;
-  const lawyerBoard = boardOf(post) === 'lawyer';
+  if (!post || !visible) return <Screen title="게시판" back><Empty text="글을 찾을 수 없습니다." /></Screen>;
+  const realName = boardOf(post) !== 'anon';
   const admin = user.role === 'admin';
 
   const run = (res: RoomCheck, done?: string, bottom?: boolean) => {
@@ -92,8 +98,9 @@ export default function PostScreen() {
     <Screen title={BOARD_LABEL[boardOf(post)]} back>
       <BoardAuthor v={authorView(user, post, post.authorId, s.users)} time={timeAgo(post.at)} />
       <Text style={{ fontFamily: family.bold, fontSize: 20, lineHeight: 28, color: c.text, marginTop: space.xs }}>{post.title}</Text>
-      <View style={{ flexDirection: 'row', marginVertical: space.sm }}>
-        <Badge label={post.field} />
+      <View style={{ flexDirection: 'row', gap: space.xs, marginVertical: space.sm }}>
+        {isNotice ? <Badge label="공지" /> : null}
+        {post.field ? <Badge label={post.field} tone="plain" /> : null}
       </View>
       <Text style={{ fontFamily: family.regular, fontSize: 16, lineHeight: 24, color: c.text }}>{post.body}</Text>
       <Attachments items={post.attachments ?? []} />
@@ -132,7 +139,7 @@ export default function PostScreen() {
             <TextButton label="취소" onPress={() => setReplyTo(undefined)} />
           </View>
         ) : null}
-        <Input placeholder={lawyerBoard ? '댓글 달기' : '익명으로 댓글 달기'} value={text} onChangeText={setText} multiline />
+        <Input placeholder={realName ? '댓글 달기' : '익명으로 댓글 달기'} value={text} onChangeText={setText} multiline />
         {msg?.bottom ? <Notice tone={msg.tone} text={msg.text} /> : null}
         <Button label="등록" onPress={send} />
       </View>

@@ -22,12 +22,12 @@ import {
 } from './marketing';
 import { summarizeMeeting, type MeetingNotes } from './meeting';
 import { asksCaseInfo, assignmentText, caseStatusText } from './case-bot';
-import { boardOf, canSeeBoard, formatUntil, MAX_ATTACHMENTS, reportTarget, restrictedUntil, toggleVote } from './board';
+import { boardOf, canSeeBoard, canWriteBoard, formatUntil, MAX_ATTACHMENTS, needsField, reportTarget, restrictedUntil, toggleVote } from './board';
 import { displayName, isMaster, parseMentions, roomMasters, type Reads } from './messenger';
 import { findLawyer } from './offices';
 import { aliasOf, canManageOpen, canUseOpenChat, checkAlias, checkOpenPassword, isOpenMember, OPEN_MAX_OPTIONS, parseTags } from './open-chat';
 import { procedureReply } from './procedures';
-import { aiAnswerLevel, canCreateRoom, canUseAgents, type RoomCheck } from './rooms';
+import { aiAnswerLevel, canCreateRoom, canJoinMembership, canSeeSuggestions, canUseAgents, type RoomCheck } from './rooms';
 import { latest, parseRows, refreshTemplate, type DataRow, type ImageTemplate } from './templates';
 import {
   AI_SENDER,
@@ -36,6 +36,8 @@ import {
   type Account,
   type Attachment,
   type BoardKind,
+  type Suggestion,
+  type SuggestionStatus,
   type BoardPost,
   type NoteThread,
   type BoardReport,
@@ -80,6 +82,10 @@ export type State = {
   favorites: Record<string, string[]>;
   openRooms: OpenRoom[];
   openMessages: OpenMessage[];
+  /** 사용자 id → 확인한 공지 글 id (게시판 공지 팝업) */
+  noticeSeen: Record<string, string[]>;
+  /** 라잇나우 건의사항 (개발자어드민이 봄) */
+  suggestions: Suggestion[];
 };
 
 const T0 = '2026-10-13T09:00:00.000Z';
@@ -87,7 +93,7 @@ const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOStr
 
 export function initialState(): State {
   const users: User[] = [
-    { id: 'u_admin', superAdmin: true, nickname: '승덕', role: 'admin', firm: '대륜', agentAccess: true, membership: 'basic', title: 'Admin', dept: '경영지원본부', branch: '본사', phone: '010-0000-0001', email: 'admin@example.com', joinedAt: '2026-06-15' },
+    { id: 'u_admin', superAdmin: true, devAdmin: true, nickname: '승덕', role: 'admin', firm: '대륜', agentAccess: true, membership: 'basic', title: 'Admin', dept: '경영지원본부', branch: '본사', phone: '010-0000-0001', email: 'admin@example.com', joinedAt: '2026-06-15' },
     { id: 'u_staff', nickname: '사무국 직원', role: 'staff', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Staff', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0002', email: 'staff@example.com', joinedAt: '2025-03-02' },
     { id: 'u_lawyer', nickname: '샘플 변호사 A', role: 'lawyer', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Partner Attorney', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0003', email: 'lawyer@example.com', joinedAt: '2020-09-01' },
     { id: 'u_client', nickname: '하늘', role: 'client', agentAccess: false, membership: 'basic' },
@@ -169,6 +175,30 @@ export function initialState(): State {
     lawyerAccounts: { lw_1: 'u_lawyer' },
     posts: [
       {
+        id: 'p_notice1', board: 'notice', authorId: 'u_admin', at: ago(1), field: '',
+        title: '10월 변호사 정례회의 일정 안내',
+        body: '10월 정례회의는 24일(금) 오후 4시 본사 대회의실에서 열립니다. 지점 변호사님은 화상으로 참석해 주세요.',
+        votes: {}, comments: [],
+      },
+      {
+        id: 'p_sky1', board: 'skyzai', notice: true, authorId: 'u_admin', at: ago(6), field: '',
+        title: 'SKYZAI 게시판 이용 안내',
+        body: 'SKYZAI 관련 아이디어와 사용 후기를 자유롭게 올려 주세요. 공지는 어드민이 올립니다.',
+        votes: {}, comments: [],
+      },
+      {
+        id: 'p_sky2', board: 'skyzai', authorId: 'u_lawyer', at: ago(4), field: '',
+        title: '판례 요약 기능 써 본 후기',
+        body: '긴 판결문도 쟁점별로 나눠 줘서 서면 준비 시간이 줄었습니다.',
+        votes: { u_l2: 1 }, comments: [],
+      },
+      {
+        id: 'p_adv1', board: 'advice', authorId: 'u_l3', at: ago(5), field: '부동산·임대차',
+        title: '임차권등기명령 후 보증금 반환 소송, 지연손해금 기산점 의견 구합니다',
+        body: '임대차 종료 다음 날부터로 청구하려는데, 실무상 다른 기준으로 판단된 사례가 있으면 공유 부탁드립니다.',
+        votes: {}, comments: [{ id: 'ca1', authorId: 'u_lawyer', text: '종료 다음 날부터 청구하되, 동시이행 항변이 들어오면 인도일 기준으로 다툼이 생길 수 있습니다.', at: ago(3), votes: {} }],
+      },
+      {
         id: 'p_law1', board: 'lawyer', authorId: 'u_l2', at: ago(2), field: '기타 형사범죄',
         title: '보석 심문 기일 잡힌 뒤 준비 서류 공유 부탁드립니다',
         body: '첫 보석 사건이라 심문 기일 전에 어떤 소명자료를 더 내시는지 궁금합니다. 경험 있으신 분들 의견 부탁드립니다.',
@@ -201,6 +231,11 @@ export function initialState(): State {
       },
     ],
     notes: [],
+    noticeSeen: {},
+    suggestions: [
+      { id: 'sg1', authorId: 'u_lawyer', body: '사건방 파일을 날짜별로 모아 보는 기능이 있으면 좋겠습니다.', at: ago(20), status: 'review', answer: '서버 연결 때 파일 모아보기와 함께 넣겠습니다.', answeredAt: ago(5) },
+      { id: 'sg2', authorId: 'u_client', body: '진행 상황 알림을 카카오톡으로도 받고 싶어요.', at: ago(3), status: 'open' },
+    ],
     reports: [{ id: 'rp1', postId: 'p2', reporterId: 'u_lawyer', reason: '개인정보 노출', at: ago(1), status: 'open' }],
     boardBans: {},
     reads: { r_team: { u_lawyer: ago(26.95), u_staff: ago(26.9), u_m1: ago(1), u_l2: ago(0.5), u_admin: ago(28) } },
@@ -261,7 +296,7 @@ export function loggedIn(s: State = state): boolean {
 /** 관리자어드민 계정은 관리자어드민만 손댈 수 있습니다 (일반 어드민의 권한 우회 방지). */
 function superGuard(userId: string): RoomCheck | undefined {
   const target = userById(userId);
-  if (target?.superAdmin && target.role === 'admin' && !canManageOpen(me())) return { ok: false, reason: '관리자어드민 계정은 관리자어드민만 바꿀 수 있습니다.' };
+  if ((target?.superAdmin || target?.devAdmin) && target.role === 'admin' && !canManageOpen(me())) return { ok: false, reason: '관리자어드민·개발자어드민 계정은 관리자어드민만 바꿀 수 있습니다.' };
   return undefined;
 }
 
@@ -471,7 +506,7 @@ export const actions = {
     const sup = superGuard(userId);
     if (sup) return sup;
     // 어드민이 아닌 역할이 되면 관리자어드민도 풀립니다.
-    set((s) => ({ users: s.users.map((u) => (u.id === userId ? { ...u, role, agentAccess: role === 'client' ? false : u.agentAccess, superAdmin: role === 'admin' ? u.superAdmin : undefined } : u)) }));
+    set((s) => ({ users: s.users.map((u) => (u.id === userId ? { ...u, role, agentAccess: role === 'client' ? false : u.agentAccess, superAdmin: role === 'admin' ? u.superAdmin : undefined, devAdmin: role === 'admin' ? u.devAdmin : undefined } : u)) }));
     return { ok: true };
   },
 
@@ -484,6 +519,7 @@ export const actions = {
   },
 
   setMembership(level: User['membership']) {
+    if (!canJoinMembership(me())) return;
     const id = me().id;
     set((s) => ({ users: s.users.map((u) => (u.id === id ? { ...u, membership: level } : u)) }));
   },
@@ -1087,21 +1123,59 @@ export const actions = {
 
   // ---- 익명 게시판 (모든 계정 이용 가능) ----
 
-  createPost(input: { title: string; body: string; field: string; board?: BoardKind; attachments?: Attachment[] }): RoomCheck & { postId?: string } {
+  createPost(input: { title: string; body: string; field: string; board?: BoardKind; attachments?: Attachment[]; notice?: boolean }): RoomCheck & { postId?: string } {
     const blocked = boardBlocked();
     if (blocked) return blocked;
     const board = input.board ?? 'anon';
-    if (!canSeeBoard(me(), board)) return { ok: false, reason: '변호사 게시판은 변호사 계정만 쓸 수 있습니다.' };
+    if (!canSeeBoard(me(), board)) return { ok: false, reason: '이 게시판에 글을 쓸 수 없는 계정입니다.' };
+    if (!canWriteBoard(me(), board, input.notice)) return { ok: false, reason: '공지는 어드민만 올릴 수 있습니다.' };
     if (!input.title.trim() || !input.body.trim()) return { ok: false, reason: '제목과 내용을 입력해 주세요.' };
-    if (!input.field) return { ok: false, reason: '분야를 골라 주세요.' };
+    if (needsField(board) && !input.field) return { ok: false, reason: '분야를 골라 주세요.' };
     const attachments = input.attachments ?? [];
     if (attachments.length > MAX_ATTACHMENTS) return { ok: false, reason: `첨부는 ${MAX_ATTACHMENTS}개까지 올릴 수 있습니다.` };
     const post: BoardPost = {
       id: newId('p'), authorId: me().id, field: input.field, title: input.title.trim(), body: input.body.trim(), at: nowIso(), votes: {}, comments: [],
-      ...(board === 'lawyer' ? { board } : {}), ...(attachments.length ? { attachments } : {}),
+      ...(board !== 'anon' ? { board } : {}), ...(attachments.length ? { attachments } : {}),
+      ...(board === 'skyzai' && input.notice ? { notice: true } : {}),
     };
     set((s) => ({ posts: [post, ...s.posts] }));
     return { ok: true, postId: post.id };
+  },
+
+  /** 게시판 공지 팝업에서 확인한 공지 */
+  markNoticesSeen(postIds: string[]) {
+    const uid = me().id;
+    const cur = state.noticeSeen[uid] ?? [];
+    set((s) => ({ noticeSeen: { ...s.noticeSeen, [uid]: [...new Set([...cur, ...postIds])] } }));
+  },
+
+  // ---- 건의사항 ----
+
+  submitSuggestion(body: string): RoomCheck {
+    const text = body.trim();
+    if (!text) return { ok: false, reason: '건의할 내용을 적어 주세요.' };
+    if (text.length > 1000) return { ok: false, reason: '1000자 이내로 적어 주세요.' };
+    const sg: Suggestion = { id: newId('sg'), authorId: me().id, body: text, at: nowIso(), status: 'open' };
+    set((s) => ({ suggestions: [sg, ...s.suggestions] }));
+    return { ok: true };
+  },
+
+  /** 개발자어드민: 처리 상태와 답변 */
+  answerSuggestion(id: string, status: SuggestionStatus, answer: string): RoomCheck {
+    if (!canSeeSuggestions(me())) return { ok: false, reason: '개발자어드민만 처리할 수 있습니다.' };
+    if (!state.suggestions.some((x) => x.id === id)) return { ok: false, reason: '건의사항을 찾을 수 없습니다.' };
+    const a = answer.trim();
+    set((s) => ({ suggestions: s.suggestions.map((x) => (x.id === id ? { ...x, status, answer: a || undefined, answeredAt: a ? nowIso() : x.answeredAt } : x)) }));
+    return { ok: true };
+  },
+
+  /** 개발자어드민 지정·해제: 관리자어드민만, 어드민 계정에만 */
+  setDevAdmin(userId: string, on: boolean): RoomCheck {
+    if (!canManageOpen(me())) return { ok: false, reason: '관리자어드민만 지정할 수 있습니다.' };
+    const target = userById(userId);
+    if (!target || target.role !== 'admin') return { ok: false, reason: '어드민 계정만 개발자어드민이 될 수 있습니다.' };
+    set((s) => ({ users: s.users.map((x) => (x.id === userId ? { ...x, devAdmin: on || undefined } : x)) }));
+    return { ok: true };
   },
 
   commentPost(postId: string, text: string, parentId?: string): RoomCheck {

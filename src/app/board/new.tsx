@@ -4,13 +4,14 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { BOARD_LABEL, MAX_ATTACHMENTS } from '@/core/board';
+import { BOARD_LABEL, boardsFor, canWriteBoard, MAX_ATTACHMENTS, needsField } from '@/core/board';
 import { actions } from '@/core/store';
 import type { Attachment, BoardKind } from '@/core/types';
 import home from '@/data/home.json';
 import { Attachments } from '@/ui/board';
 import { Button, Chip, Chips, Input, Notice, Screen, Section } from '@/ui/kit';
 import { space } from '@/ui/theme';
+import { useMe } from '@/ui/use-app';
 
 let seq = 0;
 const attId = () => `att_${Date.now().toString(36)}_${seq++}`;
@@ -18,7 +19,9 @@ const attId = () => `att_${Date.now().toString(36)}_${seq++}`;
 // 사진·파일은 지금은 기기 안에만 있고, 서버가 붙으면 업로드합니다.
 export default function NewPostScreen() {
   const params = useLocalSearchParams<{ board?: string }>();
-  const board: BoardKind = params.board === 'lawyer' ? 'lawyer' : 'anon';
+  const user = useMe();
+  const board: BoardKind = boardsFor(user).find((b) => b === params.board) ?? 'anon';
+  const [notice, setNotice] = useState(board === 'notice');
   const [field, setField] = useState('');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -41,17 +44,25 @@ export default function NewPostScreen() {
     add(res.assets.map((a) => ({ id: attId(), kind: a.mimeType?.startsWith('image/') ? 'image' : 'file', name: a.name, uri: a.uri, size: a.size })));
   };
   const submit = () => {
-    const res = actions.createPost({ title, body, field, board, attachments: files });
+    const res = actions.createPost({ title, body, field, board, attachments: files, notice });
     if (!res.ok) return setError(res.reason);
     router.replace({ pathname: '/board/[id]', params: { id: res.postId! } });
   };
   return (
-    <Screen title={board === 'lawyer' ? `${BOARD_LABEL.lawyer} 글쓰기` : '익명 글쓰기'} back>
-      <Section title="분야">
+    <Screen title={board === 'anon' ? '익명 글쓰기' : `${BOARD_LABEL[board]} 글쓰기`} back>
+      {needsField(board) ? (
+        <Section title="분야">
+          <Chips>
+            {home.fields.map((f) => <Chip key={f} label={f} active={field === f} onPress={() => setField(f)} />)}
+          </Chips>
+        </Section>
+      ) : null}
+      {board === 'skyzai' && canWriteBoard(user, board, true) ? (
         <Chips>
-          {home.fields.map((f) => <Chip key={f} label={f} active={field === f} onPress={() => setField(f)} />)}
+          <Chip label="일반 글" active={!notice} onPress={() => setNotice(false)} />
+          <Chip label="공지로 올리기" active={notice} onPress={() => setNotice(true)} />
         </Chips>
-      </Section>
+      ) : null}
       <Input label="제목" value={title} onChangeText={setTitle} />
       <Input label="내용" value={body} onChangeText={setBody} multiline style={{ minHeight: 160, textAlignVertical: 'top' }} />
       <Attachments compact items={files} onRemove={(id) => setFiles((cur) => cur.filter((a) => a.id !== id))} />
@@ -60,7 +71,7 @@ export default function NewPostScreen() {
         <Button small kind="soft" label={`파일 ${files.filter((a) => a.kind === 'file').length}`} disabled={!room} onPress={pickFiles} />
       </View>
       {error ? <Notice tone="warn" text={error} /> : null}
-      <Button label={board === 'lawyer' ? '올리기' : '익명으로 올리기'} onPress={submit} />
+      <Button label={board === 'anon' ? '익명으로 올리기' : notice ? '공지 올리기' : '올리기'} onPress={submit} />
     </Screen>
   );
 }
