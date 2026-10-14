@@ -210,7 +210,7 @@ select tst.throws('의뢰인: 다시 알리기 막힘', $$select remind_hearing(
 reset role;
 select tst.check('푸시: 변호사 입력 기일은 의뢰인에게만 (올린 변호사는 이미 확인)', (select count(*) = 1 from push_outbox o join hearing_alerts a on a.id = (o.data->>'alertId')::uuid where a.source = 'manual' and o.user_id = '00000000-0000-0000-0000-00000000000e'));
 select tst.check('푸시: 대륜탑 기일은 둘 다에게', (select count(*) = 2 from push_outbox o join hearing_alerts a on a.id = (o.data->>'alertId')::uuid where a.source = 'daeryuntop'));
-select tst.check('푸시: 제목에 사건명, 본문에 날짜와 법원 장소', (select title = '새 기일 · 테스트 사건' and body like E'변론기일 11월 19일(목) 10:00\n서울중앙지법 제301호\n%' from push_outbox order by id limit 1));
+select tst.check('푸시: 제목에 사건명, 본문에 날짜와 법원 장소', (select title = '새 기일 · 테스트 사건' and body like E'변론기일 11월 19일(목) 10:00\n서울중앙지법 제301호\n%' from push_outbox where data->>'kind' = 'hearing' order by id limit 1));
 set role authenticated;
 select tst.as_user('00000000-0000-0000-0000-00000000000c');
 select tst.check('변호사: 다시 알리기 (확인 안 한 사람만)', remind_hearing((select id from hearing_alerts where source = 'daeryuntop')) = 2);
@@ -277,6 +277,33 @@ select tst.check('변호사: 변호사 게시판 글에 파일', create_post('la
 select tst.as_user('00000000-0000-0000-0000-00000000000e');
 select tst.check('저장소: 의뢰인은 변호사 게시판 파일 못 받음', not board_file_visible('40000000-0000-0000-0000-000000000004/f2-판결문.pdf'));
 reset role;
+
+-- ── 새 메시지 푸시 ──
+reset role;
+delete from push_outbox;
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select post_message(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', 'text', '내일 서류 보내 주세요');
+reset role;
+select tst.check('메시지 푸시: 보낸 사람 빼고 의뢰인에게', (select count(*) = 1 and bool_and(user_id = '00000000-0000-0000-0000-00000000000e') from push_outbox where data->>'kind' = 'message'));
+select tst.check('메시지 푸시: 제목은 방, 본문은 보낸 사람과 내용', (select title = '테스트 사건' and body = '김변호: 내일 서류 보내 주세요' from push_outbox where data->>'kind' = 'message'));
+update room_members set notify = 'mention' where user_id = '00000000-0000-0000-0000-00000000000e';
+delete from push_outbox;
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select post_message(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', 'text', '참고만 하세요');
+select post_message(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', 'text', '@박의뢰 확인 부탁드립니다', p_mentions => '{00000000-0000-0000-0000-00000000000e}');
+select post_message(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', 'system', '박의뢰님이 확인했습니다.');
+reset role;
+select tst.check('메시지 푸시: 멘션만 설정이면 멘션된 것만, 시스템 안내는 안 감', (select count(*) = 1 and bool_and(title like '%(@멘션)') from push_outbox where data->>'kind' = 'message'));
+update room_members set notify = 'off' where user_id = '00000000-0000-0000-0000-00000000000e';
+delete from push_outbox;
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select post_message(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', 'text', '@박의뢰 끄면 안 감', p_mentions => '{00000000-0000-0000-0000-00000000000e}');
+reset role;
+select tst.check('메시지 푸시: 알림 끄기면 안 감', (select count(*) = 0 from push_outbox));
+update room_members set notify = 'all';
 
 -- ── 로그인 안 한 사람 ──
 reset role;

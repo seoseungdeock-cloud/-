@@ -1,4 +1,4 @@
-// 폰 푸시 (2단계): 로그인하면 이 폰의 푸시 주소를 서버에 등록하고, 푸시를 누르면 해당 사건방을 엽니다.
+// 폰 푸시: 로그인하면 이 폰의 푸시 주소를 서버에 등록하고, 푸시(기일·새 메시지)를 누르면 그 방을 엽니다.
 // 웹·시뮬레이터, 그리고 EAS 프로젝트(extra.eas.projectId)가 아직 없는 빌드에서는 아무것도 하지 않습니다.
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
@@ -14,9 +14,12 @@ const native = Platform.OS === 'ios' || Platform.OS === 'android';
 let myToken: string | undefined;
 
 if (native) {
-  // 앱을 보고 있을 때도 기일 푸시는 위에 띄웁니다
+  // 앱을 보고 있을 때: 기일 푸시는 위에 띄우고, 새 메시지는 화면에 바로 들어오므로 띄우지 않습니다
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
+    handleNotification: async (n) => {
+      const show = n.request.content.data?.kind !== 'message';
+      return { shouldShowBanner: show, shouldShowList: show, shouldPlaySound: show, shouldSetBadge: false };
+    },
   });
   onBeforeSignOut(async () => {
     if (!supabase || !myToken) return;
