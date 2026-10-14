@@ -1,0 +1,144 @@
+-- 로컬 Postgres에서 보안 규칙(RLS)을 확인하는 시험. supabase/tests/run.sh 로 실행합니다.
+-- 모든 계정·데이터는 가짜입니다.
+\set ON_ERROR_STOP 1
+set client_min_messages = warning;
+
+create schema tst;
+grant usage on schema tst to authenticated, anon;
+create table tst.results (name text, ok boolean, detail text);
+grant insert on tst.results to authenticated, anon;
+
+create function tst.check(name text, ok boolean, detail text default '') returns void language sql as $$
+  insert into tst.results values (name, coalesce(ok, false), detail)
+$$;
+-- sql이 msg를 담은 오류로 끝나야 통과
+create function tst.throws(name text, sql text, msg text) returns void language plpgsql as $$
+begin
+  execute sql;
+  perform tst.check(name, false, '오류 없이 통과됨');
+exception when others then
+  perform tst.check(name, sqlerrm like '%' || msg || '%', sqlerrm);
+end $$;
+grant execute on all functions in schema tst to authenticated, anon;
+
+-- 가짜 계정
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-00000000000a', 'admin@rightnow.local'),
+  ('00000000-0000-0000-0000-00000000000b', 'subadmin@rightnow.local'),
+  ('00000000-0000-0000-0000-00000000000c', 'lawyer@rightnow.local'),
+  ('00000000-0000-0000-0000-00000000000d', 'staff@rightnow.local'),
+  ('00000000-0000-0000-0000-00000000000e', 'client@rightnow.local'),
+  ('00000000-0000-0000-0000-00000000000f', 'client2@rightnow.local');
+insert into public.profiles (id, login_id, nickname, role, firm, super_admin) values
+  ('00000000-0000-0000-0000-00000000000a', 'admin', '관리자', 'admin', '테스트법인', true),
+  ('00000000-0000-0000-0000-00000000000b', 'subadmin', '부관리자', 'admin', '테스트법인', false),
+  ('00000000-0000-0000-0000-00000000000c', 'lawyer', '김변호', 'lawyer', '테스트법인', false),
+  ('00000000-0000-0000-0000-00000000000d', 'staff', '이직원', 'staff', '테스트법인', false),
+  ('00000000-0000-0000-0000-00000000000e', 'client', '박의뢰', 'client', null, false),
+  ('00000000-0000-0000-0000-00000000000f', 'client2', '최의뢰', 'client', null, false);
+
+-- 사건방 하나 (의뢰인 client + 변호사)
+insert into public.rooms (id, kind, mode, title) values ('10000000-0000-0000-0000-000000000001', 'case', 'private', '테스트 사건');
+insert into public.room_members (room_id, user_id, is_master) values
+  ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000000c', true),
+  ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000000e', false);
+insert into public.cases (room_id, title, field) values ('10000000-0000-0000-0000-000000000001', '테스트 사건', '민사');
+
+create function tst.as_user(u text) returns void language plpgsql as $$
+begin perform set_config('request.jwt.claim.sub', u, false); end $$;
+
+-- ── 의뢰인 ──
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000e');
+select tst.check('의뢰인: 자기 사건방이 보임', (select count(*) = 1 from rooms));
+select tst.check('의뢰인: 같은 방 변호사 프로필만 보임 (직원·다른 의뢰인 안 보임)', (select array_agg(login_id order by login_id) = '{client,lawyer}' from profiles));
+select tst.throws('의뢰인: 변호사 게시판 글쓰기 막힘', $$select create_post('lawyer', '제목', '내용', '형사')$$, '글을 찾을 수 없습니다');
+select tst.throws('의뢰인: 공지 쓰기 막힘', $$select create_post('notice', '제목', '내용')$$, '글을 찾을 수 없습니다');
+select tst.check('의뢰인: 익명 글쓰기', create_post('anon', '전세 보증금', '돌려받는 방법이 궁금합니다', '민사') is not null);
+select tst.throws('의뢰인: 글쓴이 id 직접 조회 막힘', $$select author_id from posts$$, 'permission denied');
+select tst.check('의뢰인: 보기에서 작성자 id 숨김', (select bool_and(author_id is null) and bool_and(mine) from post_feed));
+select tst.throws('의뢰인: 오픈대화방 못 봄 (표)', $$select 1/count(*) from open_rooms$$, 'division by zero');
+select tst.throws('의뢰인: 역할 바꾸기 막힘', $$update profiles set role = 'admin' where id = auth.uid()$$, 'permission denied');
+update profiles set status = '외근 중' where id = auth.uid();
+select tst.check('의뢰인: 내 상태 메시지는 바꿈', (select status = '외근 중' from profiles where id = auth.uid()));
+select tst.throws('의뢰인: 업무 명령 못 씀', $$select 1/(can_use_agents())::int$$, 'division by zero');
+select tst.throws('의뢰인: 남인 척 메시지 막힘', $$insert into messages (room_id, sender_id, sender_kind, kind, text) values ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000000c', 'user', 'text', '가짜')$$, 'row-level security');
+select tst.throws('의뢰인: 봇 메시지 위조 막힘', $$insert into messages (room_id, sender_id, sender_kind, kind, text) values ('10000000-0000-0000-0000-000000000001', auth.uid(), 'bot', 'bot', '기일 변경')$$, 'row-level security');
+insert into messages (room_id, sender_id, sender_kind, kind, text) values ('10000000-0000-0000-0000-000000000001', auth.uid(), 'user', 'text', '안녕하세요');
+select tst.check('의뢰인: 자기 방에 메시지 보냄', (select count(*) = 1 from messages where text = '안녕하세요'));
+
+-- ── 다른 의뢰인 ──
+select tst.as_user('00000000-0000-0000-0000-00000000000f');
+select tst.check('다른 의뢰인: 남의 사건방·메시지 안 보임', (select count(*) = 0 from rooms) and (select count(*) = 0 from messages));
+select tst.throws('다른 의뢰인: 남의 방에 메시지 막힘', $$insert into messages (room_id, sender_id, sender_kind, kind, text) values ('10000000-0000-0000-0000-000000000001', auth.uid(), 'user', 'text', '끼어들기')$$, 'row-level security');
+select tst.check('다른 의뢰인: 익명 글에 댓글', comment_post((select id from post_feed limit 1), '저도 궁금해요') is not null);
+select tst.check('다른 의뢰인: 쪽지 열기 (상대는 익명 번호)', open_note((select id from post_feed limit 1)) is not null);
+select tst.check('다른 의뢰인: 쪽지 상대 id 숨김, 익명 1', (select other_id is null and other_alias_no = 1 from note_feed));
+select tst.throws('다른 의뢰인: 쪽지 표 상대 id 조회 막힘', $$select a_id from note_threads$$, 'permission denied');
+select tst.throws('다른 의뢰인: 익명 번호 함수 직접 호출 막힘', $$select alias_for((select id from post_feed limit 1), auth.uid())$$, 'permission denied');
+
+-- ── 변호사 ──
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select tst.check('변호사: 같은 법인 사람 보임', (select count(*) >= 4 from profiles where firm = '테스트법인'));
+select tst.check('변호사: 사건자문 실명 글', create_post('advice', '사건 자문', '의견 부탁드립니다', '형사') is not null);
+select tst.check('변호사: 실명 게시판은 작성자 보임', (select author_id is not null from post_feed where board = 'advice'));
+select tst.check('변호사: 익명 글 작성자 숨김', (select bool_and(author_id is null) from post_feed where board = 'anon'));
+select tst.throws('변호사: 공지 쓰기 막힘', $$select create_post('notice', '공지', '내용')$$, '어드민만');
+select tst.throws('변호사: 법령 게시판 직접 쓰기 막힘', $$select create_post('lawnews', '법령', '내용')$$, '자동 글만');
+select tst.check('변호사: 오픈대화방 만들기 (비밀번호)', create_open_room('형사 실무', '', '{}', 30, '익명변호사', 'pass1234') is not null);
+select tst.throws('변호사: 오픈방 비밀번호 해시 조회 막힘', $$select password_hash from open_rooms$$, 'permission denied');
+select tst.throws('변호사: 오픈방 실제 이용자 조회 막힘', $$select user_id from open_members$$, 'permission denied');
+select tst.throws('변호사: 실제 이용자 함수 막힘', $$select * from open_room_identities((select id from open_room_feed limit 1))$$, '관리자어드민만');
+select tst.check('변호사: 잠긴 방 표시', (select locked from open_room_feed limit 1));
+
+-- ── 직원 ──
+select tst.as_user('00000000-0000-0000-0000-00000000000d');
+select tst.throws('직원: 비밀번호 틀리면 못 들어감', $$select join_open_room((select id from open_room_feed limit 1), '직원A', 'wrong')$$, '비밀번호가 맞지 않습니다');
+select join_open_room((select id from open_room_feed limit 1), '직원A', 'pass1234');
+select tst.check('직원: 맞는 비밀번호로 들어감', (select joined from open_room_feed limit 1));
+select tst.check('직원: 오픈방 메시지는 닉네임으로', (select count(*) >= 2 from open_message_feed));
+select tst.throws('직원: 변호사 게시판 못 봄', $$select 1/count(*) from post_feed where board = 'lawyer' or board = 'advice'$$, 'division by zero');
+
+-- ── 부관리자 (일반 어드민) ──
+select tst.as_user('00000000-0000-0000-0000-00000000000b');
+select tst.check('어드민: 익명 글 실제 작성자 보임', (select bool_and(author_id is not null) from post_feed where board = 'anon'));
+select tst.throws('어드민: 관리자어드민 계정 중지 막힘', $$select admin_set_active('00000000-0000-0000-0000-00000000000a', false)$$, '관리자어드민만');
+select tst.throws('어드민: 관리자어드민 지정 막힘', $$select admin_set_super_admin(auth.uid(), true)$$, '관리자어드민만');
+select tst.throws('어드민: 건의사항 답변 막힘', $$select answer_suggestion(gen_random_uuid(), 'done', 'x')$$, '관리자어드민만');
+select tst.throws('어드민: 오픈방 실제 이용자 막힘', $$select * from open_room_identities((select id from open_room_feed limit 1))$$, '관리자어드민만');
+select admin_restrict((select id from post_feed where board = 'anon' limit 1), null, 24);
+
+-- ── 제한된 의뢰인 ──
+select tst.as_user('00000000-0000-0000-0000-00000000000e');
+select tst.throws('제한된 사용자: 글쓰기 막힘', $$select create_post('anon', '제목', '내용', '민사')$$, '이용이 제한');
+select tst.throws('제한된 사용자: 투표 막힘', $$select vote_post((select id from post_feed limit 1), 1::smallint)$$, '이용이 제한');
+
+-- ── 관리자어드민 ──
+select tst.as_user('00000000-0000-0000-0000-00000000000a');
+select tst.check('관리자어드민: 오픈방 실제 이용자 보임', (select count(*) = 2 from open_room_identities((select id from open_room_feed limit 1))));
+select tst.check('관리자어드민: 오픈방 메시지 참여 없이 봄', (select count(*) >= 2 from open_message_feed));
+select tst.throws('관리자어드민: 마지막 관리자어드민 해제 막힘', $$select admin_set_super_admin(auth.uid(), false)$$, '한 명 이상');
+
+-- ── 기일 알람 ──
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select tst.check('변호사: 기일 알림 올림', sync_hearing('10000000-0000-0000-0000-000000000001', 'new', '변론기일', '2026-11-19', '10:00', '서울중앙지법 제301호') is not null);
+select tst.as_user('00000000-0000-0000-0000-00000000000e');
+select tst.check('의뢰인: 기일 알림 받음 (확인 전)', (select count(*) = 1 from hearing_alert_recipients r where r.user_id = auth.uid() and r.acked_at is null));
+select ack_hearing((select id from hearing_alerts limit 1));
+select tst.check('의뢰인: 확인 기록·시스템 메시지', (select acked_at is not null from hearing_alert_recipients where user_id = auth.uid()) and (select count(*) = 1 from messages where text like '%알람을 확인했습니다%'));
+select tst.throws('의뢰인: 기일 직접 올리기 막힘', $$select sync_hearing('10000000-0000-0000-0000-000000000001', 'new', '선고기일', '2026-12-01')$$, '담당 변호사');
+reset role;
+select id as alert from hearing_alerts limit 1 \gset
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000f');
+select tst.throws('다른 의뢰인: 남의 기일 확인 막힘', format('select ack_hearing(%L)', :'alert'), '확인할 기일 알람이 없습니다');
+
+-- ── 로그인 안 한 사람 ──
+reset role;
+set role anon;
+select tst.throws('비로그인: 프로필 못 봄', $$select 1/count(*) from profiles$$, '');
+select tst.throws('비로그인: 함수 못 부름', $$select create_post('anon', 'a', 'b', '민사')$$, 'permission denied');
+reset role;
+
+select case when ok then 'PASS' else 'FAIL' end as result, name, case when ok then '' else detail end as detail from tst.results;
+select count(*) filter (where ok) as passed, count(*) filter (where not ok) as failed from tst.results;
