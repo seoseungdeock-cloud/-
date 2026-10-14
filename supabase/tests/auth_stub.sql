@@ -9,7 +9,3 @@ create table auth.users (id uuid primary key default gen_random_uuid(), email te
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 grant usage on schema auth, extensions, public to anon, authenticated, service_role;
 grant execute on all functions in schema auth, extensions to anon, authenticated, service_role;
--- Supabase는 public에 새로 만드는 표·함수 권한을 기본으로 anon·authenticated에도 줍니다.
-alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
-alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
-alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;

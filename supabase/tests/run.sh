@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 로컬 Postgres 16에 Supabase 인증 흉내(auth 스키마·역할)를 만들고, 마이그레이션과 보안 규칙 시험을 돌립니다.
 # 사용: bash supabase/tests/run.sh   (Postgres 16 필요, Supabase 계정 불필요)
+#       EXPOSE=1 bash supabase/tests/run.sh   ('Automatically expose new tables'를 켠 경우)
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BIN=${PG_BIN:-/usr/lib/postgresql/16/bin}
@@ -12,6 +13,7 @@ trap '$RUN "$BIN/pg_ctl" -D "$WORK/data" -m immediate stop >/dev/null; rm -rf "$
 PSQL="psql -h $WORK -p 55433 -U postgres -v ON_ERROR_STOP=1 -q -X"
 $PSQL -c 'create database t'
 $PSQL -d t -f "$ROOT/supabase/tests/auth_stub.sql"
+[ "${EXPOSE:-0}" = 1 ] && $PSQL -d t -f "$ROOT/supabase/tests/expose_on.sql"
 for f in "$ROOT"/supabase/migrations/*.sql; do $PSQL -d t -f "$f"; done
 OUT=$($PSQL -d t -A -F ' | ' -t -f "$ROOT/supabase/tests/rls_test.sql")
 echo "$OUT"

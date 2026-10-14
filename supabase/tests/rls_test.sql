@@ -4,9 +4,9 @@
 set client_min_messages = warning;
 
 create schema tst;
-grant usage on schema tst to authenticated, anon;
+grant usage on schema tst to authenticated, anon, service_role;
 create table tst.results (name text, ok boolean, detail text);
-grant insert on tst.results to authenticated, anon;
+grant insert on tst.results to authenticated, anon, service_role;
 
 create function tst.check(name text, ok boolean, detail text default '') returns void language sql as $$
   insert into tst.results values (name, coalesce(ok, false), detail)
@@ -19,7 +19,7 @@ begin
 exception when others then
   perform tst.check(name, sqlerrm like '%' || msg || '%', sqlerrm);
 end $$;
-grant execute on all functions in schema tst to authenticated, anon;
+grant execute on all functions in schema tst to authenticated, anon, service_role;
 
 -- 가짜 계정
 insert into auth.users (id, email) values
@@ -132,6 +132,17 @@ select id as alert from hearing_alerts limit 1 \gset
 set role authenticated;
 select tst.as_user('00000000-0000-0000-0000-00000000000f');
 select tst.throws('다른 의뢰인: 남의 기일 확인 막힘', format('select ack_hearing(%L)', :'alert'), '확인할 기일 알람이 없습니다');
+
+-- ── 서버(대륜탑 연동) ──
+reset role;
+set role service_role;
+select tst.as_user('');
+select tst.check('서버: 대륜탑 기일 알림 올림', sync_hearing('10000000-0000-0000-0000-000000000001', 'new', '선고기일', '2026-12-10', '14:00', null, null, 'daeryuntop') is not null);
+reset role;
+select tst.check('서버: 대륜탑 알림은 모두 확인 전', (select count(*) = 2 from hearing_alert_recipients r join hearing_alerts a on a.id = r.alert_id where a.source = 'daeryuntop' and r.acked_at is null));
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select tst.throws('변호사: 대륜탑 출처로 위장 막힘', $$select sync_hearing('10000000-0000-0000-0000-000000000001', 'new', '선고기일', '2026-12-10', null, null, null, 'daeryuntop')$$, '서버에서만');
 
 -- ── 로그인 안 한 사람 ──
 reset role;

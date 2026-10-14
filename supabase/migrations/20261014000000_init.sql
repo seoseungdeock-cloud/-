@@ -410,8 +410,6 @@ create policy profiles_read on public.profiles for select to authenticated using
 );
 -- 본인이 고칠 수 있는 칸만 (직책·부서·지점·역할은 어드민 함수로)
 create policy profiles_update_self on public.profiles for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
-revoke update on public.profiles from authenticated;
-grant update (nickname, photo_path, status, phone, email, birthday, presence) on public.profiles to authenticated;
 
 create policy favorites_own on public.favorites for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
@@ -419,8 +417,6 @@ create policy rooms_read on public.rooms for select to authenticated using (is_m
 create policy members_read on public.room_members for select to authenticated using (is_member(room_id));
 -- 내 방 설정(고정·알림·숨김·읽음)만 직접 고침
 create policy members_update_self on public.room_members for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
-revoke update on public.room_members from authenticated;
-grant update (pinned, notify, hidden_at, last_read_at, notice_hidden) on public.room_members to authenticated;
 
 create policy messages_read on public.messages for select to authenticated using (is_member(room_id));
 create policy messages_send on public.messages for insert to authenticated with check (
@@ -446,46 +442,29 @@ create policy alert_recipients_read on public.hearing_alert_recipients for selec
 
 -- 오픈대화방: 로펌 계정만. 비밀번호·실제 이용자는 숨김.
 create policy open_rooms_read on public.open_rooms for select to authenticated using (is_firm());
-revoke select on public.open_rooms from authenticated;
-grant select (id, title, description, tags, max_members, created_at) on public.open_rooms to authenticated;
 create policy open_members_read on public.open_members for select to authenticated using (is_firm());
-revoke select on public.open_members from authenticated;
-grant select (id, room_id, alias, is_host, joined_at, left_at) on public.open_members to authenticated;
 create policy open_messages_read on public.open_messages for select to authenticated using (open_member_id(room_id) is not null or is_super_admin());
 create policy open_bans_read on public.open_bans for select to authenticated using (user_id = auth.uid());
 
 -- 게시판: 볼 수 있는 게시판의 글만. 작성자 id는 숨기고 post_feed·comment_feed 보기로 내보냅니다.
 create policy posts_read on public.posts for select to authenticated using (can_see_board(board));
-revoke select on public.posts from authenticated;
-grant select (id, board, author_bot, field, title, body, notice, source_id, attachments, created_at) on public.posts to authenticated;
 create policy comments_read on public.comments for select to authenticated using (exists (select 1 from posts p where p.id = post_id and can_see_board(p.board)));
-revoke select on public.comments from authenticated;
-grant select (id, post_id, parent_id, text, deleted, created_at) on public.comments to authenticated;
 create policy post_votes_read on public.post_votes for select to authenticated using (exists (select 1 from posts p where p.id = post_id and can_see_board(p.board)));
 create policy comment_votes_read on public.comment_votes for select to authenticated using (
   exists (select 1 from comments c join posts p on p.id = c.post_id where c.id = comment_id and can_see_board(p.board))
 );
-revoke select on public.post_votes, public.comment_votes from authenticated;
-grant select (post_id, value) on public.post_votes to authenticated;
-grant select (comment_id, value) on public.comment_votes to authenticated;
 create policy reports_admin on public.reports for select to authenticated using (is_admin());
 create policy bans_read on public.board_bans for select to authenticated using (user_id = auth.uid() or is_admin());
 create policy notes_read on public.note_threads for select to authenticated using (a_id = auth.uid() or b_id = auth.uid());
-revoke select on public.note_threads from authenticated;
-grant select (id, post_id, a_read_at, b_read_at) on public.note_threads to authenticated;
 create policy note_messages_read on public.note_messages for select to authenticated using (
   exists (select 1 from note_threads t where t.id = thread_id and (t.a_id = auth.uid() or t.b_id = auth.uid()))
 );
-revoke select on public.note_messages from authenticated;
-grant select (id, thread_id, text, created_at) on public.note_messages to authenticated;
 create policy notice_seen_own on public.notice_seen for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 create policy suggestions_read on public.suggestions for select to authenticated using (author_id = auth.uid() or is_super_admin());
 create policy suggestions_write on public.suggestions for insert to authenticated with check (author_id = auth.uid() and status = 'open' and answer is null);
 create policy auth_codes_read on public.auth_codes for select to authenticated using (user_id = auth.uid());
 create policy auth_codes_read_flag on public.auth_codes for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
-revoke update on public.auth_codes from authenticated;
-grant update (read) on public.auth_codes to authenticated;
 
 -- 익명 게시판 보기: 작성자는 '익명 N', 어드민에게만 실제 작성자. 실명 게시판은 프로필 id.
 create view public.post_feed with (security_barrier) as
@@ -835,7 +814,42 @@ begin
   update profiles set super_admin = p_on where id = p_user;
 end $$;
 
--- 함수는 로그인한 사람만 부릅니다
+-- ───────────────────────── 권한 ─────────────────────────
+-- 'Automatically expose new tables'를 끈 프로젝트 기준입니다. 켜져 있어도 같은 결과가 되도록 먼저 모두 거둡니다.
+-- 로그인 안 한 사람(anon)에게는 아무것도 열지 않습니다.
+revoke all on all tables in schema public from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+
+-- 읽기: 행 보안이 걸린 표 전체
+grant select on
+  public.profiles, public.favorites, public.rooms, public.room_members, public.messages, public.message_reactions,
+  public.message_hides, public.room_notices, public.cases, public.hearings, public.case_documents, public.case_costs,
+  public.case_progress, public.hearing_alerts, public.hearing_alert_recipients, public.open_bans, public.open_messages,
+  public.reports, public.board_bans, public.notice_seen, public.suggestions, public.auth_codes
+to authenticated;
+-- 읽기: 숨길 칸이 있는 표는 보여도 되는 칸만
+grant select (id, title, description, tags, max_members, created_at) on public.open_rooms to authenticated;
+grant select (id, room_id, alias, is_host, joined_at, left_at) on public.open_members to authenticated;
+grant select (id, board, author_bot, field, title, body, notice, source_id, attachments, created_at) on public.posts to authenticated;
+grant select (id, post_id, parent_id, text, deleted, created_at) on public.comments to authenticated;
+grant select (post_id, value) on public.post_votes to authenticated;
+grant select (comment_id, value) on public.comment_votes to authenticated;
+grant select (id, post_id, a_read_at, b_read_at) on public.note_threads to authenticated;
+grant select (id, thread_id, text, created_at) on public.note_messages to authenticated;
+grant select on public.post_feed, public.comment_feed, public.note_feed, public.note_message_feed, public.open_message_feed, public.open_room_feed to authenticated;
+
+-- 쓰기: 본인 칸만 (행 보안이 한 번 더 막음)
+grant update (nickname, photo_path, status, phone, email, birthday, presence) on public.profiles to authenticated;
+grant update (pinned, notify, hidden_at, last_read_at, notice_hidden) on public.room_members to authenticated;
+grant update (read) on public.auth_codes to authenticated;
+grant insert on public.messages, public.suggestions to authenticated;
+grant insert, update, delete on public.favorites, public.message_reactions, public.message_hides, public.notice_seen to authenticated;
+
+-- 서버(관리자 키)는 전부. 대륜탑 연동·계정 관리 함수가 씁니다.
+grant all on all tables in schema public to service_role;
+grant all on all sequences in schema public to service_role;
+
+-- 함수는 로그인한 사람과 서버만 부릅니다
 revoke execute on all functions in schema public from public, anon;
-grant execute on all functions in schema public to authenticated;
+grant execute on all functions in schema public to authenticated, service_role;
 revoke execute on function public.alias_for(uuid, uuid) from authenticated;
