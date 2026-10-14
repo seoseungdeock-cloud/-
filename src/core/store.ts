@@ -10,7 +10,7 @@ import type { DecisionRecord } from './knowledge';
 import { opinionFor } from './knowledge';
 import { titleFrom, type ProgramRequest } from './builder';
 import { newId, nowIso, useServerIds } from './ids';
-import { loadAll, remoteOps, type Remote, type Snapshot } from './remote';
+import { loadAll, loadMessagesSince, messagesFromRows, remoteOps, type Remote } from './remote';
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import { loginEmail, reasonOf, supabase } from './supabase';
 import {
@@ -369,7 +369,7 @@ function mirror(op: (r: Remote) => Promise<unknown>) {
     (e) => {
       // 처음 실패한 사유를 보여 줍니다 (뒤따른 변경은 대개 같은 이유로 함께 실패).
       set({ syncError: state.syncError ?? reasonOf(e, '서버에 저장하지 못했습니다. 최신 상태로 다시 불러왔습니다.') });
-      void refresh();
+      void refresh(true);
     },
   );
 }
@@ -384,32 +384,68 @@ function silently<T>(fn: () => T): T {
   }
 }
 
-/** 보내는 중인 변경이 끝나면 서버의 최신 상태로 바꿉니다. 그사이 새 변경이 생기면 다시 받습니다. */
-export async function refresh(): Promise<void> {
+// 바뀐 것만 받기: 메시지는 처음 들어올 때 한 번 전부 받고, 그 뒤로는 실시간으로 온 한 줄씩, 또는 마지막으로 받은 시각 뒤의 것만 받습니다.
+let syncedAt: string | undefined;
+const later = (a: string | undefined, b: string | undefined) => (!a ? b : !b ? a : a > b ? a : b);
+
+/** 받은 메시지들을 지금 목록에 합칩니다 (같은 id는 바꾸고, 새것은 시간 순서로 끼움) */
+function mergeMessages(cur: Message[], incoming: Message[]): Message[] {
+  if (!incoming.length) return cur;
+  const byId = new Map(incoming.map((m) => [m.id, m]));
+  const out = cur.map((m) => byId.get(m.id) ?? m);
+  const seen = new Set(cur.map((m) => m.id));
+  const fresh = incoming.filter((m) => !seen.has(m.id));
+  if (!fresh.length) return out;
+  return [...out, ...fresh].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+}
+
+/**
+ * 서버의 최신 상태로 맞춥니다. 보내는 중인 변경이 끝난 뒤 받고, 그사이 새 변경이 생기면 다시 받습니다.
+ * full이면 메시지까지 전부 다시 받고(저장 실패 뒤), 아니면 메시지는 바뀐 것만 받습니다.
+ */
+export async function refresh(full = false): Promise<void> {
   if (!supabase) return;
   for (let tries = 0; tries < 3; tries++) {
     const meId = state.currentUserId;
     if (!meId) return;
     await queue;
     const seen = changes;
-    let snap: Snapshot;
     try {
-      snap = await loadAll(supabase, meId);
+      if (full || !syncedAt) {
+        const snap = await loadAll(supabase, meId);
+        if (changes !== seen || state.currentUserId !== meId) continue;
+        syncedAt = snap.syncedAt ?? syncedAt;
+        set(snap);
+        return;
+      }
+      const [base, delta] = await Promise.all([loadAll(supabase, meId, false), loadMessagesSince(supabase, meId, syncedAt)]);
+      if (changes !== seen || state.currentUserId !== meId) continue;
+      syncedAt = later(syncedAt, delta.syncedAt);
+      const reactionsBy = new Map<string, Record<string, string>>();
+      for (const r of delta.reactions) reactionsBy.set(r.message_id, { ...reactionsBy.get(r.message_id), [r.user_id]: r.emoji });
+      const hidden = new Set(delta.hides.map((h) => h.message_id));
+      const { messages: _skip, ...rest } = base;
+      void _skip;
+      set((s) => ({
+        ...rest,
+        messages: mergeMessages(s.messages, delta.messages).map((m) => {
+          const rs = reactionsBy.get(m.id);
+          const { reactions: _r, deletedFor: _d, ...plain } = m;
+          void _r;
+          void _d;
+          return { ...plain, ...(rs ? { reactions: rs } : {}), ...(hidden.has(m.id) ? { deletedFor: [meId] } : {}) };
+        }),
+      }));
+      return;
     } catch {
       return; // 연결이 끊기면 다음 새로고침에서 다시
-    }
-    if (changes === seen && state.currentUserId === meId) {
-      set(snap);
-      return;
     }
   }
 }
 
-// 실시간 (3단계): 이 표들이 바뀌면 서버가 바로 알려 주고, 잠깐 모아서 새로 받습니다. 내가 볼 수 있는 행만 옵니다.
-const LIVE_TABLES = [
-  'messages', 'message_reactions', 'message_hides', 'room_members', 'room_notices', 'rooms',
-  'cases', 'hearings', 'case_progress', 'hearing_alerts', 'hearing_alert_recipients',
-];
+// 실시간: 이 표들이 바뀌면 서버가 바로 알려 줍니다 (내가 볼 수 있는 행만).
+// 메시지·공감·숨김·읽음은 온 한 줄만 화면에 반영하고, 드문 변경(방·사건·기일 등)은 메시지를 뺀 나머지를 다시 받습니다.
+const LIVE_TABLES = ['room_notices', 'rooms', 'cases', 'hearings', 'case_progress', 'hearing_alerts', 'hearing_alert_recipients'];
 let live: RealtimeChannel | null = null;
 let liveTimer: ReturnType<typeof setTimeout> | undefined;
 let liveStarting = false;
@@ -424,6 +460,72 @@ async function goLive() {
   }
 }
 
+type Change = { eventType: 'INSERT' | 'UPDATE' | 'DELETE'; new: Record<string, any>; old: Record<string, any> };
+
+function patchMessage(id: string, fn: (m: Message) => Message) {
+  if (state.messages.some((m) => m.id === id)) updateMessage(id, fn);
+}
+
+async function onMessageRow(sb: SupabaseClient, c: Change) {
+  const meId = state.currentUserId;
+  if (!meId) return;
+  if (c.eventType === 'DELETE') {
+    set((s) => ({ messages: s.messages.filter((m) => m.id !== c.old.id) }));
+    return;
+  }
+  const row = c.new;
+  syncedAt = later(syncedAt, row.updated_at);
+  const prev = state.messages.find((m) => m.id === row.id);
+  const [m] = await messagesFromRows(sb, meId, [row], () => undefined, () => !!prev?.deletedFor?.includes(meId));
+  const merged: Message = { ...m, ...(prev?.reactions && !m.recalled ? { reactions: prev.reactions } : {}) };
+  set((s) => ({ messages: mergeMessages(s.messages, [merged]) }));
+}
+
+function onReactionRow(c: Change) {
+  const r = c.eventType === 'DELETE' ? c.old : c.new;
+  if (!r.message_id || !r.user_id) return;
+  patchMessage(r.message_id, (m) => {
+    const next = { ...m.reactions };
+    if (c.eventType === 'DELETE') delete next[r.user_id];
+    else next[r.user_id] = r.emoji;
+    return { ...m, reactions: next };
+  });
+}
+
+function onHideRow(c: Change) {
+  const r = c.eventType === 'DELETE' ? c.old : c.new;
+  const meId = state.currentUserId;
+  if (!r.message_id || !meId || (r.user_id && r.user_id !== meId)) return;
+  patchMessage(r.message_id, (m) => (c.eventType === 'DELETE' ? { ...m, deletedFor: undefined } : { ...m, deletedFor: [meId] }));
+}
+
+/** 읽음·고정·알림 설정 등 참여 정보가 바뀐 것은 그 방에만 반영 (드나듦은 다시 받기) */
+function onMemberRow(c: Change, kick: () => void) {
+  if (c.eventType !== 'UPDATE') return kick();
+  const m = c.new;
+  const toggle = (ids: string[] | undefined, on: boolean) => (on ? [...new Set([...(ids ?? []), m.user_id])] : (ids ?? []).filter((x) => x !== m.user_id));
+  set((s) => ({
+    reads: m.last_read_at ? { ...s.reads, [m.room_id]: { ...s.reads[m.room_id], [m.user_id]: m.last_read_at } } : s.reads,
+    rooms: s.rooms.map((r) => {
+      if (r.id !== m.room_id) return r;
+      const notify = { ...r.notify };
+      if (m.notify === 'all') delete notify[m.user_id];
+      else notify[m.user_id] = m.notify;
+      const hiddenAt = { ...r.hiddenAt };
+      if (m.hidden_at) hiddenAt[m.user_id] = m.hidden_at;
+      else delete hiddenAt[m.user_id];
+      return {
+        ...r,
+        masters: toggle(r.masters, m.is_master),
+        pinnedBy: toggle(r.pinnedBy, m.pinned),
+        noticeHiddenBy: toggle(r.noticeHiddenBy, m.notice_hidden),
+        notify,
+        hiddenAt,
+      };
+    }),
+  }));
+}
+
 async function startLive(sb: SupabaseClient) {
   // 실시간 연결에도 로그인 표를 넘겨야 행 보안(내 방만)이 적용된 알림이 옵니다
   const token = (await sb.auth.getSession()).data.session?.access_token;
@@ -432,11 +534,17 @@ async function startLive(sb: SupabaseClient) {
   const ch = sb.channel('rightnow-live');
   const kick = () => {
     clearTimeout(liveTimer);
-    liveTimer = setTimeout(() => void refresh(), 250);
+    liveTimer = setTimeout(() => void refresh(), 300);
   };
-  for (const table of LIVE_TABLES) ch.on('postgres_changes', { event: '*', schema: 'public', table }, kick);
+  const on = (table: string, fn: (c: Change) => void) =>
+    ch.on('postgres_changes', { event: '*', schema: 'public', table }, (p) => fn(p as unknown as Change));
+  on('messages', (c) => void onMessageRow(sb, c).catch(kick));
+  on('message_reactions', onReactionRow);
+  on('message_hides', onHideRow);
+  on('room_members', (c) => onMemberRow(c, kick));
+  for (const table of LIVE_TABLES) on(table, kick);
   live = ch.subscribe((status) => {
-    // 끊겼다 다시 붙으면 그사이 놓친 것을 받습니다
+    // 처음 붙거나 끊겼다 다시 붙으면 그사이 놓친 것만 받습니다
     if (status === 'SUBSCRIBED') kick();
   });
 }
@@ -453,17 +561,19 @@ async function enter(userId: string): Promise<void> {
   if (!active) throw new Error('사용이 중지된 계정입니다. 관리자에게 문의하세요.');
   const snap = await loadAll(supabase!, userId);
   if (!snap.users.some((u) => u.id === userId)) throw new Error('계정 정보를 찾을 수 없습니다. 관리자에게 문의하세요.');
+  syncedAt = snap.syncedAt;
   set({ ...snap, currentUserId: userId, syncError: undefined });
   void goLive();
 }
 
 let started = false;
 let signingOut: Promise<void> = Promise.resolve();
-let beforeSignOut: () => Promise<void> = async () => {};
+const signOutHooks: (() => Promise<void>)[] = [];
+const beforeSignOut = () => Promise.all(signOutHooks.map((fn) => fn().catch(() => undefined))).then(() => undefined);
 
-/** 로그아웃 직전에 할 일 (폰 푸시 주소 해제). 로그인이 살아 있을 때 불립니다. */
+/** 로그아웃 직전에 할 일 (폰·PC 알림 주소 해제). 로그인이 살아 있을 때 불립니다. */
 export function onBeforeSignOut(fn: () => Promise<void>): void {
-  beforeSignOut = fn;
+  signOutHooks.push(fn);
 }
 
 /** 앱을 열 때 한 번: 저장된 로그인이 있으면 이어서 들어가고, 주기적으로 새로 받습니다. */
@@ -480,8 +590,8 @@ export async function startServer(): Promise<void> {
     if (event === 'SIGNED_OUT') stopLive();
     if (event === 'SIGNED_OUT' && state.currentUserId) set({ ...serverState(), booted: true });
   });
-  // 실시간이 놓친 것(게시판·쪽지 등 실시간 대상이 아닌 것 포함)은 1분마다, 그리고 앱으로 돌아올 때 새로 받습니다.
-  setInterval(() => void refresh(), 60_000);
+  // 실시간 대상이 아닌 것(게시판·쪽지 등)은 3분마다, 그리고 앱으로 돌아올 때 받습니다. 메시지는 이때도 바뀐 것만 받습니다.
+  setInterval(() => void refresh(), 180_000);
   AppState.addEventListener('change', (st) => {
     if (st === 'active') void refresh();
   });

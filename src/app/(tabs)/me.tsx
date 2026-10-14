@@ -1,9 +1,11 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { presenceOf } from '@/core/messenger';
 import { canJoinMembership, canSeeSuggestions } from '@/core/rooms';
 import { actions } from '@/core/store';
+import { enableWebPush, webPushState } from '@/core/web-push';
 import { usePresenceColor } from '@/ui/presence';
 import { Avatar, Badge, Button, Card, Screen, Section, Sub, T } from '@/ui/kit';
 import { family, space, useColors } from '@/ui/theme';
@@ -43,6 +45,7 @@ export default function MeScreen() {
           </Card>
         </Section>
       ) : null}
+      <WebPushCard />
       <Section title="라잇나우 건의사항">
         <Card onPress={() => router.push('/suggest')}>
           <T bold>건의사항 쓰기</T>
@@ -67,5 +70,19 @@ export default function MeScreen() {
         <Button label="로그아웃" kind="ghost" onPress={() => { actions.logout(); router.replace('/login'); }} />
       </View>
     </Screen>
+  );
+}
+
+/** PC·웹 브라우저에서만: 이 브라우저로 새 메시지·기일 알림 받기 */
+function WebPushCard() {
+  const [state, setState] = useState(webPushState());
+  if (state === 'unsupported') return null;
+  return (
+    <Section title="이 PC 알림">
+      <Card onPress={state === 'default' ? () => void enableWebPush().then(setState) : undefined}>
+        <T bold>{state === 'granted' ? '알림 받는 중' : state === 'denied' ? '알림이 차단됨' : '알림 받기'}</T>
+        {state === 'denied' ? <Sub>브라우저 주소창 왼쪽 자물쇠 아이콘에서 알림을 허용해 주세요.</Sub> : null}
+      </Card>
+    </Section>
   );
 }

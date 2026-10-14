@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
 import { usePush } from '@/core/push';
+import { resumeWebPush } from '@/core/web-push';
 import { loggedIn, startServer } from '@/core/store';
 import { HearingAlertModal } from '@/ui/hearing';
 import { SyncNotice } from '@/ui/sync-notice';
@@ -22,6 +23,9 @@ export default function RootLayout() {
   // 서버 연결 시 저장된 로그인을 확인한 뒤에 화면을 엽니다
   const ready = (fontsLoaded || !!fontError) && app.booted;
   usePush(signedIn && ready);
+  useEffect(() => {
+    if (signedIn && ready) void resumeWebPush();
+  }, [signedIn, ready]);
 
   useEffect(() => {
     void startServer();

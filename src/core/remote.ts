@@ -125,7 +125,52 @@ function attachmentsOf(raw: unknown, urls: Map<string, string>): Attachment[] {
     .map((a) => ({ id: a.id, kind: a.kind, name: a.name, path: a.path, uri: urls.get(a.path) ?? '', ...(a.size ? { size: a.size } : {}), ...(a.mime ? { mime: a.mime } : {}) }));
 }
 
-export async function loadAll(sb: SupabaseClient, meId: string): Promise<Snapshot> {
+/** 메시지 한 줄을 앱 모양으로 (반응·숨김·첨부 주소 포함) */
+export function messageFromRow(m: Row, meId: string, reactions: Row[] | undefined, hidden: boolean, urls: Map<string, string>): Message {
+  const atts = attachmentsOf(m.attachments, urls);
+  return {
+    id: m.id, roomId: m.room_id, senderId: m.sender_kind === 'user' ? m.sender_id ?? '' : m.sender_kind, kind: m.kind, text: m.text, at: m.created_at,
+    ...(m.reply_to ? { replyTo: m.reply_to } : {}),
+    ...(m.forward_of ? { forwardOf: m.forward_of } : {}),
+    ...(m.bundle ? { bundle: m.bundle } : {}),
+    ...(m.recalled ? { recalled: true } : {}),
+    ...(reactions?.length ? { reactions: Object.fromEntries(reactions.map((r) => [r.user_id, r.emoji])) } : {}),
+    ...(m.mentions?.length ? { mentions: m.mentions } : {}),
+    ...(m.hearing_alert_id ? { hearingAlertId: m.hearing_alert_id } : {}),
+    ...(m.contact_id ? { contactId: m.contact_id } : {}),
+    ...(atts.length ? { attachments: atts } : {}),
+    ...(hidden ? { deletedFor: [meId] } : {}),
+  };
+}
+
+/** 실시간으로 받은 메시지 줄들을 앱 모양으로 (첨부 주소만 새로 받음) */
+export async function messagesFromRows(sb: SupabaseClient, meId: string, rows: Row[], reactionsOf: (id: string) => Row[] | undefined, hiddenOf: (id: string) => boolean): Promise<Message[]> {
+  const urls = await signPaths(sb, ROOM_FILES, pathsIn(rows));
+  return rows.map((m) => messageFromRow(m, meId, reactionsOf(m.id), hiddenOf(m.id), urls));
+}
+
+/** 바뀐 것만 받기: since 뒤에 새로 오거나 바뀐 메시지와, 공감·숨김 전체(작은 표) */
+export async function loadMessagesSince(sb: SupabaseClient, meId: string, since: string): Promise<{ messages: Message[]; syncedAt: string; reactions: Row[]; hides: Row[] }> {
+  const rows: Row[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await sb.from('messages').select('*').gt('updated_at', since).order('updated_at').order('id').range(from, from + PAGE - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE) break;
+  }
+  const [reactions, hides] = await Promise.all([all(sb, 'message_reactions', ['message_id', 'user_id']), all(sb, 'message_hides', ['message_id', 'user_id'])]);
+  const reactionsBy = group(reactions, (r) => r.message_id);
+  const hidden = new Set(hides.map((h) => h.message_id));
+  const messages = await messagesFromRows(sb, meId, rows, (id) => reactionsBy.get(id), (id) => hidden.has(id));
+  return { messages, syncedAt: rows.reduce((a, r) => (r.updated_at > a ? r.updated_at : a), since), reactions, hides };
+}
+
+/**
+ * 로그인한 사람이 볼 수 있는 데이터를 받아 앱 상태 모양으로 바꿉니다.
+ * withMessages가 false면 메시지·공감·숨김은 받지 않습니다 (메시지는 실시간·loadMessagesSince로 따로 받음).
+ */
+export async function loadAll(sb: SupabaseClient, meId: string, withMessages = true): Promise<Snapshot & { syncedAt?: string }> {
+  const none = async () => [] as Row[];
   const [
     profiles, favorites, rooms, members, messages, reactions, hides, notices,
     cases, hearings, docs, costs, progress, alerts, recipients,
@@ -136,9 +181,9 @@ export async function loadAll(sb: SupabaseClient, meId: string): Promise<Snapsho
     all(sb, 'favorites', ['user_id', 'target_id']),
     all(sb, 'rooms', ['created_at', 'id']),
     all(sb, 'room_members', ['room_id', 'joined_at', 'user_id']),
-    all(sb, 'messages', ['created_at', 'id']),
-    all(sb, 'message_reactions', ['message_id', 'user_id']),
-    all(sb, 'message_hides', ['message_id', 'user_id']),
+    withMessages ? all(sb, 'messages', ['created_at', 'id']) : none(),
+    withMessages ? all(sb, 'message_reactions', ['message_id', 'user_id']) : none(),
+    withMessages ? all(sb, 'message_hides', ['message_id', 'user_id']) : none(),
     all(sb, 'room_notices', ['created_at', 'id']),
     all(sb, 'cases', ['room_id']),
     all(sb, 'hearings', ['date', 'time', 'id']),
@@ -215,23 +260,8 @@ export async function loadAll(sb: SupabaseClient, meId: string): Promise<Snapsho
   const reactionsBy = group(reactions, (r) => r.message_id);
   const hidden = new Set(hides.map((h) => h.message_id));
   const [urls, boardUrls] = await Promise.all([signPaths(sb, ROOM_FILES, pathsIn(messages)), signPaths(sb, BOARD_FILES, pathsIn(posts))]);
-  const messageList: Message[] = messages.map((m) => {
-    const rs = reactionsBy.get(m.id);
-    const atts = attachmentsOf(m.attachments, urls);
-    return {
-      id: m.id, roomId: m.room_id, senderId: m.sender_kind === 'user' ? m.sender_id ?? '' : m.sender_kind, kind: m.kind, text: m.text, at: m.created_at,
-      ...(m.reply_to ? { replyTo: m.reply_to } : {}),
-      ...(m.forward_of ? { forwardOf: m.forward_of } : {}),
-      ...(m.bundle ? { bundle: m.bundle } : {}),
-      ...(m.recalled ? { recalled: true } : {}),
-      ...(rs ? { reactions: Object.fromEntries(rs.map((r) => [r.user_id, r.emoji])) } : {}),
-      ...(m.mentions?.length ? { mentions: m.mentions } : {}),
-      ...(m.hearing_alert_id ? { hearingAlertId: m.hearing_alert_id } : {}),
-      ...(m.contact_id ? { contactId: m.contact_id } : {}),
-      ...(atts.length ? { attachments: atts } : {}),
-      ...(hidden.has(m.id) ? { deletedFor: [meId] } : {}),
-    };
-  });
+  const messageList: Message[] = messages.map((m) => messageFromRow(m, meId, reactionsBy.get(m.id), hidden.has(m.id), urls));
+  const syncedAt = messages.reduce<string | undefined>((a, r) => (!a || r.updated_at > a ? r.updated_at : a), undefined);
 
   const recipientsBy = group(recipients, (r) => r.alert_id);
   const hearingAlerts: HearingAlert[] = alerts.map((a) => {
@@ -296,7 +326,7 @@ export async function loadAll(sb: SupabaseClient, meId: string): Promise<Snapsho
   });
 
   return {
-    users, accounts, rooms: roomList, messages: messageList, reads, hearingAlerts,
+    users, accounts, rooms: roomList, messages: messageList, syncedAt, reads, hearingAlerts,
     favorites: { [meId]: favorites.map((f) => f.target_id) },
     openRooms: openRoomList, openMessages: openMessageList, posts: postList, notes: noteList,
     reports: [...reports].reverse().map((r) => ({

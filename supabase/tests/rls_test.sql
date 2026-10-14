@@ -305,6 +305,27 @@ reset role;
 select tst.check('메시지 푸시: 알림 끄기면 안 감', (select count(*) = 0 from push_outbox));
 update room_members set notify = 'all';
 
+-- ── PC 웹 알림 ──
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000e');
+select register_web_push('https://fcm.googleapis.com/fcm/send/abc', 'key1', 'auth1');
+select tst.throws('웹 알림: 이상한 주소 막힘', $$select register_web_push('http://evil/x', 'k', 'a')$$, '올바르지 않습니다');
+select tst.throws('웹 알림: 표 직접 못 봄', $$select 1 from web_push_subs$$, 'permission denied');
+reset role;
+delete from push_outbox;
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select post_message(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', 'text', '웹 알림 시험');
+reset role;
+set role service_role;
+select tst.check('웹 알림: 보낼 묶음에 브라우저 주소', (select bool_or(web @> '[{"endpoint":"https://fcm.googleapis.com/fcm/send/abc"}]') from claim_push_batch()));
+reset role;
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000e');
+select unregister_web_push('https://fcm.googleapis.com/fcm/send/abc');
+reset role;
+select tst.check('웹 알림: 로그아웃하면 지움', (select count(*) = 0 from web_push_subs));
+
 -- ── 로그인 안 한 사람 ──
 reset role;
 set role anon;
