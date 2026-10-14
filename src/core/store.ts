@@ -1513,6 +1513,7 @@ export const actions = {
     if (needsField(board) && !input.field) return { ok: false, reason: '분야를 골라 주세요.' };
     const attachments = input.attachments ?? [];
     if (attachments.length > MAX_ATTACHMENTS) return { ok: false, reason: `첨부는 ${MAX_ATTACHMENTS}개까지 올릴 수 있습니다.` };
+    if (attachments.some((a) => (a.size ?? 0) > 50 * 1024 * 1024)) return { ok: false, reason: '파일은 50MB까지 올릴 수 있습니다.' };
     const post: BoardPost = {
       id: newId('p'), authorId: me().id, field: input.field, title: input.title.trim(), body: input.body.trim(), at: nowIso(), votes: {}, comments: [],
       ...(board !== 'anon' ? { board } : {}), ...(attachments.length ? { attachments } : {}),

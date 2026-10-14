@@ -260,6 +260,24 @@ select tst.as_user('00000000-0000-0000-0000-00000000000f');
 select tst.check('저장소: 다른 의뢰인은 남의 방 파일 못 받음', not room_file_member('10000000-0000-0000-0000-000000000001/a/b.jpg'));
 reset role;
 
+-- ── 게시판 사진·파일 (4단계) ──
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000e');
+select tst.check('의뢰인: 익명 글에 사진 첨부', create_post('anon', '사진 질문', '이 계약서 봐 주세요', '민사',
+  p_attachments => '[{"id":"f1","kind":"image","name":"계약서.jpg","path":"40000000-0000-0000-0000-000000000001/f1-계약서.jpg"}]',
+  p_id => '40000000-0000-0000-0000-000000000001') is not null);
+select tst.throws('의뢰인: 다른 글 경로 첨부 막힘', $$select create_post('anon', 't', 'b', '민사', p_attachments => '[{"id":"f","kind":"file","name":"x","path":"40000000-0000-0000-0000-000000000009/x"}]', p_id => '40000000-0000-0000-0000-000000000002')$$, '첨부를 올릴 수 없습니다');
+select tst.throws('의뢰인: 하위 폴더 경로 막힘', $$select create_post('anon', 't', 'b', '민사', p_attachments => '[{"id":"f","kind":"file","name":"x","path":"40000000-0000-0000-0000-000000000003/a/b"}]', p_id => '40000000-0000-0000-0000-000000000003')$$, '첨부를 올릴 수 없습니다');
+select tst.check('저장소: 익명 글 파일은 누구나 받음', board_file_visible('40000000-0000-0000-0000-000000000001/f1-계약서.jpg'));
+select tst.throws('의뢰인: 변호사 게시판 올리기 확인 막힘', $$select board_upload_check('lawyer')$$, '글을 찾을 수 없습니다');
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select tst.check('변호사: 변호사 게시판 글에 파일', create_post('lawyer', '판례 공유', '참고하세요', '형사',
+  p_attachments => '[{"id":"f2","kind":"file","name":"판결문.pdf","path":"40000000-0000-0000-0000-000000000004/f2-판결문.pdf"}]',
+  p_id => '40000000-0000-0000-0000-000000000004') is not null);
+select tst.as_user('00000000-0000-0000-0000-00000000000e');
+select tst.check('저장소: 의뢰인은 변호사 게시판 파일 못 받음', not board_file_visible('40000000-0000-0000-0000-000000000004/f2-판결문.pdf'));
+reset role;
+
 -- ── 로그인 안 한 사람 ──
 reset role;
 set role anon;

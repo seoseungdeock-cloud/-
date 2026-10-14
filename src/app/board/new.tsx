@@ -36,12 +36,12 @@ export default function NewPostScreen() {
   const pickImages = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: Math.max(room, 1), quality: 0.8 });
     if (res.canceled) return;
-    add(res.assets.map((a) => ({ id: attId(), kind: 'image', name: a.fileName ?? '사진', uri: a.uri, size: a.fileSize })));
+    add(res.assets.map((a) => ({ id: attId(), kind: 'image', name: a.fileName ?? '사진.jpg', uri: a.uri, size: a.fileSize, mime: a.mimeType ?? 'image/jpeg' })));
   };
   const pickFiles = async () => {
     const res = await DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true });
     if (res.canceled) return;
-    add(res.assets.map((a) => ({ id: attId(), kind: a.mimeType?.startsWith('image/') ? 'image' : 'file', name: a.name, uri: a.uri, size: a.size })));
+    add(res.assets.map((a) => ({ id: attId(), kind: a.mimeType?.startsWith('image/') ? 'image' : 'file', name: a.name, uri: a.uri, size: a.size, mime: a.mimeType })));
   };
   const submit = () => {
     const res = actions.createPost({ title, body, field, board, attachments: files, notice });

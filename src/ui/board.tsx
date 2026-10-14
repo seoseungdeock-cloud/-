@@ -1,3 +1,4 @@
+import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
 
@@ -83,6 +84,12 @@ export function fileSize(n?: number): string {
 }
 
 // 첨부: 사진은 크게, 파일은 이름·크기 한 줄. onRemove가 있으면 글쓰기 화면의 빼기 버튼.
+// 서버에 올라간 첨부는 임시 주소로 열어 크게 보거나 내려받습니다
+const canOpen = (a: Attachment) => /^https?:/.test(a.uri);
+const openFile = (a: Attachment) => {
+  if (canOpen(a)) void WebBrowser.openBrowserAsync(a.uri);
+};
+
 export function Attachments({ items, onRemove, compact }: { items: Attachment[]; onRemove?: (id: string) => void; compact?: boolean }) {
   const c = useColors();
   if (!items.length) return null;
@@ -110,15 +117,19 @@ export function Attachments({ items, onRemove, compact }: { items: Attachment[];
           ))}
         </View>
       ) : (
-        images.map((a) => <Image key={a.id} source={{ uri: a.uri }} resizeMode="cover" style={{ width: '100%', aspectRatio: 4 / 3, borderRadius: radius.md, backgroundColor: c.surface }} />)
+        images.map((a) => (
+          <Pressable key={a.id} accessibilityLabel={`사진 ${a.name}`} disabled={!canOpen(a)} onPress={() => openFile(a)}>
+            <Image source={a.uri ? { uri: a.uri } : undefined} resizeMode="cover" style={{ width: '100%', aspectRatio: 4 / 3, borderRadius: radius.md, backgroundColor: c.surface }} />
+          </Pressable>
+        ))
       )}
       {files.map((a) => (
-        <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, borderWidth: 1, borderColor: c.line, borderRadius: radius.md, paddingHorizontal: space.md, paddingVertical: space.sm }}>
+        <Pressable key={a.id} accessibilityLabel={`파일 ${a.name}`} disabled={!!onRemove || !canOpen(a)} onPress={() => openFile(a)} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, borderWidth: 1, borderColor: c.line, borderRadius: radius.md, paddingHorizontal: space.md, paddingVertical: space.sm }}>
           <Icon name="file" color={c.sub} size={20} />
           <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.semibold, fontSize: 14, color: c.text }}>{a.name}</Text>
           <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{fileSize(a.size)}</Text>
           {remove(a.id)}
-        </View>
+        </Pressable>
       ))}
     </View>
   );

@@ -95,18 +95,28 @@ export type Snapshot = {
 
 /** 로그인한 사람이 볼 수 있는 모든 데이터를 받아 앱 상태 모양으로 바꿉니다. */
 export const ROOM_FILES = 'room-files';
+export const BOARD_FILES = 'board-files';
 const signed = new Map<string, { url: string; until: number }>();
 
-/** 방 파일의 임시 주소 (6시간짜리를 받아 두고, 1시간 남으면 새로 받음) */
-async function signPaths(sb: SupabaseClient, paths: string[]): Promise<Map<string, string>> {
+/** 저장소 파일의 임시 주소 (6시간짜리를 받아 두고, 1시간 남으면 새로 받음) */
+async function signPaths(sb: SupabaseClient, bucket: string, paths: string[]): Promise<Map<string, string>> {
   const now = Date.now();
-  const need = [...new Set(paths)].filter((p) => (signed.get(p)?.until ?? 0) < now + 3_600_000);
+  const key = (p: string) => `${bucket}:${p}`;
+  const need = [...new Set(paths)].filter((p) => (signed.get(key(p))?.until ?? 0) < now + 3_600_000);
   for (let i = 0; i < need.length; i += 500) {
-    const { data } = await sb.storage.from(ROOM_FILES).createSignedUrls(need.slice(i, i + 500), 6 * 3600);
-    for (const d of data ?? []) if (d.path && d.signedUrl) signed.set(d.path, { url: d.signedUrl, until: now + 6 * 3_600_000 });
+    const { data } = await sb.storage.from(bucket).createSignedUrls(need.slice(i, i + 500), 6 * 3600);
+    for (const d of data ?? []) if (d.path && d.signedUrl) signed.set(key(d.path), { url: d.signedUrl, until: now + 6 * 3_600_000 });
   }
-  return new Map(paths.map((p) => [p, signed.get(p)?.url ?? '']));
+  return new Map(paths.map((p) => [p, signed.get(key(p))?.url ?? '']));
 }
+
+/** 저장소 경로에는 영문·숫자만 쓸 수 있어 '첨부 id + 확장자'로 둡니다 (화면의 파일 이름은 따로 저장). */
+export function storageName(id: string, name: string): string {
+  const ext = /\.[A-Za-z0-9]{1,8}$/.exec(name)?.[0].toLowerCase() ?? '';
+  return `${id.replace(/[^\w-]/g, '').slice(0, 40) || 'file'}${ext}`;
+}
+
+const pathsIn = (rows: Row[]) => rows.flatMap((r) => (Array.isArray(r.attachments) ? r.attachments.map((a: Row) => a?.path).filter(Boolean) : []));
 
 function attachmentsOf(raw: unknown, urls: Map<string, string>): Attachment[] {
   if (!Array.isArray(raw)) return [];
@@ -204,7 +214,7 @@ export async function loadAll(sb: SupabaseClient, meId: string): Promise<Snapsho
 
   const reactionsBy = group(reactions, (r) => r.message_id);
   const hidden = new Set(hides.map((h) => h.message_id));
-  const urls = await signPaths(sb, messages.flatMap((m) => (Array.isArray(m.attachments) ? m.attachments.map((a: Row) => a?.path).filter(Boolean) : [])));
+  const [urls, boardUrls] = await Promise.all([signPaths(sb, ROOM_FILES, pathsIn(messages)), signPaths(sb, BOARD_FILES, pathsIn(posts))]);
   const messageList: Message[] = messages.map((m) => {
     const rs = reactionsBy.get(m.id);
     const atts = attachmentsOf(m.attachments, urls);
@@ -271,7 +281,7 @@ export async function loadAll(sb: SupabaseClient, meId: string): Promise<Snapsho
     return {
       id: p.id, authorId, field: p.field, title: p.title, body: p.body, at: p.created_at, votes: votesOf(p.ups, p.downs, p.my_vote, meId), comments: cs, aliases,
       ...(p.board !== 'anon' ? { board: p.board } : {}),
-      ...(Array.isArray(p.attachments) && p.attachments.length ? { attachments: p.attachments } : {}),
+      ...(Array.isArray(p.attachments) && p.attachments.length ? { attachments: attachmentsOf(p.attachments, boardUrls) } : {}),
       ...(p.notice ? { notice: true } : {}), ...(p.source_id ? { sourceId: p.source_id } : {}),
     };
   });
@@ -314,6 +324,27 @@ export type Remote = ReturnType<typeof remoteOps>;
 export function remoteOps(sb: SupabaseClient) {
   const me = async () => (await sb.auth.getSession()).data.session?.user.id ?? '';
   const memberRow = async (roomId: string, patch: Row) => check(sb.from('room_members').update(patch).eq('room_id', roomId).eq('user_id', await me()));
+  /** 게시판 첨부: 서버 함수가 내준 1회용 주소로 올립니다 (익명 글쓴이가 저장소 기록에 남지 않게) */
+  const uploadBoardFiles = async (p: BoardPost) => {
+    const files = p.attachments ?? [];
+    const { data, error } = await sb.functions.invoke('board-upload', { body: { board: p.board ?? 'anon', postId: p.id, files: files.map(({ id, name }) => ({ id, name })) } });
+    if (error || !data?.ok) {
+      const ctx = (error as { context?: Response } | null)?.context;
+      const reason = data?.reason ?? (ctx && typeof ctx.json === 'function' ? (await ctx.json().catch(() => undefined))?.reason : undefined);
+      throw new Error(reason ?? '첨부를 올리지 못했습니다.');
+    }
+    const slots = new Map<string, { path: string; token: string }>((data.files as Row[]).map((f) => [f.id, f as { path: string; token: string }]));
+    const out = [];
+    for (const a of files) {
+      const slot = slots.get(a.id);
+      if (!slot) throw new Error('첨부를 올리지 못했습니다.');
+      const body = await (await fetch(a.uri)).arrayBuffer();
+      const { error: ue } = await sb.storage.from(BOARD_FILES).uploadToSignedUrl(slot.path, slot.token, body, { contentType: a.mime ?? 'application/octet-stream' });
+      if (ue) throw new Error(/exceeded|too large|size/i.test(ue.message) ? '파일은 50MB까지 올릴 수 있습니다.' : '첨부를 올리지 못했습니다.');
+      out.push({ id: a.id, kind: a.kind, name: a.name, size: a.size, mime: a.mime, path: slot.path });
+    }
+    return out;
+  };
   return {
     // 계정
     touchLogin: () => rpc<boolean>(sb, 'touch_login'),
@@ -346,12 +377,11 @@ export function remoteOps(sb: SupabaseClient) {
         p_bundle: m.bundle ?? null, p_mentions: m.mentions ?? [], p_contact: m.contactId ?? null,
         p_attachments: (m.attachments ?? []).map(({ id, kind, name, size, mime, path }) => ({ id, kind, name, size, mime, path })),
       }),
-    /** 방 사진·파일 올리기: '방 id/메시지 id/첨부 id-이름' 경로. 올린 경로를 붙여 돌려줍니다. */
+    /** 방 사진·파일 올리기: '방 id/메시지 id/첨부 id.확장자' 경로. 올린 경로를 붙여 돌려줍니다. */
     uploadRoomFiles: async (roomId: string, messageId: string, atts: Attachment[]): Promise<Attachment[]> => {
       const out: Attachment[] = [];
       for (const a of atts) {
-        const safe = a.name.replace(/[^\w.\-가-힣]+/g, '_').slice(-80) || 'file';
-        const path = `${roomId}/${messageId}/${a.id}-${safe}`;
+        const path = `${roomId}/${messageId}/${storageName(a.id, a.name)}`;
         const body = await (await fetch(a.uri)).arrayBuffer();
         const { error } = await sb.storage.from(ROOM_FILES).upload(path, body, { contentType: a.mime ?? 'application/octet-stream', upsert: true });
         if (error) throw new Error(/exceeded|too large|size/i.test(error.message) ? '파일은 50MB까지 올릴 수 있습니다.' : '파일을 올리지 못했습니다.');
@@ -408,8 +438,10 @@ export function remoteOps(sb: SupabaseClient) {
     deleteOpenRoom: (roomId: string) => rpc(sb, 'delete_open_room', { p_room: roomId }),
 
     // 게시판
-    createPost: (p: BoardPost) =>
-      rpc(sb, 'create_post', { p_id: p.id, p_board: p.board ?? 'anon', p_title: p.title, p_body: p.body, p_field: p.field, p_notice: !!p.notice, p_attachments: p.attachments ?? [] }),
+    createPost: async (p: BoardPost) => {
+      const atts = p.attachments?.length ? await uploadBoardFiles(p) : [];
+      await rpc(sb, 'create_post', { p_id: p.id, p_board: p.board ?? 'anon', p_title: p.title, p_body: p.body, p_field: p.field, p_notice: !!p.notice, p_attachments: atts });
+    },
     comment: (id: string, postId: string, text: string, parentId?: string) => rpc(sb, 'comment_post', { p_id: id, p_post: postId, p_text: text, p_parent: parentId ?? null }),
     votePost: (postId: string, v: number) => rpc(sb, 'vote_post', { p_post: postId, p_value: v }),
     voteComment: (commentId: string, v: number) => rpc(sb, 'vote_comment', { p_comment: commentId, p_value: v }),

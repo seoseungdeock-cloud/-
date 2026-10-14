@@ -795,7 +795,7 @@ function SmallAction({ label, onPress, danger }: { label: string; onPress: () =>
 function MessageFiles({ items, mine }: { items: Attachment[]; mine: boolean }) {
   const c = useColors();
   const open = (a: Attachment) => {
-    if (a.uri) void WebBrowser.openBrowserAsync(a.uri);
+    if (/^https?:/.test(a.uri)) void WebBrowser.openBrowserAsync(a.uri);
   };
   const images = items.filter((a) => a.kind === 'image');
   const files = items.filter((a) => a.kind === 'file');

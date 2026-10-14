@@ -1,6 +1,6 @@
 -- 3단계: 실시간 메신저와 방 사진·파일.
 -- 실시간: 아래 표가 바뀌면 Supabase Realtime이 앱에 바로 알려 줍니다 (행 보안 그대로: 내가 볼 수 있는 것만).
--- 파일: 비공개 저장소 'room-files'에 '방 id/메시지 id/파일' 경로로 올리고, 그 방 참여자만 받을 수 있습니다.
+-- 파일: 비공개 저장소 'room-files'에 '방 id/메시지 id/첨부 id.확장자' 경로로 올리고, 그 방 참여자만 받을 수 있습니다.
 
 alter table public.messages add column attachments jsonb not null default '[]';
 
