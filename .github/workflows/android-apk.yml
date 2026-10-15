@@ -1,0 +1,34 @@
+# 사내용 안드로이드 설치 파일(APK) 만들기.
+# 커밋 메시지에 [apk]가 있으면 빌드합니다. 결과는 Actions 실행 화면의 'rightnow-apk'
+# (저장소 주인만 받을 수 있음, 30일 보관).
+name: android-apk
+on:
+  push:
+    branches: [claude/project-thread-kz6zqr]
+  workflow_dispatch:
+jobs:
+  apk:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[apk]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm ci
+      - run: npx expo prebuild --platform android --no-install
+      - name: Build APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rightnow-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30
