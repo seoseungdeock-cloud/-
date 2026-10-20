@@ -7,7 +7,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BASE=${EXPO_BASE_URL:-/-}
 OUT=$(mktemp -d)/web
 cd "$ROOT"
-EXPO_OFFLINE=1 EXPO_BASE_URL="$BASE" npx expo export --platform web --output-dir "$OUT" >/dev/null
+EXPO_OFFLINE=1 EXPO_BASE_URL="$BASE" npx expo export --clear --platform web --output-dir "$OUT" >/dev/null
 # 앱 설치(PWA): 설치 정보·아이콘·서비스 워커를 첫 화면에 연결
 python3 - "$OUT/index.html" "$BASE" <<'PY'
 import sys
