@@ -12,6 +12,7 @@ import { HearingAlertModal } from '@/ui/hearing';
 import { SyncNotice } from '@/ui/sync-notice';
 import { FONT_FILES } from '@/ui/theme';
 import { useApp } from '@/ui/use-app';
+import { WebFrame } from '@/ui/web-frame';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -41,6 +42,8 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
       <StatusBar style="auto" />
+      {/* PC 웹: 처음에는 폰 메신저 크기 (나 탭에서 바꿈) */}
+      <WebFrame>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Protected guard={signedIn}>
           <Stack.Screen name="(tabs)" />
@@ -75,6 +78,7 @@ export default function RootLayout() {
           <Stack.Screen name="login" />
         </Stack.Protected>
       </Stack>
+      </WebFrame>
       {/* 기일 알람: 의뢰인·변호사 모두 확인할 때까지 어느 화면에서든 뜹니다 */}
       {signedIn ? <HearingAlertModal /> : null}
       <SyncNotice />

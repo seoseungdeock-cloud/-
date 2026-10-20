@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { boardOf } from '@/core/board';
@@ -8,13 +8,14 @@ import home from '@/data/home.json';
 import { Icon } from '@/ui/icons';
 import { Badge, T } from '@/ui/kit';
 import { family, MAX_WIDTH, radius, space, useColors } from '@/ui/theme';
+import { useFrameWidth } from '@/ui/web-frame';
 import { useApp } from '@/ui/use-app';
 
 // 의뢰인 첫 화면 (홈 대시보드)
 export default function HomeScreen() {
   const c = useColors();
   const s = useApp();
-  const { width } = useWindowDimensions();
+  const width = useFrameWidth();
   const inner = Math.min(width, MAX_WIDTH) - space.lg * 2;
   const [slide, setSlide] = useState(0);
   const [allFields, setAllFields] = useState(false);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, Switch, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, Switch, Text, View } from 'react-native';
 
 import { OFFICES } from '@/core/offices';
 import { canManageOpen } from '@/core/open-chat';
@@ -9,6 +9,7 @@ import type { Role } from '@/core/types';
 import { Badge, Button, Card, Chip, Chips, Empty, Input, Notice, Screen, Section, Sub, T } from '@/ui/kit';
 import { Icon } from '@/ui/icons';
 import { family, space, useColors } from '@/ui/theme';
+import { useFrameWidth } from '@/ui/web-frame';
 import { useApp, useMe } from '@/ui/use-app';
 
 const ROLES: { key: Role; label: string }[] = [
@@ -22,7 +23,7 @@ const ROLES: { key: Role; label: string }[] = [
 export default function BackofficeScreen() {
   const s = useApp();
   const user = useMe();
-  const { width } = useWindowDimensions();
+  const width = useFrameWidth();
   const [msg, setMsg] = useState<{ text: string; ok: boolean }>();
   const [form, setForm] = useState({ loginId: '', password: '', nickname: '', role: 'client' as Role, officeId: '', firm: '대륜' });
   const [resetFor, setResetFor] = useState<string>();

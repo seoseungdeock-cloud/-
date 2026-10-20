@@ -1,15 +1,16 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { Platform, Text, View } from 'react-native';
 
 import { presenceOf } from '@/core/messenger';
 import { canJoinMembership, canSeeSuggestions } from '@/core/rooms';
 import { actions } from '@/core/store';
 import { enableWebPush, webPushState } from '@/core/web-push';
 import { usePresenceColor } from '@/ui/presence';
-import { Avatar, Badge, Button, Card, Screen, Section, Sub, T } from '@/ui/kit';
+import { Avatar, Badge, Button, Card, Chip, Chips, Screen, Section, Sub, T } from '@/ui/kit';
 import { family, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
+import { FRAME_SIZES, setFrameSize, useFrameSize } from '@/ui/web-frame';
 
 export const ROLE_LABEL = { client: '의뢰인', lawyer: '변호사', staff: '직원', admin: '어드민' } as const;
 
@@ -46,6 +47,7 @@ export default function MeScreen() {
         </Section>
       ) : null}
       <WebPushCard />
+      <FrameSizeCard />
       <Section title="라잇나우 건의사항">
         <Card onPress={() => router.push('/suggest')}>
           <T bold>건의사항 쓰기</T>
@@ -83,6 +85,19 @@ function WebPushCard() {
         <T bold>{state === 'granted' ? '알림 받는 중' : state === 'denied' ? '알림이 차단됨' : '알림 받기'}</T>
         {state === 'denied' ? <Sub>브라우저 주소창 왼쪽 자물쇠 아이콘에서 알림을 허용해 주세요.</Sub> : null}
       </Card>
+    </Section>
+  );
+}
+
+/** PC·웹 브라우저에서만: 화면 크기 (처음에는 폰 크기) */
+function FrameSizeCard() {
+  const size = useFrameSize();
+  if (Platform.OS !== 'web') return null;
+  return (
+    <Section title="화면 크기">
+      <Chips>
+        {FRAME_SIZES.map((f) => <Chip key={f.key} label={f.label} active={size === f.key} onPress={() => setFrameSize(f.key)} />)}
+      </Chips>
     </Section>
   );
 }
