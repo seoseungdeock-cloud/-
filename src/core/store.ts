@@ -29,6 +29,7 @@ import { summarizeMeeting, type MeetingNotes } from './meeting';
 import { asksCaseInfo, assignmentText, caseStatusText } from './case-bot';
 import { AUTH_TTL_MIN, canReceiveAuthCodes, checkAuthCode, type AuthCode } from './auth-codes';
 import { digestPosts, LAW_BOT, type LawUpdate } from './law-digest';
+import { deadlineCasesFrom, dueLimitPosts, LIMIT_BOT } from './deadlines';
 import { alertText, CHANGE_LABEL, recipientsOf, whenLabel } from './hearings';
 import { boardOf, canSeeBoard, canWriteBoard, formatUntil, MAX_ATTACHMENTS, needsField, reportTarget, restrictedUntil, toggleVote } from './board';
 import { displayName, isMaster, parseMentions, roomMasters, type Reads } from './messenger';
@@ -54,6 +55,8 @@ import {
   type NoteThread,
   type BoardReport,
   type CaseInfo,
+  type DeadlineCase,
+  type FixedDeadline,
   type Message,
   type NotifyLevel,
   type OpenMessage,
@@ -102,6 +105,8 @@ export type State = {
   authCodes: AuthCode[];
   /** 기일 알람 (의뢰인·변호사 모두 확인할 때까지) */
   hearingAlerts: HearingAlert[];
+  /** 서버 연결 시 어드민: 사건별 불변기간 (어드민은 사건방 참여자가 아니어서 따로 받음) */
+  deadlineCases?: DeadlineCase[];
   /** 서버 연결 시: 저장된 로그인을 확인하는 중이면 false */
   booted: boolean;
   /** 서버 연결 시: 서버에 저장하지 못한 사유 (화면 위에 잠깐 표시) */
@@ -110,10 +115,12 @@ export type State = {
 
 const T0 = '2026-10-13T09:00:00.000Z';
 const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+/** 오늘(한국 시간)에서 n일 뒤 날짜 */
+const kstDay = (n: number) => new Date(Date.now() + 9 * 3_600_000 + n * 86_400_000).toISOString().slice(0, 10);
 
 export function initialState(): State {
   const users: User[] = [
-    { id: 'u_admin', superAdmin: true, nickname: '승덕', role: 'admin', firm: '대륜', agentAccess: true, membership: 'basic', title: 'Admin', dept: '경영지원본부', branch: '본사', phone: '010-0000-0001', email: 'admin@example.com', joinedAt: '2026-06-15' },
+    { id: 'u_admin', superAdmin: true, executive: true, nickname: '승덕', role: 'admin', firm: '대륜', agentAccess: true, membership: 'basic', title: 'Admin', dept: '경영지원본부', branch: '본사', phone: '010-0000-0001', email: 'admin@example.com', joinedAt: '2026-06-15' },
     { id: 'u_staff', nickname: '사무국 직원', role: 'staff', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Staff', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0002', email: 'staff@example.com', joinedAt: '2025-03-02' },
     { id: 'u_lawyer', nickname: '샘플 변호사 A', role: 'lawyer', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Partner Attorney', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0003', email: 'lawyer@example.com', joinedAt: '2020-09-01' },
     { id: 'u_client', nickname: '하늘', role: 'client', agentAccess: false, membership: 'basic' },
@@ -153,6 +160,10 @@ export function initialState(): State {
         ],
         documents: [{ id: 'dc1', name: '임대차계약서.pdf', addedAt: ago(29) }, { id: 'dc2', name: '내용증명 사본.pdf', addedAt: ago(20) }],
         costs: [], progress: [{ id: 'pg1', at: ago(30), note: '수임' }],
+        limits: [
+          { id: 'lm1', label: '즉시항고기간', due: kstDay(0), source: 'manual' },
+          { id: 'lm2', label: '항소기간', due: kstDay(3), source: 'manual' },
+        ],
       },
     },
   ];
@@ -169,7 +180,7 @@ export function initialState(): State {
     { id: 'mc2', roomId: 'r_case1', senderId: 'u_lawyer', kind: 'text', text: '네, 이번 주 안에 소장 초안 보내드리겠습니다. 계약서 원본은 보관해 두세요.', at: ago(5.5) },
     { id: 'mt5', roomId: 'r_team', senderId: 'u_l2', kind: 'text', text: '@승덕 대표님 확인 부탁드립니다.', at: ago(0.5), mentions: ['u_admin'] },
   ];
-  return {
+  const s: State = {
     booted: true,
     currentUserId: null,
     users,
@@ -316,6 +327,8 @@ export function initialState(): State {
       { id: 'om3', roomId: 'o2', senderId: 'u_l3', text: '부가세 신고 다들 직접 하시나요?', at: ago(20) },
     ],
   };
+  // 만료일이 된 예시 불변기간의 경고 글
+  return { ...s, posts: [...dueLimitPosts(s.rooms, s.users, s.posts), ...s.posts] };
 }
 
 /** 서버 연결 시 처음 상태: 서버에서 받을 데이터는 비우고, 아직 서버가 없는 업무 도구 예시만 남깁니다. */
@@ -445,7 +458,7 @@ export async function refresh(full = false): Promise<void> {
 
 // 실시간: 이 표들이 바뀌면 서버가 바로 알려 줍니다 (내가 볼 수 있는 행만).
 // 메시지·공감·숨김·읽음은 온 한 줄만 화면에 반영하고, 드문 변경(방·사건·기일 등)은 메시지를 뺀 나머지를 다시 받습니다.
-const LIVE_TABLES = ['room_notices', 'rooms', 'cases', 'hearings', 'case_progress', 'hearing_alerts', 'hearing_alert_recipients'];
+const LIVE_TABLES = ['room_notices', 'rooms', 'cases', 'hearings', 'case_deadlines', 'case_progress', 'hearing_alerts', 'hearing_alert_recipients'];
 let live: RealtimeChannel | null = null;
 let liveTimer: ReturnType<typeof setTimeout> | undefined;
 let liveStarting = false;
@@ -676,6 +689,26 @@ function updateMessage(id: string, fn: (m: Message) => Message) {
 
 function updateRoom(roomId: string, fn: (r: Room) => Room) {
   set((s) => ({ rooms: s.rooms.map((r) => (r.id === roomId ? fn(r) : r)) }));
+}
+
+function updateLimits(roomId: string, fn: (ls: FixedDeadline[]) => FixedDeadline[]) {
+  updateRoom(roomId, (r) => (r.caseInfo ? { ...r, caseInfo: { ...r.caseInfo, limits: fn(r.caseInfo.limits ?? []) } } : r));
+}
+
+function limitLawyerIds(room: Room): string[] {
+  return state.users.filter((u) => u.role === 'lawyer' && room.memberIds.includes(u.id)).map((u) => u.id);
+}
+
+/** 서버 없이 쓸 때: 만료일이 된 불변기간 경고 글을 기기 안에서 올립니다 (서버에서는 1분마다 서버가 올림). */
+function checkLimitsLocally() {
+  if (remote) return;
+  const fresh = dueLimitPosts(state.rooms, state.users, state.posts);
+  if (fresh.length) set((s) => ({ posts: [...fresh, ...s.posts] }));
+}
+
+/** 어드민 화면의 사건별 불변기간: 서버에서 받은 목록, 없으면 기기 안 사건방에서 */
+export function deadlineCases(s: State): DeadlineCase[] {
+  return s.deadlineCases ?? deadlineCasesFrom(s.rooms, s.users);
 }
 
 /** 이 방에서 마지막 회의 정리 이후 사람들이 나눈 대화를 회의록으로 만듭니다. */
@@ -1524,6 +1557,76 @@ export const actions = {
     return { ok: true };
   },
 
+  // ---- 불변기간 ----
+
+  /** 불변기간 등록 (사건방의 변호사·직원). 담당 변호사를 고르지 않으면 사건방의 변호사 전원이 받습니다. */
+  addLimit(roomId: string, input: { label: string; due: string; lawyerId?: string }): RoomCheck {
+    const room = state.rooms.find((r) => r.id === roomId);
+    const u = me();
+    if (!room?.caseInfo) return { ok: false, reason: '사건방에서만 불변기간을 올릴 수 있습니다.' };
+    if (u.role === 'client' || !room.memberIds.includes(u.id)) return { ok: false, reason: '담당 변호사·직원만 불변기간을 관리할 수 있습니다.' };
+    if (!input.label.trim()) return { ok: false, reason: '불변기간 이름을 적어 주세요.' };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.due) || Number.isNaN(Date.parse(input.due))) return { ok: false, reason: '만료일은 2026-11-02 형식으로 적어 주세요.' };
+    if (input.lawyerId && !limitLawyerIds(room).includes(input.lawyerId)) return { ok: false, reason: '이 사건방의 변호사만 담당으로 지정할 수 있습니다.' };
+    const d: FixedDeadline = { id: newId('lm'), label: input.label.trim(), due: input.due, source: 'manual', ...(input.lawyerId ? { lawyerId: input.lawyerId } : {}) };
+    updateLimits(roomId, (ls) => [...ls, d].sort((a, b) => a.due.localeCompare(b.due)));
+    mirror((r) => r.addDeadline(d.id, roomId, d.label, d.due, d.lawyerId));
+    checkLimitsLocally();
+    return { ok: true };
+  },
+
+  /** 조치 완료 표시 / 취소 */
+  setLimitHandled(roomId: string, id: string, done: boolean): RoomCheck {
+    const room = state.rooms.find((r) => r.id === roomId);
+    const u = me();
+    if (!room?.caseInfo?.limits?.some((d) => d.id === id)) return { ok: false, reason: '불변기간을 찾을 수 없습니다.' };
+    if (u.role === 'client' || !room.memberIds.includes(u.id)) return { ok: false, reason: '담당 변호사·직원만 불변기간을 관리할 수 있습니다.' };
+    const at = nowIso();
+    updateLimits(roomId, (ls) => ls.map((d) => (d.id === id ? { ...d, handledAt: done ? at : undefined } : d)));
+    // 이미 올라간 경고 글에도 표시 (서버는 set_deadline_handled가 함께 고침)
+    silently(() =>
+      set((s) => ({
+        posts: s.posts.map((p) => (p.sourceId !== `deadline:${id}` ? p : { ...p, title: done ? (p.title.endsWith(' (조치 완료)') ? p.title : `${p.title} (조치 완료)`) : p.title.replace(' (조치 완료)', '') })),
+      })),
+    );
+    mirror((r) => r.setDeadlineHandled(id, done));
+    if (!done) checkLimitsLocally();
+    return { ok: true };
+  },
+
+  removeLimit(roomId: string, id: string): RoomCheck {
+    const room = state.rooms.find((r) => r.id === roomId);
+    const u = me();
+    const d = room?.caseInfo?.limits?.find((x) => x.id === id);
+    if (!room || !d) return { ok: false, reason: '불변기간을 찾을 수 없습니다.' };
+    if (u.role === 'client' || !room.memberIds.includes(u.id)) return { ok: false, reason: '담당 변호사·직원만 불변기간을 관리할 수 있습니다.' };
+    if (d.source === 'daeryuntop') return { ok: false, reason: '대륜탑에서 온 불변기간은 대륜탑에서 바꿔 주세요.' };
+    updateLimits(roomId, (ls) => ls.filter((x) => x.id !== id));
+    mirror((r) => r.deleteDeadline(id));
+    return { ok: true };
+  },
+
+  /** 어드민: 대표 계정 지정 (모든 사건의 불변기간 경고를 받음) */
+  setExecutive(userId: string, on: boolean): RoomCheck {
+    if (me().role !== 'admin') return { ok: false, reason: '어드민만 바꿀 수 있습니다.' };
+    const target = userById(userId);
+    if (!target) return { ok: false, reason: '계정을 찾을 수 없습니다.' };
+    if (on && target.role === 'client') return { ok: false, reason: '의뢰인 계정은 대표로 지정할 수 없습니다.' };
+    set((s) => ({ users: s.users.map((u) => (u.id === userId ? { ...u, executive: on || undefined } : u)) }));
+    mirror((r) => r.setExecutive(userId, on));
+    return { ok: true };
+  },
+
+  /** 어드민: 사건별 불변기간 알림 켜기·끄기 */
+  setLimitAlerts(roomId: string, on: boolean): RoomCheck {
+    if (me().role !== 'admin') return { ok: false, reason: '어드민만 바꿀 수 있습니다.' };
+    updateRoom(roomId, (r) => (r.caseInfo ? { ...r, caseInfo: { ...r.caseInfo, limitAlerts: on ? undefined : false } } : r));
+    set((s) => (s.deadlineCases ? { deadlineCases: s.deadlineCases.map((c) => (c.roomId === roomId ? { ...c, alertsOn: on } : c)) } : {}));
+    mirror((r) => r.setDeadlineAlerts(roomId, on));
+    if (on) checkLimitsLocally();
+    return { ok: true };
+  },
+
   setCaseStage(roomId: string, stage: CaseInfo['stage']) {
     updateRoom(roomId, (r) => (r.caseInfo ? { ...r, caseInfo: { ...r.caseInfo, stage } } : r));
     mirror((r) => r.setCaseStage(roomId, stage));
@@ -1745,7 +1848,7 @@ export const actions = {
     if (denied) return denied;
     const uid = me().id;
     if (toUserId === uid) return { ok: false, reason: '내 글에는 쪽지를 보낼 수 없습니다.' };
-    if (toUserId === LAW_BOT) return { ok: false, reason: '자동 글에는 쪽지를 보낼 수 없습니다.' };
+    if (toUserId === LAW_BOT || toUserId === LIMIT_BOT) return { ok: false, reason: '자동 글에는 쪽지를 보낼 수 없습니다.' };
     const found = state.notes.find((n) => n.postId === postId && n.memberIds.includes(uid) && n.memberIds.includes(toUserId));
     if (found) return { ok: true, noteId: found.id };
     const note: NoteThread = { id: newId('n'), postId, memberIds: [uid, toUserId], messages: [], readAt: {} };

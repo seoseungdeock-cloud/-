@@ -23,7 +23,7 @@ self.addEventListener('push', (e) => {
         badge: base + 'app-icon-192.png',
         tag: data.roomId ? 'room-' + data.roomId : undefined,
         renotify: !!data.roomId,
-        requireInteraction: data.kind === 'hearing',
+        requireInteraction: data.kind === 'hearing' || data.kind === 'deadline',
         data,
       });
     }),

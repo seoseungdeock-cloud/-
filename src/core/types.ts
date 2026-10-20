@@ -24,6 +24,8 @@ export type User = {
   presence?: Presence; // 상태 (대화 가능, 회의 중 등)
   /** 관리자어드민: 어드민 중에서도 오픈대화방 실제 이용자 확인·관리 권한 */
   superAdmin?: boolean;
+  /** 대표 계정: 모든 사건의 불변기간 경고 알림을 받습니다. 어드민이 정합니다. */
+  executive?: boolean;
 };
 
 /** 방의 종류. 메신저·사건·업무·에이전트가 모두 같은 "방" 구조를 씁니다. */
@@ -90,7 +92,17 @@ export type CaseInfo = {
   documents: { id: string; name: string; addedAt: string }[];
   costs: { id: string; label: string; amount: number }[];
   progress: { id: string; at: string; note: string }[];
+  /** 불변기간 (의뢰인에게는 보이지 않음) */
+  limits?: FixedDeadline[];
+  /** 어드민이 이 사건의 불변기간 알림을 끈 경우 false */
+  limitAlerts?: boolean;
 };
+
+/** 불변기간 (항소·상고·이의신청 기간 등). 만료일 24:00까지. lawyerId가 없으면 사건방의 변호사 전원이 담당. */
+export type FixedDeadline = { id: string; label: string; due: string; lawyerId?: string; handledAt?: string; source?: HearingSource };
+
+/** 어드민 화면의 사건별 불변기간 목록 */
+export type DeadlineCase = { roomId: string; title: string; alertsOn: boolean; office: string; limits: FixedDeadline[] };
 
 export type Room = {
   id: string;
@@ -184,7 +196,7 @@ export type BoardPost = {
   aliases?: Record<string, number>;
 };
 
-export type BoardKind = 'notice' | 'anon' | 'lawyer' | 'advice' | 'event' | 'praise' | 'lawnews' | 'skyzai';
+export type BoardKind = 'notice' | 'deadline' | 'anon' | 'lawyer' | 'advice' | 'event' | 'praise' | 'lawnews' | 'skyzai';
 
 export type SuggestionStatus = 'open' | 'review' | 'done' | 'hold';
 export type Suggestion = { id: string; authorId: string; body: string; at: string; status: SuggestionStatus; answer?: string; answeredAt?: string };

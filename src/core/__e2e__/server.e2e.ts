@@ -163,6 +163,44 @@ describe('사건·기일', () => {
     expect(getState().messages.some((m) => m.text === '박의뢰님이 변론기일 알람을 확인했습니다.')).toBe(true);
   });
 
+  it('불변기간: 변호사가 등록·조치, 의뢰인은 못 봄, 어드민이 사건별로 끄고 대표 지정, 경고 글은 변호사만', async () => {
+    await sql(`update profiles set branch = '부산총괄본부' where id = '${ID.lawyer}'`);
+    await as('lawyer');
+    expect(actions.addLimit(CASE_ROOM, { label: '항소기간', due: '2026-11-10' }).ok).toBe(true);
+    await done();
+    await refresh();
+    const limit = getState().rooms.find((x) => x.id === CASE_ROOM)!.caseInfo!.limits![0];
+    expect(limit).toMatchObject({ label: '항소기간', due: '2026-11-10', source: 'manual' });
+
+    await as('client');
+    expect(getState().rooms.find((x) => x.id === CASE_ROOM)!.caseInfo!.limits).toBeUndefined();
+
+    await as('admin');
+    expect(getState().deadlineCases?.find((c) => c.roomId === CASE_ROOM)).toMatchObject({ alertsOn: true, office: '부산총괄본부', limits: [expect.objectContaining({ id: limit.id })] });
+    expect(actions.setExecutive(ID.staff, true).ok).toBe(true);
+    expect(actions.setLimitAlerts(CASE_ROOM, false).ok).toBe(true);
+    await done();
+    await refresh();
+    expect(getState().deadlineCases?.find((c) => c.roomId === CASE_ROOM)?.alertsOn).toBe(false);
+    expect(getState().users.find((u) => u.id === ID.staff)?.executive).toBe(true);
+    expect(actions.setLimitAlerts(CASE_ROOM, true).ok).toBe(true);
+    await done();
+
+    // 하루 전 24시가 지난 것처럼 서버 예약 작업을 돌림
+    await sql(`select enqueue_deadline_alerts('2026-11-10 00:05+09')`);
+    await as('lawyer');
+    await refresh();
+    const warn = getState().posts.find((p) => p.sourceId === `deadline:${limit.id}`);
+    expect(warn).toMatchObject({ board: 'deadline', authorId: 'bot_deadline' });
+    expect(warn?.title).toBe('[부산총괄본부] 불변기간 오늘 만료 · 임대차 · 김변호 항소기간');
+    expect(actions.setLimitHandled(CASE_ROOM, limit.id, true).ok).toBe(true);
+    await done();
+    await refresh();
+    expect(getState().posts.find((p) => p.sourceId === `deadline:${limit.id}`)?.title).toMatch(/\(조치 완료\)$/);
+    await as('staff');
+    expect(getState().posts.some((p) => p.sourceId === `deadline:${limit.id}`)).toBe(false);
+  });
+
   it('의뢰인의 수임 요청은 사건수행방으로 서버에 남음', async () => {
     await as('client');
     const r = actions.requestRetain('lw_1', '이혼', '상담 부탁드립니다');

@@ -3,7 +3,8 @@ import { Pressable, Switch, Text, useWindowDimensions, View } from 'react-native
 
 import { OFFICES } from '@/core/offices';
 import { canManageOpen } from '@/core/open-chat';
-import { actions } from '@/core/store';
+import { limitStatus, limitWhen } from '@/core/deadlines';
+import { actions, deadlineCases } from '@/core/store';
 import type { Role } from '@/core/types';
 import { Badge, Button, Card, Chip, Chips, Empty, Input, Notice, Screen, Section, Sub, T } from '@/ui/kit';
 import { Icon } from '@/ui/icons';
@@ -123,6 +124,32 @@ export default function BackofficeScreen() {
         </View>
       </Section>
 
+      <Section title="불변기간 알림">
+        {deadlineCases(s).filter((k) => k.limits.length).length ? null : <Sub>등록된 불변기간이 없습니다.</Sub>}
+        {deadlineCases(s)
+          .filter((k) => k.limits.length)
+          .map((k) => (
+            <Card key={k.roomId}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+                <View style={{ flex: 1 }}>
+                  <T bold>[{k.office}] {k.title}</T>
+                </View>
+                <Switch
+                  accessibilityLabel={`${k.title} 불변기간 알림`}
+                  value={k.alertsOn}
+                  onValueChange={(v) => report(actions.setLimitAlerts(k.roomId, v), v ? `${k.title} 불변기간 알림을 켰습니다.` : `${k.title} 불변기간 알림을 껐습니다.`)}
+                />
+              </View>
+              {k.limits.map((d) => (
+                <View key={d.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.xs }}>
+                  <Badge label={limitStatus(d).label} tone={limitStatus(d).tone} />
+                  <Sub>{d.label} · {limitWhen(d)}</Sub>
+                </View>
+              ))}
+            </Card>
+          ))}
+      </Section>
+
       <Section title="계정 목록">
         <Input placeholder="아이디·이름 검색" value={query} onChangeText={setQuery} />
         {rows.map(({ a, u }) => (
@@ -132,6 +159,7 @@ export default function BackofficeScreen() {
               <Sub>{a.loginId}</Sub>
               <Badge label={a.active ? '사용 중' : '중지됨'} tone={a.active ? 'secure' : 'warn'} />
               {u.role === 'admin' && u.superAdmin ? <Badge label="관리자어드민" tone="accent" /> : null}
+              {u.executive ? <Badge label="대표" tone="accent" /> : null}
             </View>
             <Sub>만든 날 {a.createdAt.slice(0, 10)} · 최근 로그인 {a.lastLoginAt ? a.lastLoginAt.slice(0, 16).replace('T', ' ') : '없음'}</Sub>
             <View style={{ marginTop: space.sm }}>
@@ -145,6 +173,12 @@ export default function BackofficeScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm }}>
                 <Switch value={u.agentAccess} onValueChange={(v) => report(actions.setAgentAccess(u.id, v), v ? `${u.nickname}님에게 대화방 @AI 업무 명령을 허용했습니다.` : `${u.nickname}님의 대화방 @AI 업무 명령을 해제했습니다.`)} />
                 <Sub>대화방 @AI 업무 명령 (회의 정리·의견·마케팅)</Sub>
+              </View>
+            ) : null}
+            {u.role !== 'client' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm }}>
+                <Switch value={!!u.executive} onValueChange={(v) => report(actions.setExecutive(u.id, v), v ? `${u.nickname}님을 대표로 지정했습니다.` : `${u.nickname}님의 대표 지정을 해제했습니다.`)} />
+                <Sub>대표 (모든 사건의 불변기간 경고 알림)</Sub>
               </View>
             ) : null}
             {u.role === 'admin' && canManageOpen(user) ? (

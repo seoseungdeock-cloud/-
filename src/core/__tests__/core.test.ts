@@ -9,7 +9,7 @@ import { planFromCommand, rankPerformance, mostSimilar } from '../marketing';
 import { summarizeMeeting } from '../meeting';
 import { officeCountByRegion, searchLawyers } from '../offices';
 import { aiAnswerLevel, canCreateRoom, canJoinMembership, canSeeSuggestions, canSeeWorkTab, canUseAgents } from '../rooms';
-import { actions, getState, me, resetState } from '../store';
+import { actions, deadlineCases, getState, me, resetState } from '../store';
 import { layoutChart, parseRows } from '../templates';
 import { similarity } from '../text';
 import type { Room, User } from '../types';
@@ -17,6 +17,7 @@ import { KOREA_REGIONS } from '../../data/korea-map';
 import { myCodes, secondsLeft, unreadCodes } from '../auth-codes';
 import { ackStatus, alertText, clientUnackedHours, dDay, demoUpdate, pendingFor, reminderPlan, whenLabel } from '../hearings';
 import { digestPosts, LAW_BOT, nextDigestAt, shortGist } from '../law-digest';
+import { dueLimitPosts, LIMIT_BOT, limitOffice, limitStatus } from '../deadlines';
 
 const user = (p: Partial<User>): User => ({
   id: 'x', nickname: 'x', role: 'client', agentAccess: false, membership: 'basic', ...p,
@@ -810,9 +811,9 @@ describe('15차: 탭 정리, 공지·사건자문·SKYZAI, 건의사항', () => 
     expect(canSeeWorkTab(me())).toBe(true);
   });
 
-  it('게시판 탭: 변호사는 공지부터 여덟 개, 어드민은 공지·익명·SKYZAI, 나머지는 익명만', () => {
+  it('게시판 탭: 변호사는 공지·불변기간부터 아홉 개, 어드민은 공지·익명·SKYZAI, 나머지는 익명만', () => {
     as('lawyer');
-    expect(boardsFor(me())).toEqual(['notice', 'anon', 'lawyer', 'advice', 'event', 'praise', 'lawnews', 'skyzai']);
+    expect(boardsFor(me())).toEqual(['notice', 'deadline', 'anon', 'lawyer', 'advice', 'event', 'praise', 'lawnews', 'skyzai']);
     as('admin');
     expect(boardsFor(me())).toEqual(['notice', 'anon', 'skyzai']);
     as('staff');
@@ -987,5 +988,60 @@ describe('17차: 기일 업데이트 알람', () => {
     expect(reminderPlan({ date: '2026-11-19' }, new Date('2026-11-18T12:00:00Z')).map((p) => p.label)).toEqual(['당일 아침']);
     expect(dDay('2026-10-21', new Date('2026-10-14T03:00:00Z'))).toBe(7);
     expect(whenLabel('2026-11-19', '10:00')).toBe('11월 19일(목) 10:00');
+  });
+});
+
+describe('불변기간 알림', () => {
+  const now = new Date('2026-11-09T15:30:00Z'); // 한국 시간 11월 10일 00:30
+  const kstDay = (n: number) => new Date(Date.now() + 9 * 3_600_000 + n * 86_400_000).toISOString().slice(0, 10);
+
+  it('예시: 오늘 만료인 불변기간은 변호사 전용 게시판에 [사무소] 말머리 경고 글이 있음', () => {
+    const post = getState().posts.find((p) => p.sourceId === 'deadline:lm1');
+    expect(post).toMatchObject({ board: 'deadline', authorId: LIMIT_BOT });
+    expect(post?.title).toMatch(/^\[부산총괄본부\] 불변기간 오늘 만료 · 임대차보증금 반환 즉시항고기간$/);
+    as('lawyer');
+    expect(canWriteBoard(me(), 'deadline')).toBe(false);
+    as('client');
+    expect(boardsFor(me())).not.toContain('deadline');
+  });
+
+  it('남은 날 표시', () => {
+    expect(limitStatus({ id: 'a', label: 'x', due: '2026-11-13' }, now)).toEqual({ label: 'D-3', tone: 'warn' });
+    expect(limitStatus({ id: 'a', label: 'x', due: '2026-11-10' }, now).label).toBe('오늘 만료');
+    expect(limitStatus({ id: 'a', label: 'x', due: '2026-11-09' }, now).label).toBe('도과');
+    expect(limitStatus({ id: 'a', label: 'x', due: '2026-11-09', handledAt: 'x' }, now).label).toBe('조치 완료');
+  });
+
+  it('말머리: 지점, 없으면 부서, 없으면 미지정', () => {
+    expect(limitOffice([user({ branch: '부산총괄본부' })])).toBe('부산총괄본부');
+    expect(limitOffice([user({ dept: '서울본부' })])).toBe('서울본부');
+    expect(limitOffice([])).toBe('미지정');
+  });
+
+  it('변호사가 등록·조치 완료, 의뢰인은 못 봄, 어드민은 사건별로 끔', () => {
+    as('lawyer');
+    expect(actions.addLimit('r_case1', { label: '상고기간', due: 'nope' }).ok).toBe(false);
+    expect(actions.addLimit('r_case1', { label: '상고기간', due: kstDay(0) }).ok).toBe(true);
+    const added = getState().rooms.find((r) => r.id === 'r_case1')!.caseInfo!.limits!.find((d) => d.label === '상고기간')!;
+    expect(getState().posts.some((p) => p.sourceId === `deadline:${added.id}`)).toBe(true);
+    expect(actions.setLimitHandled('r_case1', added.id, true).ok).toBe(true);
+    expect(getState().posts.find((p) => p.sourceId === `deadline:${added.id}`)?.title).toMatch(/ \(조치 완료\)$/);
+    as('client');
+    expect(actions.addLimit('r_case1', { label: 'x', due: kstDay(5) }).ok).toBe(false);
+    as('lawyer');
+    expect(actions.setLimitAlerts('r_case1', false).ok).toBe(false);
+    expect(actions.setExecutive('u_lawyer', true).ok).toBe(false);
+    as('admin');
+    expect(actions.setLimitAlerts('r_case1', false).ok).toBe(true);
+    expect(deadlineCases(getState()).find((c) => c.roomId === 'r_case1')?.alertsOn).toBe(false);
+    expect(actions.setExecutive('u_client', true).ok).toBe(false);
+    expect(actions.setExecutive('u_lawyer', true).ok).toBe(true);
+  });
+
+  it('알림을 끈 사건은 경고 글을 올리지 않음', () => {
+    const s = getState();
+    const rooms = s.rooms.map((r) => (r.caseInfo ? { ...r, caseInfo: { ...r.caseInfo, limitAlerts: false } } : r));
+    expect(dueLimitPosts(rooms, s.users, [])).toEqual([]);
+    expect(dueLimitPosts(s.rooms, s.users, []).length).toBe(1);
   });
 });

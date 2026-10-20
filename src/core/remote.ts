@@ -10,6 +10,8 @@ import type {
   BoardPost,
   BoardReport,
   CaseInfo,
+  DeadlineCase,
+  FixedDeadline,
   HearingAlert,
   Message,
   NoteThread,
@@ -91,6 +93,7 @@ export type Snapshot = {
   noticeSeen: Record<string, string[]>;
   suggestions: Suggestion[];
   authCodes: AuthCode[];
+  deadlineCases?: DeadlineCase[];
 };
 
 /** 로그인한 사람이 볼 수 있는 모든 데이터를 받아 앱 상태 모양으로 바꿉니다. */
@@ -175,7 +178,7 @@ export async function loadAll(sb: SupabaseClient, meId: string, withMessages = t
     profiles, favorites, rooms, members, messages, reactions, hides, notices,
     cases, hearings, docs, costs, progress, alerts, recipients,
     openRooms, openMembers, openMessages, myOpen,
-    posts, comments, notes, noteMessages, reports, bans, noticeSeen, suggestions, authCodes,
+    posts, comments, notes, noteMessages, reports, bans, noticeSeen, suggestions, authCodes, limits,
   ] = await Promise.all([
     all(sb, 'profiles', ['created_at', 'id']),
     all(sb, 'favorites', ['user_id', 'target_id']),
@@ -206,6 +209,7 @@ export async function loadAll(sb: SupabaseClient, meId: string, withMessages = t
     all(sb, 'notice_seen', ['post_id']),
     all(sb, 'suggestions', ['created_at', 'id']),
     all(sb, 'auth_codes', ['created_at', 'id']),
+    all(sb, 'case_deadlines', ['due_date', 'id']),
   ]);
 
   // ---- 사람 ----
@@ -213,7 +217,7 @@ export async function loadAll(sb: SupabaseClient, meId: string, withMessages = t
     id: p.id, nickname: p.nickname, role: p.role, agentAccess: p.agent_access, membership: p.membership,
     officeId: opt(p.office_id), firm: opt(p.firm), title: opt(p.title), dept: opt(p.dept), branch: opt(p.branch),
     phone: opt(p.phone), email: opt(p.email), birthday: opt(p.birthday), joinedAt: opt(p.joined_at),
-    status: opt(p.status), presence: p.presence, ...(p.super_admin ? { superAdmin: true } : {}),
+    status: opt(p.status), presence: p.presence, ...(p.super_admin ? { superAdmin: true } : {}), ...(p.is_executive ? { executive: true } : {}),
   }));
   const accounts: Account[] = profiles.map((p) => ({
     userId: p.id, loginId: p.login_id, password: '', active: p.active, createdAt: p.created_at, lastLoginAt: opt(p.last_login_at),
@@ -229,6 +233,7 @@ export async function loadAll(sb: SupabaseClient, meId: string, withMessages = t
   const docsBy = group(docs, (d) => d.room_id);
   const costsBy = group(costs, (d) => d.room_id);
   const progressBy = group(progress, (d) => d.room_id);
+  const limitsBy = group(limits, (d) => d.room_id);
   const noticesBy = group([...notices].reverse(), (n) => n.room_id);
   const caseInfo = (roomId: string): CaseInfo | undefined => {
     const c = caseBy.get(roomId);
@@ -239,6 +244,8 @@ export async function loadAll(sb: SupabaseClient, meId: string, withMessages = t
       documents: (docsBy.get(roomId) ?? []).map((d) => ({ id: d.id, name: d.name, addedAt: d.added_at })),
       costs: (costsBy.get(roomId) ?? []).map((d) => ({ id: d.id, label: d.label, amount: Number(d.amount) })),
       progress: (progressBy.get(roomId) ?? []).map((d) => ({ id: d.id, at: d.at, note: d.note })),
+      ...(limitsBy.has(roomId) ? { limits: (limitsBy.get(roomId) ?? []).map(limitFromRow) } : {}),
+      ...(c.deadline_alerts === false ? { limitAlerts: false } : {}),
     };
   };
   const roomList: Room[] = [...rooms].reverse().map((r) => {
@@ -340,7 +347,20 @@ export async function loadAll(sb: SupabaseClient, meId: string, withMessages = t
       ...(x.answer ? { answer: x.answer } : {}), ...(x.answered_at ? { answeredAt: x.answered_at } : {}),
     })),
     authCodes: authCodes.map((c) => ({ id: c.id, userId: c.user_id, code: c.code, at: c.created_at, expiresAt: c.expires_at, ...(c.read ? { read: true } : {}) })),
+    // 어드민은 사건방 참여자가 아니어서 사건별 불변기간을 따로 받습니다
+    ...(me?.role === 'admin' ? { deadlineCases: (await rpc<Row[]>(sb, 'admin_deadline_cases')).map(deadlineCaseFromRow) } : {}),
   };
+}
+
+function limitFromRow(d: Row): FixedDeadline {
+  return {
+    id: d.id, label: d.label, due: d.due_date ?? d.due, source: d.source ?? 'manual',
+    ...(d.lawyer_id ? { lawyerId: d.lawyer_id } : {}), ...((d.handled_at ?? d.handledAt) ? { handledAt: d.handled_at ?? d.handledAt } : {}),
+  };
+}
+
+function deadlineCaseFromRow(c: Row): DeadlineCase {
+  return { roomId: c.room_id, title: c.title, alertsOn: c.alerts_on, office: c.office, limits: (c.deadlines ?? []).map(limitFromRow) };
 }
 
 /** 오픈대화방 '방 id:사용자 id' → 참여자 번호 (내보내기에 씀) */
@@ -456,6 +476,12 @@ export function remoteOps(sb: SupabaseClient) {
       }),
     ackHearing: (id: string) => rpc(sb, 'ack_hearing', { p_alert: id }),
     remindHearing: (id: string) => rpc(sb, 'remind_hearing', { p_alert: id }),
+    addDeadline: (id: string, roomId: string, label: string, due: string, lawyerId?: string) =>
+      rpc(sb, 'add_deadline', { p_id: id, p_room: roomId, p_label: label, p_due: due, p_lawyer: lawyerId ?? null }),
+    setDeadlineHandled: (id: string, done: boolean) => rpc(sb, 'set_deadline_handled', { p_id: id, p_done: done }),
+    deleteDeadline: (id: string) => rpc(sb, 'delete_deadline', { p_id: id }),
+    setExecutive: (u: string, on: boolean) => rpc(sb, 'admin_set_executive', { p_user: u, p_on: on }),
+    setDeadlineAlerts: (roomId: string, on: boolean) => rpc(sb, 'admin_set_deadline_alerts', { p_room: roomId, p_on: on }),
 
     // 오픈대화방
     createOpenRoom: (r: OpenRoom, alias: string, password: string) =>
