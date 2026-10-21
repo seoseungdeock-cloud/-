@@ -58,14 +58,21 @@ export const radius = { sm: 8, md: 14, lg: 20, pill: 999 };
 export const font = { title: 26, h2: 20, body: 16, small: 14, tiny: 12 };
 export const MAX_WIDTH = 720;
 
-/** 글씨체: 카카오톡처럼 기기 기본 글씨체 (아이폰 애플 SD 산돌고딕 Neo, 안드로이드 기본 고딕, 윈도우 맑은 고딕). 따로 내려받지 않습니다. */
-const SYSTEM_WEB = '-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", "Noto Sans KR", "Segoe UI", Roboto, sans-serif';
+/** 글씨체: 웹·PC는 Noto Sans KR (구글 무료 글꼴, 메신저·포털에서 많이 쓰는 깔끔한 고딕). 폰 앱은 기기 기본 고딕. */
+const SYSTEM_WEB = '"Noto Sans KR", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
+if (Platform.OS === 'web' && typeof document !== 'undefined' && !document.getElementById('app-font')) {
+  const link = document.createElement('link');
+  link.id = 'app-font';
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap';
+  document.head.appendChild(link);
+}
 const face = (fontWeight: '400' | '500' | '600' | '700') => (Platform.OS === 'web' ? { fontFamily: SYSTEM_WEB, fontWeight } : { fontWeight });
 
 /** 글씨 굵기. 스타일 안에 펼쳐 씁니다: { ...family.bold } */
 export const family = {
   regular: face('400'),
-  semibold: face('600'),
+  semibold: face('500'),
   bold: face('700'),
   heavy: face('700'),
 };
