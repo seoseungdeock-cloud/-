@@ -20,7 +20,7 @@ def inline(m):
 
 
 js = re.sub(r'"(/assets/[^"]+)"', inline, js).replace('</script', '<\\/script')
-page = f'''<title>라잇나우 통합앱</title>
+page = f'''<title>대륜톡</title>
 <style>
 :root {{ --bg: #FFFFFF; }}
 @media (prefers-color-scheme: dark) {{ :root:not([data-theme="light"]) {{ --bg: #101317; color-scheme: dark }} }}

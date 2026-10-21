@@ -1,4 +1,4 @@
-// 라잇나우 서비스 워커: PC·폰 브라우저 '앱 설치'와 웹 알림(푸시)을 맡습니다. 화면 파일은 캐시하지 않고 항상 최신판을 받습니다.
+// 대륜톡 서비스 워커: PC·폰 브라우저 '앱 설치'와 웹 알림(푸시)을 맡습니다. 화면 파일은 캐시하지 않고 항상 최신판을 받습니다.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', () => {});
@@ -10,14 +10,14 @@ self.addEventListener('push', (e) => {
   try {
     msg = e.data ? e.data.json() : {};
   } catch {
-    msg = { title: '라잇나우', body: e.data ? e.data.text() : '' };
+    msg = { title: '대륜톡', body: e.data ? e.data.text() : '' };
   }
   const data = msg.data || {};
   e.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
       // 앱 창을 보고 있으면 새 메시지는 화면에 바로 들어오므로 띄우지 않습니다 (기일 알림은 항상 띄움)
       if (data.kind === 'message' && wins.some((w) => w.focused && w.visibilityState === 'visible')) return;
-      return self.registration.showNotification(msg.title || '라잇나우', {
+      return self.registration.showNotification(msg.title || '대륜톡', {
         body: msg.body || '',
         icon: base + 'app-icon-192.png',
         badge: base + 'app-icon-192.png',
