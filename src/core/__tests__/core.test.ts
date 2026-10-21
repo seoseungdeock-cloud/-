@@ -1199,3 +1199,19 @@ describe('불변기간 알림 시험 (가짜 사건)', () => {
     expect((await actions.seedTestLimits()).ok).toBe(false);
   });
 });
+
+describe('대화방 이름 바꾸기', () => {
+  it('참여자가 바꾸면 모두에게 같은 이름, 안내 메시지가 남고, 사건방은 의뢰인이 못 바꿈', () => {
+    as('lawyer');
+    const room = getState().rooms.find((r) => r.id === 'r_case1')!;
+    expect(actions.renameRoom(room.id, '  임대차 소송방 ').ok).toBe(true);
+    expect(getState().rooms.find((r) => r.id === room.id)!.title).toBe('임대차 소송방');
+    expect(getState().messages.filter((m) => m.roomId === room.id).at(-1)?.text).toMatch(/방 이름을 '임대차 소송방'\(으\)로 바꿨습니다/);
+    expect(actions.renameRoom(room.id, '').ok).toBe(false);
+    expect(actions.renameRoom(room.id, '가'.repeat(31)).ok).toBe(false);
+    as('client');
+    expect(actions.renameRoom(room.id, '내 사건')).toEqual({ ok: false, reason: '상담·사건방 이름은 변호사·직원만 바꿀 수 있습니다.' });
+    as('admin');
+    expect(actions.renameRoom(room.id, '남의 방').ok).toBe(false);
+  });
+});

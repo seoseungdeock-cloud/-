@@ -1264,6 +1264,22 @@ export const actions = {
     return { ok: true };
   },
 
+  /** 대화방 이름 바꾸기: 방 참여자 누구나 (상담·사건방은 변호사·직원만), 30자까지. 모두에게 같은 이름으로 보입니다. */
+  renameRoom(roomId: string, title: string): RoomCheck {
+    const room = state.rooms.find((r) => r.id === roomId);
+    const u = me();
+    const t = title.trim();
+    if (!room || !room.memberIds.includes(u.id)) return { ok: false, reason: '참여 중인 방이 아닙니다.' };
+    if ((room.kind === 'case' || room.kind === 'consult') && u.role === 'client') return { ok: false, reason: '상담·사건방 이름은 변호사·직원만 바꿀 수 있습니다.' };
+    if (!t) return { ok: false, reason: '방 이름을 적어 주세요.' };
+    if (t.length > 30) return { ok: false, reason: '방 이름은 30자까지 쓸 수 있습니다.' };
+    if (t === room.title) return { ok: true };
+    updateRoom(roomId, (r) => ({ ...r, title: t }));
+    mirror((r) => r.renameRoom(roomId, t));
+    pushMessage(roomId, SYSTEM_SENDER, 'system', `${u.nickname}님이 방 이름을 '${t}'(으)로 바꿨습니다.`);
+    return { ok: true };
+  },
+
   /** 마스터 지정·해제. 마스터만 할 수 있고, 마스터는 한 명 이상 남아야 합니다. */
   setMaster(roomId: string, userId: string, on: boolean): RoomCheck {
     const room = state.rooms.find((r) => r.id === roomId);

@@ -2,7 +2,7 @@
 import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import * as WebBrowser from 'expo-web-browser';
-import { Image, Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
 import { actions } from '@/core/store';
@@ -549,6 +549,13 @@ export function RoomDrawer({
   const amMaster = isMaster(room, me.id);
   const kickable = leavable;
   const [manage, setManage] = useState<string>();
+  const [rename, setRename] = useState<string>();
+  const canRename = !((room.kind === 'case' || room.kind === 'consult') && me.role === 'client');
+  const saveName = () => {
+    const r = actions.renameRoom(room.id, rename ?? '');
+    if (!r.ok) return onError(r.reason);
+    setRename(undefined);
+  };
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.35)' }}>
@@ -562,6 +569,31 @@ export function RoomDrawer({
                 <Icon name="close" color={c.text} size={22} />
               </Pressable>
             </View>
+            {canRename ? (
+              rename === undefined ? (
+                <Pressable accessibilityLabel="방 이름 바꾸기" onPress={() => setRename(room.title)} hitSlop={6} style={{ alignSelf: 'flex-start' }}>
+                  <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.accent }}>방 이름 바꾸기</Text>
+                </Pressable>
+              ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+                  <TextInput
+                    accessibilityLabel="새 방 이름"
+                    autoFocus
+                    maxLength={30}
+                    value={rename}
+                    onChangeText={setRename}
+                    onSubmitEditing={saveName}
+                    style={{ flex: 1, backgroundColor: c.surface, color: c.text, borderRadius: radius.sm, paddingHorizontal: space.md, paddingVertical: space.sm, fontFamily: family.regular, fontSize: 15 }}
+                  />
+                  <Pressable accessibilityLabel="방 이름 저장" onPress={saveName} hitSlop={6}>
+                    <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.accent }}>저장</Text>
+                  </Pressable>
+                  <Pressable accessibilityLabel="방 이름 바꾸기 취소" onPress={() => setRename(undefined)} hitSlop={6}>
+                    <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.sub }}>취소</Text>
+                  </Pressable>
+                </View>
+              )
+            ) : null}
 
             <DrawerHead title="알림" />
             <View style={{ flexDirection: 'row', gap: space.sm }}>
