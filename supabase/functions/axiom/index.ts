@@ -128,7 +128,7 @@ async function roomAsk(sb: SupabaseClient, ctx: Ctx, uid: string, args: Record<s
   if (!room || !me?.profiles?.active) return { reply: null, reason: '참여 중인 방이 아닙니다.' };
   const self = selfRoomLike(room.kind, list.length, room.title) ? { firm: me.profiles.role !== 'client' } : undefined;
   const level = levelOf(room.mode, room.kind, list.some((m) => m.profiles?.role === 'lawyer'), self);
-  if (level === 'none') return { reply: null, reason: '사건수행방에서는 AI가 대화에 참여하지 않습니다.' };
+  if (level === 'none') return { reply: null, reason: '이 방은 AI가 참여하지 않는 방입니다.' };
   const pick = resolve(INSTANCE, ctx.env, 'tier:balanced');
   if (pick.provider === 'mock') return { reply: null, reason: 'AI 키가 아직 연결되지 않았습니다.' };
   const { data: rows } = await sb.from('messages').select('sender_id, sender_kind, text, kind, recalled').eq('room_id', roomId).order('created_at', { ascending: false }).limit(20);

@@ -1,11 +1,12 @@
 // 대화방 화면 조각 (웍스 대화방 구성: 읽음 수, 답장 인용, 전달, 회수, 공감, 멘션, 공지, 방 메뉴)
 import { router } from 'expo-router';
 import { createElement, useState, type ReactNode } from 'react';
-import { Image, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Image, Modal, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 
 import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
 import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Attachment, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
+import { isSelfRoom } from '@/core/calendar';
 import { Icon, type IconName } from './icons';
 import { HearingCard } from './hearing';
 import { FileActions, fileSize, isVideo, openFile } from './board';
@@ -645,6 +646,26 @@ export function RoomDrawer({
                   </Pressable>
                 </View>
               )
+            ) : null}
+
+            {me.role === 'admin' && !isSelfRoom(room, me.id) ? (
+              <>
+                <DrawerHead title="AI 참여 (어드민)" />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+                  <Text style={{ flex: 1, ...family.regular, fontSize: 13, color: c.sub }}>
+                    {room.kind === 'case' || room.kind === 'consult' ? '사건방·상담방은 AI 참여를 켤 수 없습니다.' : room.mode === 'ai' ? '@AI로 부르면 AI가 최근 대화를 읽고 답합니다.' : 'AI가 이 방의 대화를 읽지 않습니다.'}
+                  </Text>
+                  <Switch
+                    accessibilityLabel="AI 참여"
+                    value={room.mode === 'ai'}
+                    disabled={room.mode !== 'ai' && (room.kind === 'case' || room.kind === 'consult')}
+                    onValueChange={(v) => {
+                      const r = actions.setRoomAi(room.id, v);
+                      if (!r.ok) onError(r.reason);
+                    }}
+                  />
+                </View>
+              </>
             ) : null}
 
             <DrawerHead title="알림" />

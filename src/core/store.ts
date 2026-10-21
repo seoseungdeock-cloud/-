@@ -1297,6 +1297,20 @@ export const actions = {
     return { ok: true };
   },
 
+  /** AI 참여 켜기·끄기: 어드민만. 사건방·상담방은 켤 수 없고, 바꾸면 방에 안내를 남깁니다. */
+  setRoomAi(roomId: string, on: boolean): RoomCheck {
+    const room = state.rooms.find((r) => r.id === roomId);
+    const u = me();
+    if (u.role !== 'admin') return { ok: false, reason: '어드민만 AI 참여를 바꿀 수 있습니다.' };
+    if (!room || !room.memberIds.includes(u.id)) return { ok: false, reason: '참여 중인 방이 아닙니다.' };
+    if (on && (room.kind === 'case' || room.kind === 'consult')) return { ok: false, reason: '사건방·상담방은 AI 참여를 켤 수 없습니다.' };
+    if ((room.mode === 'ai') === on) return { ok: true };
+    updateRoom(roomId, (r) => ({ ...r, mode: on ? 'ai' : 'private' }));
+    mirror((r) => r.setRoomAi(roomId, on));
+    pushMessage(roomId, SYSTEM_SENDER, 'system', on ? `어드민(${u.nickname})이 이 방의 AI 참여를 켰습니다. 이제 @AI로 부르면 AI가 최근 대화를 읽고 답합니다.` : `어드민(${u.nickname})이 이 방의 AI 참여를 껐습니다. AI는 이 방의 대화를 읽지 않습니다.`);
+    return { ok: true };
+  },
+
   /** 마스터 지정·해제. 마스터만 할 수 있고, 마스터는 한 명 이상 남아야 합니다. */
   setMaster(roomId: string, userId: string, on: boolean): RoomCheck {
     const room = state.rooms.find((r) => r.id === roomId);

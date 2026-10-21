@@ -88,6 +88,21 @@ describe('메신저 흐름', () => {
     expect(last.text).toContain('AI 미연결');
   });
 
+  it('어드민만 AI 참여를 켜고 끄며, 사건방은 켤 수 없다', async () => {
+    as('admin');
+    expect(actions.setRoomAi('r_direct', true).ok).toBe(true);
+    expect(getState().rooms.find((r) => r.id === 'r_direct')!.mode).toBe('ai');
+    expect(getState().messages.at(-1)!.text).toContain('AI 참여를 켰습니다');
+    await actions.sendMessage('r_direct', '@AI 준비서면 목차');
+    expect(getState().messages.at(-1)!.kind).toBe('ai');
+    expect(actions.setRoomAi('r_direct', false).ok).toBe(true);
+    expect(getState().messages.at(-1)!.text).toContain('AI 참여를 껐습니다');
+    as('staff');
+    expect(actions.setRoomAi('r_direct', true).ok).toBe(false);
+    as('lawyer');
+    expect(actions.setRoomAi('r_case1', true).ok).toBe(false);
+  });
+
   it('상담 신청 → 사건방 전환', () => {
     as('client');
     const res = actions.requestConsult('lw_1', '이혼 상담 원합니다');
