@@ -1,3 +1,4 @@
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, Switch, Text, View } from 'react-native';
 
@@ -10,6 +11,7 @@ import { Badge, Button, Card, Chip, Chips, Empty, Input, Notice, Screen, Section
 import { Icon } from '@/ui/icons';
 import { family, space, useColors } from '@/ui/theme';
 import { DaeryuntopSection } from '@/ui/daeryuntop-panel';
+import { LimitTestSection } from '@/ui/limit-test-panel';
 import { useFrameWidth } from '@/ui/web-frame';
 import { useApp, useMe } from '@/ui/use-app';
 
@@ -18,6 +20,17 @@ const ROLES: { key: Role; label: string }[] = [
   { key: 'lawyer', label: '변호사' },
   { key: 'staff', label: '직원' },
   { key: 'admin', label: '어드민' },
+];
+
+type AppState = ReturnType<typeof useApp>;
+/** 백오피스 메뉴: 기능마다 따로 열림 */
+const MENU: { key: string; label: string; sub: (s: AppState) => string; superOnly?: boolean }[] = [
+  { key: 'accounts', label: '계정 목록', sub: (s) => `계정 ${s.accounts.length}개 · 사용 중 ${s.accounts.filter((a) => a.active).length}개` },
+  { key: 'create', label: '계정 만들기', sub: () => '아이디·비밀번호·역할·소속' },
+  { key: 'titles', label: '직책 일괄 지정', sub: () => '여러 명의 직책을 한 번에' },
+  { key: 'limits', label: '불변기간 알림', sub: () => '사건별 알림 켜기·끄기' },
+  { key: 'limitTest', label: '불변기간 알림 시험', sub: () => '가짜 사건으로 알림 미리 받아 보기', superOnly: true },
+  { key: 'daeryuntop', label: '대륜탑 연동', sub: () => '사건번호 연결, 사건 목록 엑셀 올리기' },
 ];
 
 /** 백오피스: 계정 발급과 관리. 지금은 앱 안 화면이고, 서버가 붙으면 별도 웹 관리자 페이지로 분리할 수 있습니다. */
@@ -33,6 +46,7 @@ export default function BackofficeScreen() {
   const [title, setTitle] = useState('');
   const [picked, setPicked] = useState<string[]>([]);
   const c = useColors();
+  const sec = useLocalSearchParams<{ s?: string }>().s;
 
   if (user.role !== 'admin') return <Screen title="백오피스" back><Empty text="어드민만 볼 수 있습니다." /></Screen>;
 
@@ -46,11 +60,23 @@ export default function BackofficeScreen() {
     .filter(({ a, u }) => !query.trim() || a.loginId.includes(query.trim()) || u.nickname.includes(query.trim()));
 
   return (
-    <Screen title="백오피스" back>
-      <Sub>계정 {s.accounts.length}개 · 사용 중 {s.accounts.filter((a) => a.active).length}개</Sub>
+    <Screen title={MENU.find((m) => m.key === sec)?.label ?? '백오피스'} back>
+      {!sec ? (
+        <View style={{ marginTop: space.md }}>
+          {MENU.filter((m) => !m.superOnly || canManageOpen(user)).map((m) => (
+            <Card key={m.key} onPress={() => { setMsg(undefined); router.push({ pathname: '/backoffice', params: { s: m.key } }); }}>
+              <T bold>{m.label}</T>
+              <Sub>{m.sub(s)}</Sub>
+            </Card>
+          ))}
+        </View>
+      ) : null}
+
       {msg ? <View style={{ marginTop: space.md }}><Notice text={msg.text} tone={msg.ok ? 'accent' : 'warn'} /></View> : null}
 
-      <Section title="계정 만들기">
+      {sec === 'create' ? (
+        <>
+      <View style={{ marginTop: space.md }}>
         <View style={{ flexDirection: width > 640 ? 'row' : 'column', gap: space.sm }}>
           <View style={{ flex: 1 }}><Input label="아이디" autoCapitalize="none" value={form.loginId} onChangeText={(loginId) => setForm((f) => ({ ...f, loginId }))} /></View>
           <View style={{ flex: 1 }}><Input label="초기 비밀번호 (8자 이상)" value={form.password} onChangeText={(password) => setForm((f) => ({ ...f, password }))} /></View>
@@ -77,9 +103,13 @@ export default function BackofficeScreen() {
             if (r.ok) setForm({ loginId: '', password: '', nickname: '', role: 'client', officeId: '', firm: '대륜' });
           }}
         />
-      </Section>
+      </View>
+        </>
+      ) : null}
 
-      <Section title="직책 일괄 지정">
+      {sec === 'titles' ? (
+        <>
+      <View style={{ marginTop: space.md }}>
         <Input label="직책" placeholder="예: Associate Attorney" value={title} onChangeText={setTitle} />
         <Chips>
           {[...new Set(s.users.map((u) => u.title).filter((t): t is string => !!t))].sort().map((t) => (
@@ -124,9 +154,13 @@ export default function BackofficeScreen() {
             }}
           />
         </View>
-      </Section>
+      </View>
+        </>
+      ) : null}
 
-      <Section title="불변기간 알림">
+      {sec === 'limits' ? (
+        <>
+      <View style={{ marginTop: space.md }}>
         {deadlineCases(s).filter((k) => k.limits.length).length ? null : <Sub>등록된 불변기간이 없습니다.</Sub>}
         {deadlineCases(s)
           .filter((k) => k.limits.length)
@@ -150,11 +184,16 @@ export default function BackofficeScreen() {
               ))}
             </Card>
           ))}
-      </Section>
+      </View>
+        </>
+      ) : null}
 
-      <DaeryuntopSection report={report} />
+      {sec === 'daeryuntop' ? <DaeryuntopSection report={report} /> : null}
+      {sec === 'limitTest' ? <LimitTestSection report={report} /> : null}
 
-      <Section title="계정 목록">
+      {sec === 'accounts' ? (
+        <>
+      <View style={{ marginTop: space.md }}>
         <Input placeholder="아이디·이름 검색" value={query} onChangeText={setQuery} />
         {rows.map(({ a, u }) => (
           <Card key={a.userId}>
@@ -212,7 +251,9 @@ export default function BackofficeScreen() {
             )}
           </Card>
         ))}
-      </Section>
+      </View>
+        </>
+      ) : null}
     </Screen>
   );
 }

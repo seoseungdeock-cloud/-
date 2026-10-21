@@ -6,7 +6,7 @@ import { readTableFile, rowsFromTable, summarize } from '@/core/daeryuntop';
 import { canManageOpen } from '@/core/open-chat';
 import { actions, deadlineCases } from '@/core/store';
 import type { DeadlineCase } from '@/core/types';
-import { Button, Card, Input, Notice, Section, Sub, T } from '@/ui/kit';
+import { Button, Card, Input, Notice, Sub, T } from '@/ui/kit';
 import { space } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 
@@ -64,7 +64,7 @@ export function DaeryuntopSection({ report }: { report: (r: { ok: boolean; reaso
   };
 
   return (
-    <Section title="대륜탑 연동">
+    <View style={{ marginTop: space.md }}>
       {Platform.OS === 'web' && canManageOpen(user) ? (
         <View style={{ marginBottom: space.md, gap: space.xs }}>
           <Button label={busy ? '올리는 중…' : '대륜탑 사건 목록 엑셀 올리기'} disabled={busy} onPress={() => void upload()} />
@@ -72,6 +72,6 @@ export function DaeryuntopSection({ report }: { report: (r: { ok: boolean; reaso
         </View>
       ) : null}
       {cases.length ? cases.map((k) => <CaseNoRow key={`${k.roomId}:${k.caseNo ?? ''}`} k={k} onDone={report} />) : <Sub>사건이 없습니다.</Sub>}
-    </Section>
+    </View>
   );
 }

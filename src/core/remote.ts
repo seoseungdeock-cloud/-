@@ -487,6 +487,9 @@ export function remoteOps(sb: SupabaseClient) {
     deleteDeadline: (id: string) => rpc(sb, 'delete_deadline', { p_id: id }),
     setExecutive: (u: string, on: boolean) => rpc(sb, 'admin_set_executive', { p_user: u, p_on: on }),
     setDeadlineAlerts: (roomId: string, on: boolean) => rpc(sb, 'admin_set_deadline_alerts', { p_room: roomId, p_on: on }),
+    seedTestLimits: () => rpc<number>(sb, 'admin_seed_test_deadlines'),
+    clearTestLimits: () => rpc<number>(sb, 'admin_clear_test_deadlines'),
+    fireTestLimit: (id: string, slot: string) => rpc<{ title: string; body: string; recipients: number }>(sb, 'admin_fire_test_deadline', { p_deadline: id, p_slot: slot }),
     setCaseNo: (roomId: string, caseNo: string) => rpc(sb, 'admin_set_case_no', { p_room: roomId, p_case_no: caseNo }),
     importDaeryuntop: (rows: DtHearing[]) => rpc<{ id: string; caseNo?: string; result: string }[]>(sb, 'admin_import_daeryuntop', { p_rows: rows }),
 

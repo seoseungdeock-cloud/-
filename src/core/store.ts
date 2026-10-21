@@ -29,7 +29,7 @@ import { summarizeMeeting, type MeetingNotes } from './meeting';
 import { asksCaseInfo, assignmentText, caseStatusText } from './case-bot';
 import { AUTH_TTL_MIN, canReceiveAuthCodes, checkAuthCode, type AuthCode } from './auth-codes';
 import { digestPosts, LAW_BOT, type LawUpdate } from './law-digest';
-import { deadlineCasesFrom, dueLimitPosts, LIMIT_BOT } from './deadlines';
+import { deadlineCasesFrom, dueLimitPosts, LIMIT_BOT, limitLawyers, limitPost, limitPushText, type LimitSlot } from './deadlines';
 import { classify, type DtHearing, type DtResult } from './daeryuntop';
 import { alertText, CHANGE_LABEL, recipientsOf, whenLabel } from './hearings';
 import { boardOf, canSeeBoard, canWriteBoard, formatUntil, MAX_ATTACHMENTS, needsField, reportTarget, restrictedUntil, toggleVote } from './board';
@@ -117,6 +117,8 @@ export type State = {
 const T0 = '2026-10-13T09:00:00.000Z';
 const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
 /** 오늘(한국 시간)에서 n일 뒤 날짜 */
+/** 불변기간 알림 시험용 가짜 사건 제목 머리 */
+export const TEST_PREFIX = '[테스트]';
 const kstDay = (n: number) => new Date(Date.now() + 9 * 3_600_000 + n * 86_400_000).toISOString().slice(0, 10);
 
 export function initialState(): State {
@@ -1696,6 +1698,83 @@ export const actions = {
     set((s) => (s.deadlineCases ? { deadlineCases: s.deadlineCases.map((c) => (c.roomId === roomId ? { ...c, caseNo: no || undefined } : c)) } : {}));
     mirror((r) => r.setCaseNo(roomId, no));
     return { ok: true };
+  },
+
+  // ---- 불변기간 알림 시험 (관리자어드민, '[테스트]' 가짜 사건) ----
+
+  /** 가짜 사건 3개와 불변기간 (D-3, 오늘 만료, 도과, 조치 완료). 예약 작업이 건드리지 않게 사건 알림은 꺼 둡니다. */
+  async seedTestLimits(): Promise<RoomCheck> {
+    const u = me();
+    if (!canManageOpen(u)) return { ok: false, reason: '관리자어드민만 쓸 수 있습니다.' };
+    if (state.rooms.some((r) => r.caseInfo?.title.startsWith(TEST_PREFIX)) || state.deadlineCases?.some((c) => c.title.startsWith(TEST_PREFIX))) {
+      return { ok: false, reason: '이미 가짜 사건이 있습니다. 먼저 지워 주세요.' };
+    }
+    if (remote) {
+      try {
+        await queue;
+        await remote.seedTestLimits();
+        await refresh();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, reason: reasonOf(e as { message?: string }, '가짜 사건을 만들지 못했습니다.') };
+      }
+    }
+    const lawyer = state.users.find((x) => x.role === 'lawyer');
+    const mk = (title: string, field: string, limits: FixedDeadline[]): Room => ({
+      id: newId('r'), kind: 'case', mode: 'private', title, memberIds: [u.id, ...(lawyer && lawyer.id !== u.id ? [lawyer.id] : [])], createdBy: u.id, createdAt: nowIso(),
+      caseInfo: { title, field, stage: '진행', deadlines: [], documents: [], costs: [], progress: [], limits, limitAlerts: false },
+    });
+    const lm = (label: string, due: string, handled = false): FixedDeadline => ({ id: newId('lm'), label, due, source: 'manual', ...(handled ? { handledAt: nowIso() } : {}) });
+    const rooms = [
+      mk(`${TEST_PREFIX} 대여금 청구`, '민사', [lm('항소기간', kstDay(3)), lm('상고기간', kstDay(20), true)]),
+      mk(`${TEST_PREFIX} 사기 형사사건`, '형사', [lm('항소기간', kstDay(0))]),
+      mk(`${TEST_PREFIX} 영업정지 취소`, '행정', [lm('행정소송 제소기간', kstDay(-1))]),
+    ];
+    set((s) => ({ rooms: [...s.rooms, ...rooms] }));
+    return { ok: true };
+  },
+
+  async clearTestLimits(): Promise<RoomCheck> {
+    if (!canManageOpen(me())) return { ok: false, reason: '관리자어드민만 쓸 수 있습니다.' };
+    if (remote) {
+      try {
+        await queue;
+        await remote.clearTestLimits();
+        await refresh();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, reason: reasonOf(e as { message?: string }, '가짜 사건을 지우지 못했습니다.') };
+      }
+    }
+    const gone = state.rooms.filter((r) => r.caseInfo?.title.startsWith(TEST_PREFIX));
+    const src = new Set(gone.flatMap((r) => (r.caseInfo!.limits ?? []).map((d) => `deadline:${d.id}`)));
+    set((s) => ({ rooms: s.rooms.filter((r) => !gone.includes(r)), posts: s.posts.filter((p) => !p.sourceId || !src.has(p.sourceId)) }));
+    return { ok: true };
+  },
+
+  /** 시험 알림 지금 보내기: 실제와 같은 문구를 그 사건의 시험 변호사와 누른 사람에게. 만료일 경고는 게시판 글도 올림. */
+  async fireTestLimit(deadlineId: string, slot: LimitSlot): Promise<{ ok: true; title: string; body: string; recipients: number } | { ok: false; reason: string }> {
+    const u = me();
+    if (!canManageOpen(u)) return { ok: false, reason: '관리자어드민만 쓸 수 있습니다.' };
+    if (remote) {
+      try {
+        await queue;
+        const r = await remote.fireTestLimit(deadlineId, slot);
+        await refresh();
+        return { ok: true, ...r };
+      } catch (e) {
+        return { ok: false, reason: reasonOf(e as { message?: string }, '시험 알림을 보내지 못했습니다.') };
+      }
+    }
+    const room = state.rooms.find((r) => r.caseInfo?.title.startsWith(TEST_PREFIX) && r.caseInfo.limits?.some((d) => d.id === deadlineId));
+    const d = room?.caseInfo?.limits?.find((x) => x.id === deadlineId);
+    if (!room || !d) return { ok: false, reason: '가짜 사건의 불변기간만 시험할 수 있습니다.' };
+    if (slot === 'd0') {
+      const post = limitPost(room, d, state.users, nowIso());
+      set((s) => ({ posts: [post, ...s.posts.filter((p) => p.sourceId !== post.sourceId)] }));
+    }
+    const to = new Set([...limitLawyers(room, d, state.users).map((x) => x.id), u.id]);
+    return { ok: true, ...limitPushText(slot, d, room.caseInfo!.title), recipients: to.size };
   },
 
   /** 관리자어드민: 대륜탑 기일 여러 줄 받기 (엑셀 올리기). 서버가 있으면 서버가 처리하고 다시 불러옵니다. */

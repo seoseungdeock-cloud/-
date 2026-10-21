@@ -760,8 +760,8 @@ describe('게시판 분리 (익명 / 변호사)', () => {
   const st = () => getState();
   const law = () => st().posts.find((p) => p.id === 'p_law1')!;
 
-  it('변호사 게시판은 변호사만 읽고 쓰고, 다른 계정은 거절된다', () => {
-    for (const id of ['client', 'staff', 'admin']) {
+  it('변호사 게시판은 변호사·어드민만 읽고 쓰고, 다른 계정은 거절된다', () => {
+    for (const id of ['client', 'staff']) {
       as(id);
       expect(actions.createPost({ title: '제목', body: '내용', field: '민사', board: 'lawyer' }).ok).toBe(false);
       expect(actions.commentPost('p_law1', '댓글').ok).toBe(false);
@@ -813,11 +813,11 @@ describe('15차: 탭 정리, 공지·사건자문·SKYZAI, 건의사항', () => 
     expect(canSeeWorkTab(me())).toBe(true);
   });
 
-  it('게시판 탭: 변호사는 공지·불변기간부터 아홉 개, 어드민은 공지·익명·SKYZAI, 나머지는 익명만', () => {
+  it('게시판 탭: 변호사·어드민은 공지·불변기간부터 아홉 개, 나머지는 익명만', () => {
     as('lawyer');
     expect(boardsFor(me())).toEqual(['notice', 'deadline', 'anon', 'lawyer', 'advice', 'event', 'praise', 'lawnews', 'skyzai']);
     as('admin');
-    expect(boardsFor(me())).toEqual(['notice', 'anon', 'skyzai']);
+    expect(boardsFor(me())).toEqual(['notice', 'deadline', 'anon', 'lawyer', 'advice', 'event', 'praise', 'lawnews', 'skyzai']);
     as('staff');
     expect(boardsFor(me())).toEqual(['anon']);
     as('client');
@@ -833,8 +833,9 @@ describe('15차: 탭 정리, 공지·사건자문·SKYZAI, 건의사항', () => 
     const adv = actions.createPost({ title: '자문 구합니다', body: '내용', field: '민사', board: 'advice' });
     expect(adv.ok).toBe(true);
     expect(authorView(me(), st().posts.find((p) => p.id === adv.postId)!, me().id, st().users).profile?.id).toBe('u_lawyer');
-    as('admin');
+    as('staff');
     expect(actions.createPost({ title: '사건자문', body: '내용', field: '민사', board: 'advice' }).ok).toBe(false);
+    as('admin');
     expect(actions.createPost({ title: '새 공지', body: '내용', field: '', board: 'notice' }).ok).toBe(true);
     const sky = actions.createPost({ title: 'SKYZAI 새 공지', body: '내용', field: '', board: 'skyzai', notice: true });
     expect(sky.ok).toBe(true);
@@ -877,7 +878,7 @@ describe('16차: 어드민 통합, 게시판 추가, 법령·판례 자동 글, 
   const st = () => getState();
 
   it('경조사·공익, 고객만족사례는 변호사만 실명으로 쓰고, 법령·판례는 자동 글만 (댓글 가능)', () => {
-    as('admin');
+    as('staff');
     expect(actions.createPost({ title: '부고', body: '내용', field: '', board: 'event' }).ok).toBe(false);
     as('lawyer');
     expect(actions.createPost({ title: '결혼 소식', body: '내용', field: '', board: 'event' }).ok).toBe(true);
@@ -1175,5 +1176,26 @@ describe('상담내용으로 불변기간 찾기', () => {
 
   it('월 단위는 같은 날, 없으면 말일', () => {
     expect(dueDate('2026-11-30', { months: 3 })).toEqual({ due: '2027-03-02', movedFrom: '2027-02-28' });
+  });
+});
+
+describe('불변기간 알림 시험 (가짜 사건)', () => {
+  it('관리자어드민이 만들고, 알림 문구를 보내 보고, 지움', async () => {
+    expect(await actions.seedTestLimits()).toEqual({ ok: true });
+    expect((await actions.seedTestLimits()).ok).toBe(false);
+    const tests = deadlineCases(getState()).filter((k) => k.title.startsWith('[테스트]'));
+    expect(tests.map((k) => [k.title, k.alertsOn, k.limits.length])).toEqual(expect.arrayContaining([['[테스트] 사기 형사사건', false, 1]]));
+    const d = tests.find((k) => k.title === '[테스트] 사기 형사사건')!.limits[0];
+    const r = await actions.fireTestLimit(d.id, 'd0');
+    expect(r).toMatchObject({ ok: true, title: '불변기간 오늘 만료 · [테스트] 사기 형사사건', recipients: 2 });
+    expect(getState().posts.some((p) => p.sourceId === `deadline:${d.id}` && p.title.includes('[테스트] 사기 형사사건 항소기간'))).toBe(true);
+    expect((await actions.fireTestLimit('lm1', 'd3')).ok).toBe(false);
+    // 예약 작업(기기 안)은 알림 꺼진 가짜 사건에 글을 올리지 않음
+    expect(dueLimitPosts(getState().rooms, getState().users, []).every((p) => !p.title.includes('[테스트]'))).toBe(true);
+    expect(await actions.clearTestLimits()).toEqual({ ok: true });
+    expect(getState().rooms.some((r) => r.caseInfo?.title.startsWith('[테스트]'))).toBe(false);
+    expect(getState().posts.some((p) => p.sourceId === `deadline:${d.id}`)).toBe(false);
+    as('lawyer');
+    expect((await actions.seedTestLimits()).ok).toBe(false);
   });
 });

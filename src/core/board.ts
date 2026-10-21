@@ -32,7 +32,7 @@ export function boardOf(post: BoardPost): BoardKind {
  */
 export function canSeeBoard(u: User, board: BoardKind): boolean {
   if (board === 'anon') return true;
-  if (board === 'deadline' || board === 'lawyer' || board === 'advice' || board === 'event' || board === 'praise' || board === 'lawnews') return u.role === 'lawyer';
+  // 어드민은 변호사와 같은 게시판을 모두 봅니다 (승덕 2026-10-21)
   return u.role === 'lawyer' || u.role === 'admin';
 }
 

@@ -370,7 +370,8 @@ select set_deadline_handled('30000000-0000-0000-0000-000000000002', false);
 select tst.as_user('00000000-0000-0000-0000-00000000000e');
 select tst.check('불변기간: 의뢰인은 경고 글 못 봄', (select count(*) = 0 from post_feed where board::text = 'deadline'));
 select tst.as_user('00000000-0000-0000-0000-00000000000a');
-select tst.check('불변기간: 어드민도 경고 글 못 봄 (변호사만)', (select count(*) = 0 from post_feed where board::text = 'deadline'));
+select tst.check('불변기간: 어드민도 경고 글 봄 (변호사 게시판 전부)', (select count(*) = 1 from post_feed where board::text = 'deadline'));
+select tst.check('어드민: 변호사 게시판 봄', can_see_board('lawyer') and can_see_board('advice'));
 reset role;
 set role service_role;
 select tst.check('불변기간: 도과 알림', enqueue_deadline_alerts('2026-11-11 00:05+09') = 2);
@@ -451,6 +452,35 @@ reset role;
 select tst.check('아침 알림: 가까운 것부터', (select o.title like '남은 불변기간 %건' and o.body like 'D-1 아침알림B%' and o.body like '%D-3 아침알림A%' from push_outbox o join profiles p on p.id = o.user_id where p.login_id = 'lawyer'));
 delete from push_outbox;
 delete from case_deadlines where label like '아침알림%';
+
+-- ── 불변기간 알림 시험 (가짜 사건) ──
+reset role;
+delete from push_outbox;
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000b');
+select tst.throws('알림 시험: 부관리자는 못 만듦', $$select admin_seed_test_deadlines()$$, '관리자어드민만');
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select tst.throws('알림 시험: 변호사는 못 만듦', $$select admin_seed_test_deadlines()$$, '관리자어드민만');
+select tst.as_user('00000000-0000-0000-0000-00000000000a');
+select tst.check('알림 시험: 가짜 불변기간 4건', admin_seed_test_deadlines() = 4);
+select tst.throws('알림 시험: 두 번 못 만듦', $$select admin_seed_test_deadlines()$$, '이미 가짜 사건');
+select tst.check('알림 시험: 어드민 사건 목록에 보임', (select count(*) = 3 from admin_deadline_cases() where title like '[테스트]%' and not alerts_on));
+create temp table tfire as select admin_fire_test_deadline((select d.id from case_deadlines d join cases c on c.room_id = d.room_id where c.title = '[테스트] 사기 형사사건'), 'd0') as r;
+select tst.check('알림 시험: 만료일 경고 (시험 변호사와 누른 사람)', (select (r->>'recipients')::int = 2 and r->>'title' like '불변기간 오늘 만료 · [테스트] 사기 형사사건' from tfire));
+select tst.throws('알림 시험: 진짜 사건은 못 보냄', $$select admin_fire_test_deadline('30000000-0000-0000-0000-000000000001', 'd3')$$, '가짜 사건의');
+reset role;
+select tst.check('알림 시험: 경고 글이 불변기간 공지에', (select count(*) = 1 from posts where board::text = 'deadline' and title like '%[테스트] 사기 형사사건 항소기간'));
+select tst.check('알림 시험: 받는 사람은 시험 변호사와 관리자', (select array_agg(p.login_id order by p.login_id) = '{admin,lawyer}' from push_outbox o join profiles p on p.id = o.user_id));
+delete from push_outbox;
+set role service_role;
+select tst.check('알림 시험: 예약 작업은 가짜 사건에 안 보냄', enqueue_deadline_alerts() = 0 and enqueue_limit_digest(((current_date) + time '08:40') at time zone 'Asia/Seoul') = 0);
+reset role;
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000a');
+select tst.check('알림 시험: 지우면 사건 3개', admin_clear_test_deadlines() = 3);
+reset role;
+select tst.check('알림 시험: 경고 글도 지움', (select count(*) = 0 from posts where title like '%[테스트]%') and (select count(*) = 0 from cases where title like '[테스트]%'));
+delete from push_outbox;
 
 -- ── 로그인 안 한 사람 ──
 reset role;

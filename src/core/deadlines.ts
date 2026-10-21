@@ -71,3 +71,16 @@ export function deadlineCasesFrom(rooms: Room[], users: User[]): DeadlineCase[] 
     }))
     .sort((a, b) => next(a).localeCompare(next(b)) || a.title.localeCompare(b.title, 'ko'));
 }
+
+export type LimitSlot = 'd3' | 'd0' | 'over' | 'digest';
+
+/** 서버가 보내는 것과 같은 불변기간 알림 문구 (알림 시험에서 기기 안에서 보여 줄 때도 씀) */
+export function limitPushText(slot: LimitSlot, d: Pick<FixedDeadline, 'label' | 'due'>, caseTitle: string, now = new Date()): { title: string; body: string } {
+  if (slot === 'digest') {
+    const n = dDay(d.due, now);
+    return { title: '남은 불변기간 1건', body: `${n < 0 ? '도과' : n === 0 ? '오늘 만료' : `D-${n}`} ${d.label} · ${caseTitle}` };
+  }
+  const head = slot === 'd3' ? '불변기간 3일 전' : slot === 'd0' ? '불변기간 오늘 만료' : '불변기간 도과';
+  const tail = slot === 'over' ? ' 만료\n조치 완료 표시가 없습니다. 바로 확인해 주세요.' : " 24:00 만료\n조치했으면 앱에서 '조치 완료'를 눌러 주세요.";
+  return { title: `${head} · ${caseTitle}`, body: `${d.label} ${dateLabel(d.due)}${tail}` };
+}
