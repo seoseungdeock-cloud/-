@@ -66,6 +66,10 @@ if (Platform.OS === 'web' && typeof document !== 'undefined' && !document.getEle
   link.rel = 'stylesheet';
   link.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap';
   document.head.appendChild(link);
+  // PC에서 화면 옆 스크롤 막대를 숨김 (휠·터치 스크롤은 그대로)
+  const style = document.createElement('style');
+  style.textContent = '*{scrollbar-width:none;-ms-overflow-style:none}*::-webkit-scrollbar{display:none;width:0;height:0}';
+  document.head.appendChild(style);
 }
 const face = (fontWeight: '400' | '500' | '600' | '700') => (Platform.OS === 'web' ? { fontFamily: SYSTEM_WEB, fontWeight } : { fontWeight });
 
