@@ -7,8 +7,19 @@ export const ROOM_AI_REFUSAL = '@AI는 사건 수행에 관한 질문(서면 작
 
 const OFF = '__OFF_TOPIC__';
 
-/** 방의 AI 답변 수준: 사건수행방은 참여 안 함, 변호사 없는 방은 일반 정보만 */
-export function levelOf(mode: string, kind: string, hasLawyer: boolean): AiLevel {
+export const SELF_ROOM_TITLE = '나와의 메시지';
+
+/** 나만 들어 있는 '나와의 메시지' 방 */
+export function selfRoomLike(kind: string, memberCount: number, title: string): boolean {
+  return kind === 'group' && memberCount === 1 && title === SELF_ROOM_TITLE;
+}
+
+/**
+ * 방의 AI 답변 수준: 사건수행방은 참여 안 함, 변호사 없는 방은 일반 정보만.
+ * 나와의 메시지는 다른 사람이 없으니 AI를 부를 수 있습니다 (로펌 구성원은 업무 보조, 의뢰인은 일반 정보).
+ */
+export function levelOf(mode: string, kind: string, hasLawyer: boolean, self?: { firm: boolean }): AiLevel {
+  if (self) return self.firm ? 'lawyer-assist' : 'general-info';
   if (mode !== 'ai') return 'none';
   if (kind === 'meeting' || kind === 'marketing' || kind === 'office') return 'work';
   return hasLawyer ? 'lawyer-assist' : 'general-info';

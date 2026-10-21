@@ -1056,7 +1056,14 @@ export const actions = {
         pushMessage(roomId, BOT_SENDER, 'bot', ask === 'assignment' ? assignmentText(room, state.users) : caseStatusText(room, state.users));
         return;
       }
-      pushMessage(roomId, SYSTEM_SENDER, 'system', "사건수행방에서는 AI가 대화에 참여하지 않습니다. '@AI 진행 상황', '@AI 배당 정보'로 사건 정보만 받을 수 있습니다.");
+      pushMessage(
+        roomId,
+        SYSTEM_SENDER,
+        'system',
+        room.kind === 'case' || room.kind === 'consult'
+          ? "사건수행방에서는 AI가 대화에 참여하지 않습니다. '@AI 진행 상황', '@AI 배당 정보'로 사건 정보만 받을 수 있습니다."
+          : "이 방은 AI가 참여하지 않는 방입니다. @AI는 'AI 참여방'이나 '나와의 메시지'에서 불러 주세요.",
+      );
       return;
     }
     const cmd = parseAiCommand(text);

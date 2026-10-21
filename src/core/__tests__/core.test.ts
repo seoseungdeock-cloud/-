@@ -78,7 +78,7 @@ describe('메신저 흐름', () => {
     await actions.sendMessage('r_direct', '@AI 요약해줘');
     const last = getState().messages.at(-1)!;
     expect(last.kind).toBe('system');
-    expect(last.text).toContain('AI가 대화에 참여하지 않습니다');
+    expect(last.text).toContain('AI가 참여하지 않는 방입니다');
   });
 
   it('AI 참여방에서는 AI가 답한다(미연결 표시)', async () => {

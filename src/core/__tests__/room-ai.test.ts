@@ -32,3 +32,11 @@ describe('대화방 @AI', () => {
     expect(input).not.toContain('u1');
   });
 });
+
+describe('나와의 메시지 @AI', () => {
+  it('나만 있는 방은 AI를 부를 수 있다', () => {
+    expect(levelOf('private', 'group', false, { firm: true })).toBe('lawyer-assist');
+    expect(levelOf('private', 'group', false, { firm: false })).toBe('general-info');
+    expect(levelOf('private', 'group', false)).toBe('none');
+  });
+});

@@ -14,7 +14,7 @@ import { handle, runJob, scheduler } from '../../../src/core/axiom/api';
 import type { Db, FindOpts, Row, Table, Where } from '../../../src/core/axiom/db';
 import { INSTANCE } from '../../../src/core/axiom/instance';
 import { complete, resolve } from '../../../src/core/axiom/llm';
-import { finishRoomAi, levelOf, roomAiInput, roomAiSystem } from '../../../src/core/room-ai';
+import { finishRoomAi, levelOf, roomAiInput, roomAiSystem, selfRoomLike } from '../../../src/core/room-ai';
 import type { AxUser, Ctx, Job } from '../../../src/core/axiom/types';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
@@ -120,13 +120,14 @@ async function roomAsk(sb: SupabaseClient, ctx: Ctx, uid: string, args: Record<s
   const text = String(args.text ?? '').slice(0, 4000);
   if (!/^[0-9a-f-]{36}$/.test(roomId) || !text.trim()) throw Object.assign(new Error('bad request'), { status: 400 });
   const [{ data: room }, { data: members }] = await Promise.all([
-    sb.from('rooms').select('id, kind, mode').eq('id', roomId).maybeSingle(),
+    sb.from('rooms').select('id, kind, mode, title').eq('id', roomId).maybeSingle(),
     sb.from('room_members').select('user_id, profiles(role, active)').eq('room_id', roomId),
   ]);
   const list = (members ?? []) as unknown as { user_id: string; profiles: { role: string; active: boolean } | null }[];
   const me = list.find((m) => m.user_id === uid);
   if (!room || !me?.profiles?.active) return { reply: null, reason: '참여 중인 방이 아닙니다.' };
-  const level = levelOf(room.mode, room.kind, list.some((m) => m.profiles?.role === 'lawyer'));
+  const self = selfRoomLike(room.kind, list.length, room.title) ? { firm: me.profiles.role !== 'client' } : undefined;
+  const level = levelOf(room.mode, room.kind, list.some((m) => m.profiles?.role === 'lawyer'), self);
   if (level === 'none') return { reply: null, reason: '사건수행방에서는 AI가 대화에 참여하지 않습니다.' };
   const pick = resolve(INSTANCE, ctx.env, 'tier:balanced');
   if (pick.provider === 'mock') return { reply: null, reason: 'AI 키가 아직 연결되지 않았습니다.' };

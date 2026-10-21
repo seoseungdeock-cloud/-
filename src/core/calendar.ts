@@ -1,4 +1,5 @@
 // 캘린더 탭: 내가 들어가 있는 사건방의 기일과 불변기간을 달력에 모아 봅니다.
+import { SELF_ROOM_TITLE, selfRoomLike } from './room-ai';
 import type { Room, User } from './types';
 
 export type CalEvent = { id: string; date: string; time?: string; label: string; kind: 'hearing' | 'limit'; roomId: string; caseTitle: string; place?: string; done?: boolean };
@@ -32,9 +33,9 @@ export function todayKst(now = new Date()): string {
   return new Date(now.getTime() + 9 * 3_600_000).toISOString().slice(0, 10);
 }
 
-export const SELF_ROOM_TITLE = '나와의 메시지';
+export { SELF_ROOM_TITLE };
 
 /** 나만 들어 있는 메모용 대화방 */
 export function isSelfRoom(room: Room, userId: string): boolean {
-  return room.kind === 'group' && room.memberIds.length === 1 && room.memberIds[0] === userId && room.title === SELF_ROOM_TITLE;
+  return selfRoomLike(room.kind, room.memberIds.length, room.title) && room.memberIds[0] === userId;
 }
