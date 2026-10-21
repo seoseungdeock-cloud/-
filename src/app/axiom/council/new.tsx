@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
@@ -22,7 +22,8 @@ export default function AxCouncilNew() {
 function Form({ inst }: { inst: R }) {
   const meetings = useAx<R[]>('docs.list', { kind: 'meeting', limit: 30 }).data;
   const [title, setTitle] = useState('');
-  const [meetingId, setMeetingId] = useState<string>();
+  const { meeting } = useLocalSearchParams<{ meeting?: string }>();
+  const [meetingId, setMeetingId] = useState<string | undefined>(meeting);
   const [meetingText, setMeetingText] = useState('');
   const [stateText, setStateText] = useState('');
   const [objective, setObjective] = useState('');

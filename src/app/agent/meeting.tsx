@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { axiom } from '@/core/axiom/client';
 import { actions } from '@/core/store';
 import { AgentGate } from '@/ui/agent-gate';
 import { Button, Card, Chip, Chips, Input, Notice, Screen, Section, Sub, T } from '@/ui/kit';
@@ -23,6 +24,15 @@ export default function MeetingScreen() {
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string>();
   const notes = roomId ? s.meetingNotes[roomId] : undefined;
+
+  // 정리한 회의록을 AXIOM 저장소에 회의록으로 넣고 경영위원회를 엽니다
+  const toCouncil = async () => {
+    if (!room || !notes) return;
+    const body = [transcript.trim(), '', '## 정리', ...notes.summary.map((x) => `- ${x}`), '', '## 결정사항', ...notes.decisions.map((d) => `- ${d}`)].join('\n');
+    const r = await axiom<{ id: string }>(user, 'docs.create', { kind: 'meeting', title: `${room.title} 회의록 ${new Date().toISOString().slice(0, 10)}`, body });
+    if (!r.ok) return setError(r.reason);
+    router.push({ pathname: '/axiom/council/new', params: { meeting: r.data.id } });
+  };
 
   const summarize = () => {
     if (!roomId) return;
@@ -58,6 +68,7 @@ export default function MeetingScreen() {
               <T bold style={{ marginTop: space.sm }}>할 일</T>
               {notes.actions.length ? notes.actions.map((a, i) => <T key={i}>· {a.owner ? `[${a.owner}] ` : ''}{a.task}{a.due ? ` (${a.due})` : ''}</T>) : <Sub>없음</Sub>}
             </Card>
+            <Button label="이 회의록으로 경영위원회 열기" kind="soft" disabled={!transcript.trim()} onPress={() => void toCouncil()} />
           </Section>
         ) : null}
       </Screen>

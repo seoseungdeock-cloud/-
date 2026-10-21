@@ -191,7 +191,7 @@ export default function RoomScreen() {
           <Button label="수임 → 사건방으로 전환" kind="soft" onPress={() => setPromote((p) => ({ ...p, open: true }))} />
         )
       ) : null}
-      {room.kind === 'meeting' ? <Button label="회의 정리·의견 화면 열기" kind="soft" onPress={() => router.push({ pathname: '/agent/meeting', params: { roomId: room.id } })} /> : null}
+      {room.kind === 'meeting' ? <Button label="회의 정리 화면 열기" kind="soft" onPress={() => router.push({ pathname: '/agent/meeting', params: { roomId: room.id } })} /> : null}
     </View>
   );
 

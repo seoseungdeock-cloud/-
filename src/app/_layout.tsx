@@ -57,9 +57,7 @@ export default function RootLayout() {
           <Stack.Screen name="open/[id]" />
           <Stack.Screen name="lawyer/[id]" />
           <Stack.Screen name="agent/meeting" />
-          <Stack.Screen name="agent/knowledge" />
           <Stack.Screen name="agent/images" />
-          <Stack.Screen name="agent/builder" />
           <Stack.Screen name="marketing" />
           <Stack.Screen name="membership" />
           <Stack.Screen name="backoffice" />
