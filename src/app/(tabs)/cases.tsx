@@ -27,7 +27,7 @@ export default function CasesScreen() {
             return (
               <Card key={d.id} onPress={() => open(r.id)}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-                  <Badge label={st.label} tone={st.tone} />
+                  <Badge fixed label={st.label} tone={st.tone} />
                   <T bold>{d.label}</T>
                 </View>
                 <Sub>{r.caseInfo!.title} · {limitWhen(d)}</Sub>
@@ -46,7 +46,7 @@ export default function CasesScreen() {
                 <View style={{ flexDirection: 'row', gap: space.sm, marginBottom: space.xs }}>
                   <Badge label={ci.stage} />
                   <ModeBadge mode={r.mode} />
-                  {next ? <Badge label={dDayLabel(dDay(next.date))} tone={dDay(next.date) <= 7 ? 'accent' : 'plain'} /> : null}
+                  {next ? <Badge fixed label={dDayLabel(dDay(next.date))} tone={dDay(next.date) <= 7 ? 'accent' : 'plain'} /> : null}
                 </View>
                 <T size="h2" bold>{ci.title}</T>
                 <Sub>{ci.field}{next ? ` · 다음 기일 ${next.label} ${whenLabel(next.date, next.time)}` : ''}</Sub>

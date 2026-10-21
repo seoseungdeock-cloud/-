@@ -178,7 +178,7 @@ export default function BackofficeScreen() {
               </View>
               {k.limits.map((d) => (
                 <View key={d.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.xs }}>
-                  <Badge label={limitStatus(d).label} tone={limitStatus(d).tone} />
+                  <Badge fixed label={limitStatus(d).label} tone={limitStatus(d).tone} />
                   <Sub>{d.label} · {limitWhen(d)}</Sub>
                 </View>
               ))}

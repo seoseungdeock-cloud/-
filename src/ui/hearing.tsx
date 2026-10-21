@@ -7,16 +7,17 @@ import { ackStatus, CHANGE_LABEL, clientUnackedHours, dDay, dDayLabel, pendingFo
 import { actions } from '@/core/store';
 import type { Hearing, HearingAlert } from '@/core/types';
 import { Icon } from './icons';
+import { BADGE_WIDTH } from './kit';
 import { roomTitle } from './room-row';
 import { family, radius, space, useColors } from './theme';
 import { useApp, useMe } from './use-app';
 
-function DBadge({ date }: { date: string }) {
+export function DBadge({ date }: { date: string }) {
   const c = useColors();
   const n = dDay(date);
   const soon = n >= 0 && n <= 7;
   return (
-    <Text style={{ fontFamily: family.bold, fontSize: 12, color: soon ? '#FFFFFF' : c.accent, backgroundColor: soon ? c.accent : c.accentSoft, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2, overflow: 'hidden' }}>
+    <Text numberOfLines={1} style={{ width: BADGE_WIDTH, textAlign: 'center', fontFamily: family.bold, fontSize: 12, color: soon ? '#FFFFFF' : c.accent, backgroundColor: soon ? c.accent : c.accentSoft, borderRadius: radius.pill, paddingVertical: 2, overflow: 'hidden' }}>
       {dDayLabel(n)}
     </Text>
   );

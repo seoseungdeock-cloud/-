@@ -6,7 +6,9 @@ import { dueDate, periodLabel, suggestLimits, type LimitSuggestion } from '@/cor
 import { demoUpdate } from '@/core/hearings';
 import { actions } from '@/core/store';
 import type { CaseStage, Room } from '@/core/types';
-import { HearingList } from './hearing';
+import { dDay, whenLabel } from '@/core/hearings';
+import { DBadge, HearingList } from './hearing';
+import { Icon } from './icons';
 import { Badge, Button, Card, Chip, Chips, Input, Notice, Sub, T } from './kit';
 import { family, space, useColors } from './theme';
 import { useApp } from './use-app';
@@ -21,8 +23,13 @@ const TYPES = [
 ] as const;
 
 /** 사건방 상단의 사건 자료. 대화를 하면서 같은 화면에서 봅니다. */
+/** 사건방마다 펼침 상태를 기억 (앱을 켜 둔 동안). 처음에는 접힘. */
+const folded = new Map<string, boolean>();
+
 export function CasePanel({ room, canEdit }: { room: Room; canEdit: boolean }) {
   const ci = room.caseInfo!;
+  const c = useColors();
+  const [open, setOpen] = useState(() => folded.get(room.id) ?? false);
   const [type, setType] = useState<(typeof TYPES)[number]['key']>('progress');
   const [label, setLabel] = useState('');
   const [extra, setExtra] = useState('');
@@ -57,15 +64,46 @@ export function CasePanel({ room, canEdit }: { room: Room; canEdit: boolean }) {
     setError(r.ok ? '' : r.reason);
   };
   const total = ci.costs.reduce((s, x) => s + x.amount, 0);
+  const hearings = canEdit ? ci.deadlines : ci.deadlines.filter((d) => !d.firmOnly);
+  const nextHearing = [...hearings].filter((d) => dDay(d.date) >= 0).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const openLimits = canEdit ? [...(ci.limits ?? [])].filter((d) => !d.handledAt).sort((a, b) => a.due.localeCompare(b.due)) : [];
+  const toggle = () => {
+    folded.set(room.id, !open);
+    setOpen(!open);
+  };
   return (
-    <Card>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+    <Card style={{ paddingVertical: space.md }}>
+      <Pressable accessibilityLabel={open ? '사건 자료 접기' : '사건 자료 펼치기'} onPress={toggle} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
         <Badge label={ci.stage} />
-        <T bold>{ci.title}</T>
-        <Sub>{ci.field}</Sub>
-      </View>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: space.sm }}>
+          <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: family.bold, fontSize: 15, color: c.text }}>{ci.title}</Text>
+          <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{ci.field}</Text>
+        </View>
+        <View style={{ transform: [{ rotate: open ? '270deg' : '90deg' }] }}>
+          <Icon name="chevron" color={c.sub} size={18} />
+        </View>
+      </Pressable>
+      {!open ? (
+        <View style={{ marginTop: space.sm, gap: space.xs }}>
+          {nextHearing ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+              <DBadge date={nextHearing.date} />
+              <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.regular, fontSize: 13, color: c.text }}>{nextHearing.label} · {whenLabel(nextHearing.date, nextHearing.time)}</Text>
+            </View>
+          ) : null}
+          {openLimits.length ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+              <Badge fixed label={limitStatus(openLimits[0]).label} tone={limitStatus(openLimits[0]).tone} />
+              <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.regular, fontSize: 13, color: c.text }}>
+                불변기간 {openLimits[0].label}{openLimits.length > 1 ? ` 외 ${openLimits.length - 1}건` : ''}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      ) : (
+      <>
       <View style={{ marginTop: space.sm }}>
-        <HearingList hearings={canEdit ? ci.deadlines : ci.deadlines.filter((d) => !d.firmOnly)} />
+        <HearingList hearings={hearings} />
       </View>
       {canEdit && (ci.limits?.length || ci.limitAlerts === false) ? <LimitList room={room} /> : null}
       {canEdit ? <LimitFinder room={room} /> : null}
@@ -109,6 +147,8 @@ export function CasePanel({ room, canEdit }: { room: Room; canEdit: boolean }) {
           </View>
         </View>
       ) : null}
+      </>
+      )}
     </Card>
   );
 }
@@ -131,7 +171,7 @@ function LimitList({ room }: { room: Room }) {
         const who = d.lawyerId ? limitLawyers(room, d, s.users).map((u) => u.nickname).join(', ') : '변호사 전원';
         return (
           <View key={d.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: c.line }}>
-            <Badge label={st.label} tone={st.tone} />
+            <Badge fixed label={st.label} tone={st.tone} />
             <View style={{ flex: 1, minWidth: 160 }}>
               <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.text }}>{d.label}</Text>
               <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{limitWhen(d)} · 담당 {who}{d.source === 'daeryuntop' ? ' · 대륜탑' : ''}</Text>
@@ -192,7 +232,7 @@ function LimitFinder({ room }: { room: Room }) {
         return (
           <View key={x.key} style={{ paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.line, gap: 2 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' }}>
-              {x.due ? <Badge label={limitStatus({ id: x.key, label: x.label, due: x.due }).label} tone={limitStatus({ id: x.key, label: x.label, due: x.due }).tone} /> : <Badge label="기준일 필요" tone="plain" />}
+              {x.due ? <Badge fixed label={limitStatus({ id: x.key, label: x.label, due: x.due }).label} tone={limitStatus({ id: x.key, label: x.label, due: x.due }).tone} /> : <Badge fixed label="기준일 필요" tone="plain" />}
               <Text style={{ flex: 1, minWidth: 140, fontFamily: family.semibold, fontSize: 14, color: c.text }}>
                 {x.label}{x.due ? ` · ${md(x.due)} 24:00 만료` : ''}
               </Text>

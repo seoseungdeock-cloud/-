@@ -51,7 +51,7 @@ export function LimitTestSection({ report }: { report: (r: { ok: boolean; reason
           {k.limits.map((d) => (
             <View key={d.id} style={{ marginTop: space.sm, gap: space.xs }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-                <Badge label={limitStatus(d).label} tone={limitStatus(d).tone} />
+                <Badge fixed label={limitStatus(d).label} tone={limitStatus(d).tone} />
                 <Sub>{d.label} · {limitWhen(d)}</Sub>
               </View>
               <View style={{ flexDirection: 'row', gap: space.xs, flexWrap: 'wrap' }}>

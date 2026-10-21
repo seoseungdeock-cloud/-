@@ -146,7 +146,10 @@ export function Chips({ children }: { children: ReactNode }) {
   return <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>{children}</View>;
 }
 
-export function Badge({ label, tone = 'accent' }: { label: string; tone?: 'accent' | 'secure' | 'ai' | 'warn' | 'member' | 'plain' }) {
+export const BADGE_WIDTH = 68;
+
+/** fixed: D-day·상태 표시처럼 목록에서 뒤 글자 줄이 맞도록 폭을 고정 */
+export function Badge({ label, tone = 'accent', fixed }: { label: string; tone?: 'accent' | 'secure' | 'ai' | 'warn' | 'member' | 'plain'; fixed?: boolean }) {
   const c = useColors();
   const map = {
     accent: [c.accentSoft, c.accent],
@@ -158,8 +161,8 @@ export function Badge({ label, tone = 'accent' }: { label: string; tone?: 'accen
   } as const;
   const [bg, fg] = map[tone];
   return (
-    <View style={{ backgroundColor: bg, borderRadius: radius.pill, paddingHorizontal: space.sm, paddingVertical: 2, alignSelf: 'flex-start' }}>
-      <Text style={{ color: fg, fontSize: font.tiny, fontFamily: family.semibold }}>{label}</Text>
+    <View style={{ backgroundColor: bg, borderRadius: radius.pill, paddingHorizontal: space.sm, paddingVertical: 2, alignSelf: fixed ? 'center' : 'flex-start', ...(fixed ? { width: BADGE_WIDTH, alignItems: 'center' as const } : {}) }}>
+      <Text numberOfLines={1} style={{ color: fg, fontSize: font.tiny, fontFamily: family.semibold }}>{label}</Text>
     </View>
   );
 }
