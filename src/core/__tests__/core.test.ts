@@ -18,6 +18,7 @@ import { myCodes, secondsLeft, unreadCodes } from '../auth-codes';
 import { ackStatus, alertText, clientUnackedHours, dDay, demoUpdate, pendingFor, reminderPlan, whenLabel } from '../hearings';
 import { digestPosts, LAW_BOT, nextDigestAt, shortGist } from '../law-digest';
 import { dueLimitPosts, LIMIT_BOT, limitOffice, limitStatus } from '../deadlines';
+import { dueDate, suggestLimits } from '../limit-rules';
 import { cellDate, cellTime, classify, csvTable, htmlTable, rowsFromTable, sharedStrings, sheetTable, summarize } from '../daeryuntop';
 
 const user = (p: Partial<User>): User => ({
@@ -1138,5 +1139,41 @@ describe('대륜탑 기일 연동', () => {
   it('엄수 기일은 3일 전 미리 알림을 더함', () => {
     const now = new Date('2026-11-01T00:00:00Z');
     expect(reminderPlan({ date: '2026-11-19', strict: true }, now).map((p) => p.label)).toEqual(['7일 전', '3일 전 (엄수)', '전날', '당일 아침']);
+  });
+});
+
+describe('상담내용으로 불변기간 찾기', () => {
+  const today = '2026-10-21';
+  const pick = (text: string) => suggestLimits(text, today).map((s) => [s.label, s.base, s.due, s.law]);
+
+  it('민사 1심 패소, 판결문 받은 날 → 항소기간 2주', () => {
+    expect(pick('대여금 소송 1심에서 졌습니다. 10월 15일에 판결문을 받았어요. 항소하고 싶습니다.')).toEqual([['항소기간', '2026-10-15', '2026-10-29', '민사소송법 제396조']]);
+  });
+
+  it('형사: 선고일부터 7일, 끝나는 날이 토요일이면 월요일', () => {
+    // 10월 17일(토) 선고 → 24일(토) → 26일(월)
+    const s = suggestLimits('아버지가 형사재판에서 징역 1년 실형을 받았습니다. 2026년 10월 17일 선고였어요.', today);
+    expect(s.map((x) => [x.label, x.base, x.due, x.movedFrom])).toEqual([['항소기간', '2026-10-17', '2026-10-26', '2026-10-24']]);
+  });
+
+  it('항소심 기각이면 상고기간만, 공휴일 건너뜀', () => {
+    // 9월 21일 + 14일 = 10월 5일(대체공휴일) → 6일
+    expect(pick('항소심에서 항소 기각 판결이 9월 21일에 송달됐습니다.')).toEqual([['상고기간', '2026-09-21', '2026-10-06', '민사소송법 제425조·제396조']]);
+  });
+
+  it('지급명령, 약식명령, 불기소, 상속, 행정처분', () => {
+    expect(pick('어제 지급명령을 받았습니다.')[0]).toEqual(['지급명령 이의신청기간', '2026-10-20', '2026-11-03', '민사소송법 제470조']);
+    expect(pick('벌금 300만원 약식명령이 10월 19일에 왔어요.')[0].slice(0, 3)).toEqual(['정식재판청구기간', '2026-10-19', '2026-10-26']);
+    expect(pick('고소했는데 10월 1일 불기소(혐의없음) 통지를 받았습니다.')[0].slice(0, 3)).toEqual(['검찰항고기간', '2026-10-01', '2026-11-02']);
+    expect(pick('8월 31일 아버지가 돌아가셨는데 빚이 많습니다.')[0].slice(0, 3)).toEqual(['상속포기·한정승인 기간', '2026-08-31', '2026-11-30']);
+    expect(pick('구청에서 영업정지 처분을 받았습니다.')[0].slice(0, 3)).toEqual(['행정소송 제소기간', undefined, undefined]);
+  });
+
+  it('관련 없는 상담은 후보 없음', () => {
+    expect(pick('전세 계약 갱신 문의드립니다.')).toEqual([]);
+  });
+
+  it('월 단위는 같은 날, 없으면 말일', () => {
+    expect(dueDate('2026-11-30', { months: 3 })).toEqual({ due: '2027-03-02', movedFrom: '2027-02-28' });
   });
 });

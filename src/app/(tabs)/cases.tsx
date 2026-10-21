@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { View } from 'react-native';
 
+import { limitStatus, limitWhen } from '@/core/deadlines';
 import { dDay, dDayLabel, whenLabel } from '@/core/hearings';
 import { Badge, Button, Card, Empty, ModeBadge, Screen, Section, Sub, T } from '@/ui/kit';
 import { space } from '@/ui/theme';
@@ -13,8 +14,28 @@ export default function CasesScreen() {
   const cases = mine.filter((r) => r.kind === 'case');
   const consults = mine.filter((r) => r.kind === 'consult');
   const open = (id: string) => router.push({ pathname: '/room/[id]', params: { id } });
+  // 남은 불변기간 (변호사·직원): 조치 완료 안 한 것, 만료일 순
+  const limits = user.role === 'client' ? [] : cases
+    .flatMap((r) => (r.caseInfo!.limits ?? []).filter((d) => !d.handledAt).map((d) => ({ r, d })))
+    .sort((a, b) => a.d.due.localeCompare(b.d.due));
   return (
     <Screen title="사건">
+      {limits.length ? (
+        <Section title={`남은 불변기간 ${limits.length}건`}>
+          {limits.map(({ r, d }) => {
+            const st = limitStatus(d);
+            return (
+              <Card key={d.id} onPress={() => open(r.id)}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+                  <Badge label={st.label} tone={st.tone} />
+                  <T bold>{d.label}</T>
+                </View>
+                <Sub>{r.caseInfo!.title} · {limitWhen(d)}</Sub>
+              </Card>
+            );
+          })}
+        </Section>
+      ) : null}
       <Section title="진행 중인 사건">
         {cases.length ? (
           cases.map((r) => {

@@ -436,6 +436,22 @@ select tst.check('대륜탑: 엄수는 3일 전 미리 알림', enqueue_hearing_
 select tst.check('대륜탑: 엄수 3일 전은 변호사·직원에게', (select array_agg(distinct p.login_id) = '{lawyer}' from push_outbox o join profiles p on p.id = o.user_id where o.title like '엄수 기일 3일 전%'));
 delete from push_outbox;
 
+-- ── 남은 불변기간 아침 알림 ──
+reset role;
+delete from push_outbox;
+update cases set deadline_alerts = true;
+insert into case_deadlines (room_id, label, due_date) values
+  ('10000000-0000-0000-0000-000000000001', '아침알림A', '2027-03-05'),
+  ('10000000-0000-0000-0000-000000000001', '아침알림B', '2027-03-03');
+set role service_role;
+select tst.check('아침 알림: 8시 30분 전에는 안 보냄', enqueue_limit_digest('2027-03-02 08:29+09') = 0);
+select tst.check('아침 알림: 담당 변호사에게 한 번', enqueue_limit_digest('2027-03-02 08:30+09') = 1);
+select tst.check('아침 알림: 같은 날 두 번 안 감', enqueue_limit_digest('2027-03-02 09:30+09') = 0);
+reset role;
+select tst.check('아침 알림: 가까운 것부터', (select o.title like '남은 불변기간 %건' and o.body like 'D-1 아침알림B%' and o.body like '%D-3 아침알림A%' from push_outbox o join profiles p on p.id = o.user_id where p.login_id = 'lawyer'));
+delete from push_outbox;
+delete from case_deadlines where label like '아침알림%';
+
 -- ── 로그인 안 한 사람 ──
 reset role;
 set role anon;
