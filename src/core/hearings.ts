@@ -40,12 +40,14 @@ export function alertText(a: Pick<HearingAlert, 'change' | 'label' | 'date' | 't
 }
 
 /** 미리 알림 세 번: 기일 7일 전·전날 오전 9시, 당일 오전 8시 (지난 것은 빼고) */
-export function reminderPlan(h: Pick<Hearing, 'date'>, now = new Date()): { label: string; at: string }[] {
+export function reminderPlan(h: Pick<Hearing, 'date' | 'strict'>, now = new Date()): { label: string; at: string }[] {
   const at = (date: string, hhmm: string) => new Date(`${date}T${hhmm}:00+09:00`);
   const base = at(h.date, '00:00');
   const day = (n: number) => new Date(base.getTime() - n * 86_400_000).toISOString().slice(0, 10);
   const plan = [
     { label: '7일 전', at: at(day(7), '09:00') },
+    // 대륜탑 '엄수' 기일은 3일 전을 더 알립니다
+    ...(h.strict ? [{ label: '3일 전 (엄수)', at: at(day(3), '09:00') }] : []),
     { label: '전날', at: at(day(1), '09:00') },
     { label: '당일 아침', at: at(h.date, '08:00') },
   ];

@@ -140,7 +140,7 @@ export function HearingList({ hearings }: { hearings: Hearing[] }) {
               {h.label} · {whenLabel(h.date, h.time)}
             </Text>
             {h.place || h.source === 'daeryuntop' ? (
-              <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{[h.place, h.source === 'daeryuntop' ? '대륜탑' : ''].filter(Boolean).join(' · ')}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{[h.place, h.source === 'daeryuntop' ? '대륜탑' : '', h.firmOnly ? '변호사·직원만' : ''].filter(Boolean).join(' · ')}</Text>
             ) : null}
           </View>
         </View>

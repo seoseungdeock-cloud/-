@@ -18,6 +18,7 @@ import { myCodes, secondsLeft, unreadCodes } from '../auth-codes';
 import { ackStatus, alertText, clientUnackedHours, dDay, demoUpdate, pendingFor, reminderPlan, whenLabel } from '../hearings';
 import { digestPosts, LAW_BOT, nextDigestAt, shortGist } from '../law-digest';
 import { dueLimitPosts, LIMIT_BOT, limitOffice, limitStatus } from '../deadlines';
+import { cellDate, cellTime, classify, csvTable, htmlTable, rowsFromTable, sharedStrings, sheetTable, summarize } from '../daeryuntop';
 
 const user = (p: Partial<User>): User => ({
   id: 'x', nickname: 'x', role: 'client', agentAccess: false, membership: 'basic', ...p,
@@ -1043,5 +1044,99 @@ describe('불변기간 알림', () => {
     const rooms = s.rooms.map((r) => (r.caseInfo ? { ...r, caseInfo: { ...r.caseInfo, limitAlerts: false } } : r));
     expect(dueLimitPosts(rooms, s.users, [])).toEqual([]);
     expect(dueLimitPosts(s.rooms, s.users, []).length).toBe(1);
+  });
+});
+
+describe('대륜탑 기일 연동', () => {
+  const kstDay = (n: number) => new Date(Date.now() + 9 * 3_600_000 + n * 86_400_000).toISOString().slice(0, 10);
+  const room = () => getState().rooms.find((r) => r.id === 'r_case1')!;
+
+  it('특이사항으로 처리 방법을 정함', () => {
+    expect(classify({ id: 'a', name: '상고기간', date: '2026-10-22', flags: ['불변', '완료'] })).toEqual({ kind: 'deadline', handled: true, cancelled: false });
+    expect(classify({ id: 'a', name: '변론기일', date: '2026-10-22', official: false })).toEqual({ kind: 'skip', reason: '개인 일정' });
+    expect(classify({ id: 'a', name: '변론기일', date: '2026-10-22', time: '00:00', flags: ['추정'] })).toMatchObject({ kind: 'hearing', cancelled: '추정' });
+    const p = classify({ id: 'a', name: '(확인용) 보완수사 확인', date: '2026-10-22', time: '14:00', court: '부산지법', place: '351호', flags: ['엄수'] });
+    expect(p).toMatchObject({ kind: 'hearing', label: '(확인용) 보완수사 확인 [엄수]', time: '14:00', place: '부산지법 351호', firmOnly: true, strict: true, done: false });
+    expect(classify({ id: 'a', name: '변론기일', date: '2026-10-22', time: '00:00' })).not.toHaveProperty('time');
+  });
+
+  it('대륜탑 사건 목록 엑셀 표에서 기일 줄을 뽑음', () => {
+    const table = [
+      ['전체 사건 목록'],
+      ['상세', '상태', '순번', '의뢰인(대리인)', '사건번호', '사건명', '기일명', '진행/잔여일', '시각', '기일-특이사항'],
+      ['', '', '1', '가나다', '2026고단1', '사기', '(확인용)', '2026-10-21 [D-0]', '00:00', '엄수'],
+      ['', '', '2', '라마바', '2026노2', '특수', '상고기간', '2026-10-22 [D-1]', '00:00', '불변·완료'],
+      ['', '', '3', '사아자', '2026구3', '학교', '변론기일', '2026.10.22', '10:45', '-'],
+      ['', '', '4', '차카타', '2026구4', '없음', '-', '-', '', ''],
+    ];
+    const { rows } = rowsFromTable(table);
+    expect(rows).toEqual([
+      { id: 'xl:2026고단1:(확인용):2026-10-21', caseNo: '2026고단1', name: '(확인용)', date: '2026-10-21', time: '00:00', flags: ['엄수'] },
+      { id: 'xl:2026노2:상고기간:2026-10-22', caseNo: '2026노2', name: '상고기간', date: '2026-10-22', time: '00:00', flags: ['불변', '완료'] },
+      { id: 'xl:2026구3:변론기일:2026-10-22', caseNo: '2026구3', name: '변론기일', date: '2026-10-22', time: '10:45', flags: [] },
+    ]);
+    // 의뢰인 이름은 담지 않음
+    expect(JSON.stringify(rows)).not.toContain('가나다');
+    expect(rowsFromTable([['a', 'b']]).error).toMatch(/사건번호/);
+  });
+
+  it('엑셀 칸 값 읽기', () => {
+    expect(cellDate('46316')).toBe('2026-10-21');
+    expect(cellTime('0.4479166667')).toBe('10:45');
+    expect(cellTime('14시 30분')).toBe('14:30');
+    const shared = sharedStrings('<sst><si><t>사건번호</t></si><si><r><t>기일</t></r><r><t>명</t></r></si></sst>');
+    expect(sheetTable('<sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1" t="s"><v>1</v></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>2026&amp;1</t></is></c><c r="B2"><v>46316</v></c></row></sheetData>', shared))
+      .toEqual([['사건번호', '', '기일명'], ['2026&1', '46316']]);
+    expect(htmlTable('<table><tr><th>사건번호</th><th>기일명</th></tr><tr><td>2026가1</td><td>변론<br>기일</td></tr></table>')).toEqual([['사건번호', '기일명'], ['2026가1', '변론 기일']]);
+    expect(csvTable('a,"b,c"\r\n1,"x""y"')).toEqual([['a', 'b,c'], ['1', 'x"y']]);
+  });
+
+  it('관리자어드민이 올리면 연결된 사건에 기일 알람·불변기간이 생기고 바뀌고 취소됨', async () => {
+    const day = kstDay(10);
+    const base = { caseNo: '2026가단1001', name: '변론기일', date: day, time: '10:30', court: '예시지법', place: '301호' };
+    let r = await actions.importDaeryuntop([
+      { id: 'h1', ...base },
+      { id: 'h2', caseNo: '2026가단1001', name: '상고기간', date: kstDay(5), flags: ['불변'] },
+      { id: 'h3', caseNo: '2026가단1001', name: '(확인용) 보완수사', date: day, party: '확인용' },
+      { id: 'h4', caseNo: '없는번호', name: '변론기일', date: day },
+    ]);
+    expect(r.ok && r.results.map((x) => x.result)).toEqual(['new', 'deadline', 'new', 'skip:연결 안 된 사건']);
+    expect(r.ok && summarize(r.results)).toEqual({ text: '새 기일 2 · 불변기간 1', unlinked: ['없는번호'] });
+    expect(room().caseInfo!.deadlines.find((d) => d.externalId === 'h1')).toMatchObject({ label: '변론기일', place: '예시지법 301호', source: 'daeryuntop' });
+    expect(room().caseInfo!.limits!.find((d) => d.externalId === 'h2')).toMatchObject({ label: '상고기간', source: 'daeryuntop' });
+    expect(getState().hearingAlerts.filter((a) => a.label === '(확인용) 보완수사')).toEqual([]);
+
+    r = await actions.importDaeryuntop([{ id: 'h1', ...base }]);
+    expect(r.ok && r.results[0].result).toBe('same');
+    r = await actions.importDaeryuntop([{ id: 'h1', ...base, date: kstDay(17), flags: ['변경'] }]);
+    expect(r.ok && r.results[0].result).toBe('changed');
+    expect(getState().hearingAlerts.at(-1)).toMatchObject({ change: 'changed', prevDate: day, date: kstDay(17), source: 'daeryuntop' });
+    r = await actions.importDaeryuntop([{ id: 'h1', ...base, flags: ['추정'] }, { id: 'h2', caseNo: '2026가단1001', name: '상고기간', date: kstDay(5), flags: ['불변', '완료'] }]);
+    expect(r.ok && r.results.map((x) => x.result)).toEqual(['cancelled', 'deadline']);
+    expect(room().caseInfo!.deadlines.some((d) => d.externalId === 'h1')).toBe(false);
+    expect(room().caseInfo!.limits!.find((d) => d.externalId === 'h2')?.handledAt).toBeTruthy();
+  });
+
+  it('엑셀은 같은 이름의 다가오는 기일을 날짜 변경으로 봄', async () => {
+    await actions.importDaeryuntop([{ id: `xl:2026가단1001:선고기일:${kstDay(9)}`, caseNo: '2026가단1001', name: '선고기일', date: kstDay(9) }]);
+    const r = await actions.importDaeryuntop([{ id: `xl:2026가단1001:선고기일:${kstDay(12)}`, caseNo: '2026가단1001', name: '선고기일', date: kstDay(12) }]);
+    expect(r.ok && r.results[0].result).toBe('changed');
+    expect(room().caseInfo!.deadlines.filter((d) => d.label === '선고기일').map((d) => d.date)).toEqual([kstDay(12)]);
+  });
+
+  it('관리자어드민만 올리고, 사건번호는 한 사건에만', async () => {
+    as('lawyer');
+    expect(await actions.importDaeryuntop([{ id: 'x', name: 'a', date: '2026-12-01' }])).toEqual({ ok: false, reason: '관리자어드민만 올릴 수 있습니다.' });
+    expect(actions.setCaseNo('r_case1', '1').ok).toBe(false);
+    as('admin');
+    const other = getState().rooms.find((r) => r.caseInfo && r.id !== 'r_case1');
+    if (other) expect(actions.setCaseNo(other.id, '2026가단1001')).toEqual({ ok: false, reason: '이미 다른 사건에 연결된 사건번호입니다.' });
+    expect(actions.setCaseNo('r_case1', '').ok).toBe(true);
+    expect(room().caseInfo!.caseNo).toBeUndefined();
+  });
+
+  it('엄수 기일은 3일 전 미리 알림을 더함', () => {
+    const now = new Date('2026-11-01T00:00:00Z');
+    expect(reminderPlan({ date: '2026-11-19', strict: true }, now).map((p) => p.label)).toEqual(['7일 전', '3일 전 (엄수)', '전날', '당일 아침']);
   });
 });

@@ -19,7 +19,7 @@ export default function CasesScreen() {
         {cases.length ? (
           cases.map((r) => {
             const ci = r.caseInfo!;
-            const next = [...ci.deadlines].filter((d) => dDay(d.date) >= 0).sort((a, b) => a.date.localeCompare(b.date))[0];
+            const next = [...ci.deadlines].filter((d) => dDay(d.date) >= 0 && (user.role !== 'client' || !d.firmOnly)).sort((a, b) => a.date.localeCompare(b.date))[0];
             return (
               <Card key={r.id} onPress={() => open(r.id)}>
                 <View style={{ flexDirection: 'row', gap: space.sm, marginBottom: space.xs }}>

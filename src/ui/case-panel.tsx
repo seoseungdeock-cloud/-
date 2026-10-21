@@ -64,7 +64,7 @@ export function CasePanel({ room, canEdit }: { room: Room; canEdit: boolean }) {
         <Sub>{ci.field}</Sub>
       </View>
       <View style={{ marginTop: space.sm }}>
-        <HearingList hearings={ci.deadlines} />
+        <HearingList hearings={canEdit ? ci.deadlines : ci.deadlines.filter((d) => !d.firmOnly)} />
       </View>
       {canEdit && (ci.limits?.length || ci.limitAlerts === false) ? <LimitList room={room} /> : null}
       <View style={{ marginTop: space.sm, gap: 2 }}>

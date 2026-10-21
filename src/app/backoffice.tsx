@@ -9,6 +9,7 @@ import type { Role } from '@/core/types';
 import { Badge, Button, Card, Chip, Chips, Empty, Input, Notice, Screen, Section, Sub, T } from '@/ui/kit';
 import { Icon } from '@/ui/icons';
 import { family, space, useColors } from '@/ui/theme';
+import { DaeryuntopSection } from '@/ui/daeryuntop-panel';
 import { useFrameWidth } from '@/ui/web-frame';
 import { useApp, useMe } from '@/ui/use-app';
 
@@ -150,6 +151,8 @@ export default function BackofficeScreen() {
             </Card>
           ))}
       </Section>
+
+      <DaeryuntopSection report={report} />
 
       <Section title="계정 목록">
         <Input placeholder="아이디·이름 검색" value={query} onChangeText={setQuery} />

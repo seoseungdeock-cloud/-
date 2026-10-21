@@ -58,7 +58,15 @@ export type Account = {
 };
 
 /** 기일. time·place는 대륜탑 연동이나 변호사가 입력하면 붙습니다. */
-export type Hearing = { id: string; label: string; date: string; time?: string; place?: string; source?: HearingSource };
+export type Hearing = {
+  id: string; label: string; date: string; time?: string; place?: string; source?: HearingSource;
+  /** 대륜탑 기일 번호 */
+  externalId?: string;
+  /** 대륜탑 '확인용'·'상대측' 기일: 의뢰인에게는 보이지 않음 */
+  firmOnly?: boolean;
+  /** 대륜탑 '엄수': 3일 전 미리 알림을 더 보냄 */
+  strict?: boolean;
+};
 export type HearingSource = 'daeryuntop' | 'manual';
 export type HearingChange = 'new' | 'changed' | 'cancelled';
 
@@ -96,13 +104,15 @@ export type CaseInfo = {
   limits?: FixedDeadline[];
   /** 어드민이 이 사건의 불변기간 알림을 끈 경우 false */
   limitAlerts?: boolean;
+  /** 대륜탑 사건번호 (어드민이 연결, 대륜탑 기일을 이 번호로 받음) */
+  caseNo?: string;
 };
 
 /** 불변기간 (항소·상고·이의신청 기간 등). 만료일 24:00까지. lawyerId가 없으면 사건방의 변호사 전원이 담당. */
-export type FixedDeadline = { id: string; label: string; due: string; lawyerId?: string; handledAt?: string; source?: HearingSource };
+export type FixedDeadline = { id: string; label: string; due: string; lawyerId?: string; handledAt?: string; source?: HearingSource; externalId?: string };
 
 /** 어드민 화면의 사건별 불변기간 목록 */
-export type DeadlineCase = { roomId: string; title: string; alertsOn: boolean; office: string; limits: FixedDeadline[] };
+export type DeadlineCase = { roomId: string; title: string; alertsOn: boolean; office: string; limits: FixedDeadline[]; caseNo?: string };
 
 export type Room = {
   id: string;

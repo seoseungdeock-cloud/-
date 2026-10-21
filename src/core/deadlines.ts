@@ -67,6 +67,7 @@ export function deadlineCasesFrom(rooms: Room[], users: User[]): DeadlineCase[] 
       roomId: r.id, title: r.caseInfo!.title, alertsOn: r.caseInfo!.limitAlerts !== false,
       office: limitOffice(limitLawyers(r, {}, users)),
       limits: [...(r.caseInfo!.limits ?? [])].sort((a, b) => a.due.localeCompare(b.due)),
+      ...(r.caseInfo!.caseNo ? { caseNo: r.caseInfo!.caseNo } : {}),
     }))
     .sort((a, b) => next(a).localeCompare(next(b)) || a.title.localeCompare(b.title, 'ko'));
 }

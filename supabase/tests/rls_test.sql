@@ -387,6 +387,55 @@ reset role;
 delete from push_outbox;
 update cases set deadline_alerts = true;
 
+-- ── 대륜탑 기일 연동 ──
+reset role;
+delete from push_outbox;
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select tst.throws('대륜탑: 변호사는 사건번호 연결 못 함', $$select admin_set_case_no('10000000-0000-0000-0000-000000000001', '2026가단1')$$, '어드민만');
+select tst.throws('대륜탑: 변호사는 엑셀 못 올림', $$select admin_import_daeryuntop('[]')$$, '관리자어드민만');
+select tst.throws('대륜탑: 변호사는 직접 못 부름', $$select ingest_daeryuntop_hearing('{}')$$, 'permission denied');
+select tst.as_user('00000000-0000-0000-0000-00000000000b');
+select admin_set_case_no('10000000-0000-0000-0000-000000000001', '2026가단1');
+select tst.throws('대륜탑: 부관리자는 엑셀 못 올림', $$select admin_import_daeryuntop('[]')$$, '관리자어드민만');
+select tst.as_user('00000000-0000-0000-0000-00000000000a');
+create temp table dt_out as select admin_import_daeryuntop(jsonb_build_array(
+  jsonb_build_object('id', 'h1', 'caseNo', '2026가단1', 'name', '변론기일', 'date', (current_date + 20)::text, 'time', '10:30', 'court', '부산지법', 'place', '351호'),
+  jsonb_build_object('id', 'h2', 'caseNo', '2026가단1', 'name', '상고기간', 'date', (current_date + 5)::text, 'flags', '["불변"]'::jsonb),
+  jsonb_build_object('id', 'h3', 'caseNo', '2026가단1', 'name', '(확인용) 보완수사 확인', 'party', '확인용', 'date', (current_date + 20)::text, 'flags', '["엄수"]'::jsonb),
+  jsonb_build_object('id', 'h4', 'caseNo', '없는번호', 'name', '변론기일', 'date', (current_date + 20)::text),
+  jsonb_build_object('id', 'h5', 'caseNo', '2026가단1', 'name', '개인 메모', 'official', false, 'date', (current_date + 20)::text),
+  jsonb_build_object('id', 'h6', 'caseNo', '2026가단1', 'name', '선고기일', 'date', (current_date - 3)::text)
+)) as r;
+reset role;
+select tst.check('대륜탑: 줄마다 결과', (select array_agg(e->>'result' order by e->>'id') = '{new,deadline,new,skip:연결 안 된 사건,skip:개인 일정,skip:지난 기일}' from dt_out, jsonb_array_elements(r) e), (select r::text from dt_out));
+select tst.check('대륜탑: 일반 기일은 사건방 카드 (의뢰인·변호사)', (select count(*) = 2 from push_outbox o join hearing_alerts a on a.id = (o.data->>'alertId')::uuid where a.source = 'daeryuntop' and a.label = '변론기일' and a.place = '부산지법 351호'));
+select tst.check('대륜탑: 불변은 불변기간으로', (select count(*) = 1 from case_deadlines where external_id = 'h2' and source = 'daeryuntop'));
+select tst.check('대륜탑: 확인용은 변호사·직원에게만 푸시', (select array_agg(p.login_id) = '{lawyer}' from push_outbox o join profiles p on p.id = o.user_id where o.title like '새 기일%' and o.body like '%보완수사%'));
+select tst.check('대륜탑: 엄수는 이름에 표시', (select label = '(확인용) 보완수사 확인 [엄수]' and strict and firm_only from hearings where external_id = 'h3'));
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000e');
+select tst.check('대륜탑: 의뢰인에게 확인용 기일 안 보임', (select count(*) = 0 from hearings where external_id = 'h3') and (select count(*) = 1 from hearings where external_id = 'h1'));
+reset role;
+delete from push_outbox;
+select tst.as_user('');
+set role service_role;
+select tst.check('대륜탑: 같은 내용은 알림 없음', ingest_daeryuntop_hearing(jsonb_build_object('id', 'h1', 'caseNo', '2026가단1', 'name', '변론기일', 'date', (current_date + 20)::text, 'time', '10:30', 'court', '부산지법', 'place', '351호')) = 'same');
+select tst.check('대륜탑: 날짜 바뀌면 기일 변경', ingest_daeryuntop_hearing(jsonb_build_object('id', 'h1', 'caseNo', '2026가단1', 'name', '변론기일', 'date', (current_date + 27)::text, 'time', '10:30', 'court', '부산지법', 'place', '351호', 'flags', '["변경"]'::jsonb)) = 'changed');
+select tst.check('대륜탑: 완료 표시는 조치 완료', ingest_daeryuntop_hearing(jsonb_build_object('id', 'h2', 'caseNo', '2026가단1', 'name', '상고기간', 'date', (current_date + 5)::text, 'flags', '["불변","완료"]'::jsonb)) = 'deadline');
+select tst.check('대륜탑: 완료면 handled', (select handled_at is not null from case_deadlines where external_id = 'h2'));
+select tst.check('대륜탑: 추정은 기일 취소', ingest_daeryuntop_hearing(jsonb_build_object('id', 'h1', 'caseNo', '2026가단1', 'name', '변론기일', 'date', (current_date + 27)::text, 'flags', '["추정"]'::jsonb)) = 'cancelled');
+reset role;
+select tst.check('대륜탑: 변경·취소 카드', (select array_agg(change::text order by created_at) = '{changed,cancelled}' from hearing_alerts where source = 'daeryuntop' and label like '변론기일%' and created_at >= (select min(created_at) from hearing_alerts where change = 'changed' and source = 'daeryuntop')));
+select tst.check('대륜탑: 취소되면 기일 목록에서 빠짐', (select count(*) = 0 from hearings where external_id = 'h1'));
+set role service_role;
+select ingest_daeryuntop_hearing(jsonb_build_object('id', 'xl:2026가단1:변론기일:a', 'caseNo', '2026가단1', 'name', '변론기일', 'date', (current_date + 10)::text));
+select tst.check('대륜탑 엑셀: 같은 이름의 다가오는 기일은 날짜 변경으로', ingest_daeryuntop_hearing(jsonb_build_object('id', 'xl:2026가단1:변론기일:b', 'caseNo', '2026가단1', 'name', '변론기일', 'date', (current_date + 12)::text)) = 'changed');
+reset role;
+select tst.check('대륜탑: 엄수는 3일 전 미리 알림', enqueue_hearing_reminders(((current_date + 17) + time '09:00') at time zone 'Asia/Seoul') = 1);
+select tst.check('대륜탑: 엄수 3일 전은 변호사·직원에게', (select array_agg(distinct p.login_id) = '{lawyer}' from push_outbox o join profiles p on p.id = o.user_id where o.title like '엄수 기일 3일 전%'));
+delete from push_outbox;
+
 -- ── 로그인 안 한 사람 ──
 reset role;
 set role anon;

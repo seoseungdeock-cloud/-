@@ -201,6 +201,28 @@ describe('사건·기일', () => {
     expect(getState().posts.some((p) => p.sourceId === `deadline:${limit.id}`)).toBe(false);
   });
 
+  it('대륜탑 엑셀: 어드민이 사건번호 연결 후 올리면 기일 알람이 서버에 생기고, 확인용은 의뢰인에게 안 보임', async () => {
+    const day = new Date(Date.now() + 9 * 3_600_000 + 20 * 86_400_000).toISOString().slice(0, 10);
+    await as('admin');
+    expect(actions.setCaseNo(CASE_ROOM, '2026가단77').ok).toBe(true);
+    await done();
+    const r = await actions.importDaeryuntop([
+      { id: `xl:2026가단77:변론기일:${day}`, caseNo: '2026가단77', name: '변론기일', date: day, time: '10:30' },
+      { id: `xl:2026가단77:(확인용):${day}`, caseNo: '2026가단77', name: '(확인용)', date: day, flags: ['엄수'] },
+      { id: 'xl:9:x', caseNo: '없음', name: 'x', date: day },
+    ]);
+    expect(r.ok && r.results.map((x) => x.result)).toEqual(['new', 'new', 'skip:연결 안 된 사건']);
+    expect(getState().deadlineCases?.find((c) => c.roomId === CASE_ROOM)?.caseNo).toBe('2026가단77');
+    await as('lawyer');
+    expect(getState().rooms.find((x) => x.id === CASE_ROOM)!.caseInfo!.deadlines.filter((d) => d.date === day).map((d) => [d.label, !!d.firmOnly])).toEqual(
+      expect.arrayContaining([['변론기일', false], ['(확인용) [엄수]', true]]),
+    );
+    await as('client');
+    const mine = getState().rooms.find((x) => x.id === CASE_ROOM)!.caseInfo!.deadlines.filter((d) => d.date === day);
+    expect(mine.map((d) => d.label)).toEqual(['변론기일']);
+    expect(pendingFor(me().id, getState().hearingAlerts).some((a) => a.label === '변론기일' && a.source === 'daeryuntop')).toBe(true);
+  });
+
   it('의뢰인의 수임 요청은 사건수행방으로 서버에 남음', async () => {
     await as('client');
     const r = actions.requestRetain('lw_1', '이혼', '상담 부탁드립니다');

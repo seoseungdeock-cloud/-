@@ -22,7 +22,7 @@ export function caseStatusText(room: Room, users: User[], today = new Date().toI
   const c = room.caseInfo;
   if (!c) return ['진행 현황', '· 단계: 상담 (수임 전)', '', assignmentText(room, users)].join('\n');
   const last = c.progress.at(-1);
-  const next = [...c.deadlines].filter((d) => d.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const next = [...c.deadlines].filter((d) => d.date >= today && !d.firmOnly).sort((a, b) => a.date.localeCompare(b.date))[0];
   const lines = ['진행 현황', `· 단계: ${c.stage}`];
   if (last) lines.push(`· 최근 진행: ${last.note} (${day(last.at)})`);
   lines.push(`· 다음 기일: ${next ? `${next.label} (${next.date})` : '없음'}`);

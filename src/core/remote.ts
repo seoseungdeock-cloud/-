@@ -3,6 +3,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { AuthCode } from './auth-codes';
+import type { DtHearing } from './daeryuntop';
 import type {
   Account,
   Attachment,
@@ -240,12 +241,16 @@ export async function loadAll(sb: SupabaseClient, meId: string, withMessages = t
     if (!c) return undefined;
     return {
       title: c.title, field: c.field, stage: c.stage,
-      deadlines: (hearingsBy.get(roomId) ?? []).map((h) => ({ id: h.id, label: h.label, date: h.date, time: hhmm(h.time), place: opt(h.place), source: h.source })),
+      deadlines: (hearingsBy.get(roomId) ?? []).map((h) => ({
+        id: h.id, label: h.label, date: h.date, time: hhmm(h.time), place: opt(h.place), source: h.source,
+        ...(h.external_id ? { externalId: h.external_id } : {}), ...(h.firm_only ? { firmOnly: true } : {}), ...(h.strict ? { strict: true } : {}),
+      })),
       documents: (docsBy.get(roomId) ?? []).map((d) => ({ id: d.id, name: d.name, addedAt: d.added_at })),
       costs: (costsBy.get(roomId) ?? []).map((d) => ({ id: d.id, label: d.label, amount: Number(d.amount) })),
       progress: (progressBy.get(roomId) ?? []).map((d) => ({ id: d.id, at: d.at, note: d.note })),
       ...(limitsBy.has(roomId) ? { limits: (limitsBy.get(roomId) ?? []).map(limitFromRow) } : {}),
       ...(c.deadline_alerts === false ? { limitAlerts: false } : {}),
+      ...(c.case_no ? { caseNo: c.case_no } : {}),
     };
   };
   const roomList: Room[] = [...rooms].reverse().map((r) => {
@@ -355,12 +360,12 @@ export async function loadAll(sb: SupabaseClient, meId: string, withMessages = t
 function limitFromRow(d: Row): FixedDeadline {
   return {
     id: d.id, label: d.label, due: d.due_date ?? d.due, source: d.source ?? 'manual',
-    ...(d.lawyer_id ? { lawyerId: d.lawyer_id } : {}), ...((d.handled_at ?? d.handledAt) ? { handledAt: d.handled_at ?? d.handledAt } : {}),
+    ...(d.lawyer_id ? { lawyerId: d.lawyer_id } : {}), ...(d.external_id ? { externalId: d.external_id } : {}), ...((d.handled_at ?? d.handledAt) ? { handledAt: d.handled_at ?? d.handledAt } : {}),
   };
 }
 
 function deadlineCaseFromRow(c: Row): DeadlineCase {
-  return { roomId: c.room_id, title: c.title, alertsOn: c.alerts_on, office: c.office, limits: (c.deadlines ?? []).map(limitFromRow) };
+  return { roomId: c.room_id, title: c.title, alertsOn: c.alerts_on, office: c.office, limits: (c.deadlines ?? []).map(limitFromRow), ...(c.case_no ? { caseNo: c.case_no } : {}) };
 }
 
 /** 오픈대화방 '방 id:사용자 id' → 참여자 번호 (내보내기에 씀) */
@@ -482,6 +487,8 @@ export function remoteOps(sb: SupabaseClient) {
     deleteDeadline: (id: string) => rpc(sb, 'delete_deadline', { p_id: id }),
     setExecutive: (u: string, on: boolean) => rpc(sb, 'admin_set_executive', { p_user: u, p_on: on }),
     setDeadlineAlerts: (roomId: string, on: boolean) => rpc(sb, 'admin_set_deadline_alerts', { p_room: roomId, p_on: on }),
+    setCaseNo: (roomId: string, caseNo: string) => rpc(sb, 'admin_set_case_no', { p_room: roomId, p_case_no: caseNo }),
+    importDaeryuntop: (rows: DtHearing[]) => rpc<{ id: string; caseNo?: string; result: string }[]>(sb, 'admin_import_daeryuntop', { p_rows: rows }),
 
     // 오픈대화방
     createOpenRoom: (r: OpenRoom, alias: string, password: string) =>

@@ -30,6 +30,7 @@ import { asksCaseInfo, assignmentText, caseStatusText } from './case-bot';
 import { AUTH_TTL_MIN, canReceiveAuthCodes, checkAuthCode, type AuthCode } from './auth-codes';
 import { digestPosts, LAW_BOT, type LawUpdate } from './law-digest';
 import { deadlineCasesFrom, dueLimitPosts, LIMIT_BOT } from './deadlines';
+import { classify, type DtHearing, type DtResult } from './daeryuntop';
 import { alertText, CHANGE_LABEL, recipientsOf, whenLabel } from './hearings';
 import { boardOf, canSeeBoard, canWriteBoard, formatUntil, MAX_ATTACHMENTS, needsField, reportTarget, restrictedUntil, toggleVote } from './board';
 import { displayName, isMaster, parseMentions, roomMasters, type Reads } from './messenger';
@@ -153,7 +154,7 @@ export function initialState(): State {
       notices: [{ id: 'nt_h1', messageId: 'mh1', text: '기일 변경\n· 변론기일: 11월 5일(목) 14:30 → 11월 19일(목) 10:00', by: BOT_SENDER, at: ago(0.3) }],
       id: 'r_case1', kind: 'case', mode: 'private', title: '임대차보증금 반환 · 샘플 변호사 A', memberIds: ['u_client', 'u_lawyer'], createdBy: 'u_client', createdAt: ago(30), lawyerId: 'lw_1',
       caseInfo: {
-        title: '임대차보증금 반환', field: '부동산·임대차', stage: '진행',
+        title: '임대차보증금 반환', field: '부동산·임대차', stage: '진행', caseNo: '2026가단1001',
         deadlines: [
           { id: 'dl1', label: '답변서 제출', date: '2026-10-27', source: 'manual' },
           { id: 'dl2', label: '변론기일', date: '2026-11-19', time: '10:00', place: '예시지방법원 제301호 법정', source: 'daeryuntop' },
@@ -704,6 +705,75 @@ function checkLimitsLocally() {
   if (remote) return;
   const fresh = dueLimitPosts(state.rooms, state.users, state.posts);
   if (fresh.length) set((s) => ({ posts: [...fresh, ...s.posts] }));
+}
+
+/**
+ * 서버 없이 쓸 때: 대륜탑 기일 한 줄을 받습니다 (서버에서는 ingest_daeryuntop_hearing이 같은 규칙으로 처리).
+ * 결과: new / changed / cancelled / deadline / same / skip:이유
+ */
+function ingestLocal(h: DtHearing): string {
+  const plan = classify(h);
+  if (plan.kind === 'skip') return `skip:${plan.reason}`;
+  const room = state.rooms.find((r) => r.caseInfo?.caseNo && r.caseInfo.caseNo === h.caseNo?.trim());
+  if (!room?.caseInfo) return 'skip:연결 안 된 사건';
+  const setHearings = (fn: (hs: Hearing[]) => Hearing[]) => updateRoom(room.id, (r) => (r.caseInfo ? { ...r, caseInfo: { ...r.caseInfo, deadlines: fn(r.caseInfo.deadlines) } } : r));
+  if (plan.kind === 'deadline') {
+    if (plan.cancelled) {
+      updateLimits(room.id, (ls) => ls.filter((d) => d.externalId !== h.id));
+      return 'cancelled';
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(h.date)) return 'skip:날짜 없음';
+    const old = room.caseInfo.limits?.find((d) => d.externalId === h.id);
+    const handledAt = plan.handled ? (old?.handledAt ?? nowIso()) : undefined;
+    const d: FixedDeadline = { ...old, id: old?.id ?? newId('lm'), label: (h.name.trim() || '불변기간').slice(0, 60), due: h.date, source: 'daeryuntop', externalId: h.id, handledAt };
+    if (!handledAt) delete d.handledAt;
+    updateLimits(room.id, (ls) => [...ls.filter((x) => x.id !== d.id), d].sort((a, b) => a.due.localeCompare(b.due)));
+    setHearings((hs) => hs.filter((x) => x.externalId !== h.id));
+    checkLimitsLocally();
+    return 'deadline';
+  }
+  const today = kstDay(0);
+  let prev = room.caseInfo.deadlines.find((x) => x.externalId === h.id);
+  // 엑셀은 기일 번호가 없어, 같은 이름의 다가오는 기일이 있으면 날짜가 바뀐 것으로 봅니다
+  if (!prev && h.id.startsWith('xl:')) {
+    prev = room.caseInfo.deadlines
+      .filter((x) => x.source === 'daeryuntop' && x.externalId?.startsWith('xl:') && x.date >= today && x.label.replace(/ \[엄수\]$/, '') === h.name.trim())
+      .sort((a, b) => a.date.localeCompare(b.date))[0];
+  }
+  const tag = (id: string) => setHearings((hs) => hs.map((x) => (x.id === id ? { ...x, externalId: h.id, ...(plan.strict ? { strict: true } : {}), ...(plan.firmOnly ? { firmOnly: true } : {}) } : x)));
+  if (plan.cancelled) {
+    if (!prev) return 'skip:없는 기일 취소';
+    if (prev.firmOnly) setHearings((hs) => hs.filter((x) => x.id !== prev!.id));
+    else actions.syncHearing(room.id, { hearingId: prev.id, change: 'cancelled', label: `${prev.label} (${plan.cancelled})`, date: prev.date, time: prev.time, place: prev.place }, 'daeryuntop');
+    return 'cancelled';
+  }
+  if (plan.done) {
+    if (prev) tag(prev.id);
+    return 'skip:완료된 기일';
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(h.date)) return 'skip:날짜 없음';
+  const next = { label: plan.label, date: h.date, time: plan.time, place: plan.place };
+  if (!prev) {
+    if (h.date < today) return 'skip:지난 기일';
+    if (plan.firmOnly) {
+      setHearings((hs) => [...hs, { id: newId('dl'), ...next, source: 'daeryuntop', externalId: h.id, firmOnly: true, ...(plan.strict ? { strict: true } : {}) }]);
+      return 'new';
+    }
+    const r = actions.syncHearing(room.id, { change: 'new', ...next }, 'daeryuntop');
+    if (!r.ok) return `skip:${r.reason}`;
+    const hid = state.hearingAlerts.find((a) => a.id === r.alertId)?.hearingId;
+    if (hid) tag(hid);
+    return 'new';
+  }
+  tag(prev.id);
+  if (prev.label === next.label && prev.date === next.date && prev.time === next.time && prev.place === next.place) return 'same';
+  if (prev.firmOnly) setHearings((hs) => hs.map((x) => (x.id === prev!.id ? { ...x, ...next } : x)));
+  else {
+    const r = actions.syncHearing(room.id, { hearingId: prev.id, change: 'changed', ...next }, 'daeryuntop');
+    if (!r.ok) return `skip:${r.reason}`;
+    tag(prev.id); // 기일을 새로 만들며 대륜탑 번호가 빠지므로 다시 붙임
+  }
+  return 'changed';
 }
 
 /** 어드민 화면의 사건별 불변기간: 서버에서 받은 목록, 없으면 기기 안 사건방에서 */
@@ -1615,6 +1685,34 @@ export const actions = {
     set((s) => ({ users: s.users.map((u) => (u.id === userId ? { ...u, executive: on || undefined } : u)) }));
     mirror((r) => r.setExecutive(userId, on));
     return { ok: true };
+  },
+
+  /** 어드민: 앱 사건에 대륜탑 사건번호를 연결합니다 (대륜탑 기일을 이 번호로 받음). */
+  setCaseNo(roomId: string, caseNo: string): RoomCheck {
+    if (me().role !== 'admin') return { ok: false, reason: '어드민만 바꿀 수 있습니다.' };
+    const no = caseNo.trim();
+    if (no && state.rooms.some((r) => r.id !== roomId && r.caseInfo?.caseNo === no)) return { ok: false, reason: '이미 다른 사건에 연결된 사건번호입니다.' };
+    updateRoom(roomId, (r) => (r.caseInfo ? { ...r, caseInfo: { ...r.caseInfo, caseNo: no || undefined } } : r));
+    set((s) => (s.deadlineCases ? { deadlineCases: s.deadlineCases.map((c) => (c.roomId === roomId ? { ...c, caseNo: no || undefined } : c)) } : {}));
+    mirror((r) => r.setCaseNo(roomId, no));
+    return { ok: true };
+  },
+
+  /** 관리자어드민: 대륜탑 기일 여러 줄 받기 (엑셀 올리기). 서버가 있으면 서버가 처리하고 다시 불러옵니다. */
+  async importDaeryuntop(rows: DtHearing[]): Promise<{ ok: true; results: DtResult[] } | { ok: false; reason: string }> {
+    if (!canManageOpen(me())) return { ok: false, reason: '관리자어드민만 올릴 수 있습니다.' };
+    if (!rows.length) return { ok: false, reason: '올릴 기일이 없습니다.' };
+    if (remote) {
+      try {
+        await queue;
+        const results = await remote.importDaeryuntop(rows);
+        await refresh();
+        return { ok: true, results };
+      } catch (e) {
+        return { ok: false, reason: reasonOf(e as { message?: string }, '대륜탑 기일을 올리지 못했습니다.') };
+      }
+    }
+    return { ok: true, results: rows.map((h) => ({ id: h.id, ...(h.caseNo ? { caseNo: h.caseNo } : {}), result: ingestLocal(h) })) };
   },
 
   /** 어드민: 사건별 불변기간 알림 켜기·끄기 */
