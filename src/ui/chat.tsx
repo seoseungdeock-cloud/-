@@ -550,7 +550,7 @@ export function RoomDrawer({
   const kickable = leavable;
   const [manage, setManage] = useState<string>();
   const [rename, setRename] = useState<string>();
-  const canRename = !((room.kind === 'case' || room.kind === 'consult') && me.role === 'client');
+  const canRename = amMaster;
   const saveName = () => {
     const r = actions.renameRoom(room.id, rename ?? '');
     if (!r.ok) return onError(r.reason);

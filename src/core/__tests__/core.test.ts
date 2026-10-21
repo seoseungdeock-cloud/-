@@ -1201,17 +1201,16 @@ describe('불변기간 알림 시험 (가짜 사건)', () => {
 });
 
 describe('대화방 이름 바꾸기', () => {
-  it('참여자가 바꾸면 모두에게 같은 이름, 안내 메시지가 남고, 사건방은 의뢰인이 못 바꿈', () => {
-    as('lawyer');
+  it('마스터만 바꾸고, 모두에게 같은 이름으로 보이며, 안내 메시지는 남기지 않음', () => {
     const room = getState().rooms.find((r) => r.id === 'r_case1')!;
+    as('lawyer');
+    expect(actions.renameRoom(room.id, '내 사건')).toEqual({ ok: false, reason: '마스터만 방 이름을 바꿀 수 있습니다.' });
+    as('client'); // 이 방을 만든 마스터
+    const before = getState().messages.length;
     expect(actions.renameRoom(room.id, '  임대차 소송방 ').ok).toBe(true);
     expect(getState().rooms.find((r) => r.id === room.id)!.title).toBe('임대차 소송방');
-    expect(getState().messages.filter((m) => m.roomId === room.id).at(-1)?.text).toMatch(/방 이름을 '임대차 소송방'\(으\)로 바꿨습니다/);
+    expect(getState().messages.length).toBe(before);
     expect(actions.renameRoom(room.id, '').ok).toBe(false);
     expect(actions.renameRoom(room.id, '가'.repeat(31)).ok).toBe(false);
-    as('client');
-    expect(actions.renameRoom(room.id, '내 사건')).toEqual({ ok: false, reason: '상담·사건방 이름은 변호사·직원만 바꿀 수 있습니다.' });
-    as('admin');
-    expect(actions.renameRoom(room.id, '남의 방').ok).toBe(false);
   });
 });

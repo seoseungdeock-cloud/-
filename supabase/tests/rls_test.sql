@@ -485,15 +485,15 @@ delete from push_outbox;
 -- ── 대화방 이름 바꾸기 ──
 set role authenticated;
 select tst.as_user('00000000-0000-0000-0000-00000000000e');
-select tst.throws('방 이름: 의뢰인은 사건방 이름 못 바꿈', $$select rename_room('10000000-0000-0000-0000-000000000001', '내 사건')$$, '변호사·직원만');
+select tst.throws('방 이름: 마스터가 아니면 못 바꿈', $$select rename_room('10000000-0000-0000-0000-000000000001', '내 사건')$$, '마스터만');
 select tst.as_user('00000000-0000-0000-0000-00000000000d');
-select tst.throws('방 이름: 참여자가 아니면 못 바꿈', $$select rename_room('10000000-0000-0000-0000-000000000001', '남의 방')$$, '참여 중인 방이 아닙니다');
+select tst.throws('방 이름: 참여자가 아니면 못 바꿈', $$select rename_room('10000000-0000-0000-0000-000000000001', '남의 방')$$, '마스터만');
 select tst.as_user('00000000-0000-0000-0000-00000000000c');
 select tst.throws('방 이름: 30자 넘으면 막힘', $$select rename_room('10000000-0000-0000-0000-000000000001', repeat('가', 31))$$, '30자까지');
 select tst.throws('방 이름: 빈 이름 막힘', $$select rename_room('10000000-0000-0000-0000-000000000001', '  ')$$, '적어 주세요');
 select rename_room('10000000-0000-0000-0000-000000000001', '  임대차 소송 ');
 reset role;
-select tst.check('방 이름: 변호사가 바꿈', (select title = '임대차 소송' from rooms where id = '10000000-0000-0000-0000-000000000001'));
+select tst.check('방 이름: 마스터가 바꿈', (select title = '임대차 소송' from rooms where id = '10000000-0000-0000-0000-000000000001'));
 update rooms set title = '테스트 사건' where id = '10000000-0000-0000-0000-000000000001';
 
 -- ── 로그인 안 한 사람 ──
