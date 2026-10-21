@@ -1,6 +1,7 @@
 import { checkCompliance } from '../compliance';
 import { PROCEDURE_MENU, procedureReply } from '../procedures';
 import { authorView, boardOf, boardsFor, canWriteBoard, commentTree, nameIn, pinNotices, unseenNotices, score, searchPosts, sortPosts, unreadIn } from '../board';
+import { calendarEvents, isSelfRoom, monthGrid } from '../calendar';
 import { contactsFor } from '../contacts';
 import { clientCanSee, dayKey, dayLabel, firstOfDay, hasClient, isHidden, isMaster, presenceOf, markParts, mentionQuery, messageDays, orgGroups, parseMentions, previewText, reactionGroups, readCount, readers, searchAll, searchDirectory, searchMessages, sortRooms, splitMentions, unreadCount } from '../messenger';
 import { opinionFor } from '../knowledge';
@@ -1212,5 +1213,31 @@ describe('대화방 이름 바꾸기', () => {
     expect(getState().messages.length).toBe(before);
     expect(actions.renameRoom(room.id, '').ok).toBe(false);
     expect(actions.renameRoom(room.id, '가'.repeat(31)).ok).toBe(false);
+  });
+});
+
+describe('캘린더와 나와의 메시지', () => {
+  it('달력은 일요일부터 42칸, 사건방 기일·불변기간을 모으고 의뢰인에게는 불변기간·확인용 기일을 숨김', () => {
+    const grid = monthGrid(2026, 10);
+    expect(grid).toHaveLength(42);
+    expect(grid[0]).toBe('2026-09-27');
+    expect(grid[4]).toBe('2026-10-01');
+    const rooms = getState().rooms;
+    as('lawyer');
+    const forLawyer = calendarEvents(me(), rooms);
+    as('client');
+    const forClient = calendarEvents(me(), rooms);
+    expect(forClient.every((e) => e.kind === 'hearing')).toBe(true);
+    expect(forLawyer.length).toBeGreaterThanOrEqual(forClient.length);
+    expect(forLawyer.map((e) => e.date)).toEqual([...forLawyer.map((e) => e.date)].sort());
+  });
+
+  it('나와의 메시지는 한 번만 만들어지고 나 혼자 들어 있음', () => {
+    as('lawyer');
+    const id = actions.openSelfChat();
+    expect(actions.openSelfChat()).toBe(id);
+    const room = getState().rooms.find((r) => r.id === id)!;
+    expect(room.memberIds).toEqual([me().id]);
+    expect(isSelfRoom(room, me().id)).toBe(true);
   });
 });

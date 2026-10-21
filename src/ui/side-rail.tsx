@@ -1,8 +1,10 @@
 // PC 웹: 아래 탭 대신 왼쪽 붉은 세로 메뉴 (네이버 웍스처럼 아이콘만). 위에 내 사진(나 탭), 그 아래 메뉴.
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
+import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
 import { isHidden, unreadCount } from '@/core/messenger';
+import { actions } from '@/core/store';
 import { Avatar } from './kit';
 import { Icon, type IconName } from './icons';
 import { family } from './theme';
@@ -11,7 +13,17 @@ import { useApp, useMe } from './use-app';
 export const RAIL_WIDTH = 64;
 // 승덕이 보내 준 색 (앱 강조색보다 진한 붉은색)
 const RAIL_COLOR = '#AE0E36';
-const ICONS: Record<string, IconName> = { home: 'home', index: 'chat', board: 'board', cases: 'case', find: 'map', work: 'work', me: 'me' };
+const ICONS: Record<string, IconName> = { home: 'home', index: 'chat', board: 'board', cases: 'case', calendar: 'calendar', find: 'map', work: 'work', me: 'me' };
+
+/** 종료: 설치한 PC 앱 창은 닫히고, 브라우저 탭이라 닫을 수 없으면 로그아웃합니다. */
+function quit() {
+  globalThis.close?.();
+  setTimeout(logout, 300);
+}
+function logout() {
+  actions.logout();
+  router.replace('/login');
+}
 
 export function SideRail({ state, descriptors, navigation }: BottomTabBarProps) {
   const s = useApp();
@@ -28,7 +40,7 @@ export function SideRail({ state, descriptors, navigation }: BottomTabBarProps) 
   return (
     <View style={{ width: RAIL_WIDTH, backgroundColor: RAIL_COLOR, alignItems: 'center', paddingTop: 14, gap: 6 }}>
       {me ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="나" onPress={() => go(me.i)} style={{ marginBottom: 14, borderRadius: 22, borderWidth: 2, borderColor: state.index === me.i ? '#FFFFFF' : 'transparent' }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="MY" onPress={() => go(me.i)} style={{ marginBottom: 14, borderRadius: 22, borderWidth: 2, borderColor: state.index === me.i ? '#FFFFFF' : 'transparent' }}>
           <Avatar name={user.nickname} uri={user.photo} size={38} tone="rgba(255,255,255,0.85)" />
         </Pressable>
       ) : null}
@@ -52,6 +64,22 @@ export function SideRail({ state, descriptors, navigation }: BottomTabBarProps) 
           </Pressable>
         );
       })}
+      <View style={{ marginTop: 'auto', paddingBottom: 14, gap: 6 }}>
+        <RailButton icon="exit" label="로그아웃" onPress={logout} />
+        <RailButton icon="power" label="종료" onPress={quit} />
+      </View>
     </View>
+  );
+}
+
+function RailButton({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={(st) => ({ width: 46, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: (st as { hovered?: boolean }).hovered ? 'rgba(255,255,255,0.1)' : 'transparent' })}>
+      <Icon name={icon} color="rgba(255,255,255,0.72)" size={22} />
+    </Pressable>
   );
 }

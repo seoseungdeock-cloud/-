@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 
 import { clientCanSee, dayKey, displayName, firstOfDay, lastReadAt, mentionQuery, messageDays, notifyLevel, searchMessages, visibleMessages } from '@/core/messenger';
+import { isSelfRoom } from '@/core/calendar';
 import { aiCanJoin, ROOM_KIND_LABEL } from '@/core/rooms';
 import { contactsFor } from '@/core/contacts';
 import { actions } from '@/core/store';
@@ -173,11 +174,17 @@ export default function RoomScreen() {
 
   const header = (
     <View style={{ gap: space.sm, marginBottom: space.md }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-        <ModeBadge mode={room.mode} />
-        <Sub>{ROOM_KIND_LABEL[room.kind]}</Sub>
-      </View>
-      <ModeBanner mode={room.mode} />
+      {isSelfRoom(room, user.id) ? (
+        <Sub>나만 보는 대화방입니다. 메모나 파일을 보내 두세요.</Sub>
+      ) : (
+        <>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+            <ModeBadge mode={room.mode} />
+            <Sub>{ROOM_KIND_LABEL[room.kind]}</Sub>
+          </View>
+          <ModeBanner mode={room.mode} />
+        </>
+      )}
       {room.kind === 'case' ? <CasePanel room={room} canEdit={user.role !== 'client'} /> : null}
       {room.kind === 'consult' && user.role === 'lawyer' && isMember ? (
         promote.open ? (

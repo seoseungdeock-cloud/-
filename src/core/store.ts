@@ -32,6 +32,7 @@ import { digestPosts, LAW_BOT, type LawUpdate } from './law-digest';
 import { deadlineCasesFrom, dueLimitPosts, LIMIT_BOT, limitLawyers, limitPost, limitPushText, type LimitSlot } from './deadlines';
 import { classify, type DtHearing, type DtResult } from './daeryuntop';
 import { alertText, CHANGE_LABEL, recipientsOf, whenLabel } from './hearings';
+import { isSelfRoom, SELF_ROOM_TITLE } from './calendar';
 import { boardOf, canSeeBoard, canWriteBoard, formatUntil, MAX_ATTACHMENTS, needsField, reportTarget, restrictedUntil, toggleVote } from './board';
 import { displayName, isMaster, parseMentions, roomMasters, type Reads } from './messenger';
 import { findLawyer } from './offices';
@@ -1005,6 +1006,7 @@ export const actions = {
     };
     set((s) => ({ rooms: [room, ...s.rooms] }));
     mirror((r) => r.createRoom(room));
+    if (isSelfRoom(room, creator.id)) return { ok: true, roomId: room.id };
     pushMessage(
       room.id,
       SYSTEM_SENDER,
@@ -1525,6 +1527,20 @@ export const actions = {
     if (!c) return { ok: false, reason: '연락처를 찾을 수 없습니다.' };
     pushMessage(roomId, me().id, 'contact', displayName(c), { contactId });
     return { ok: true };
+  },
+
+  /** 나와의 메시지 (메모처럼 쓰는 나 혼자 방). 있으면 기존 방 */
+  openSelfChat(): string {
+    const my = me().id;
+    const existing = state.rooms.find((r) => isSelfRoom(r, my));
+    if (existing) {
+      if (existing.hiddenAt?.[my]) {
+        updateRoom(existing.id, (r) => ({ ...r, hiddenAt: { ...r.hiddenAt, [my]: '' } }));
+        mirror((r) => r.setHidden(existing.id, null));
+      }
+      return existing.id;
+    }
+    return actions.createRoom({ kind: 'group', mode: 'private', title: SELF_ROOM_TITLE, memberIds: [] }).roomId!;
   },
 
   /** 주소록에서 1:1 대화 열기 (있으면 기존 방) */

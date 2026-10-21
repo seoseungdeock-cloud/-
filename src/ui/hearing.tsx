@@ -29,7 +29,7 @@ function parts(date: string) {
   return Number.isNaN(d.getTime()) ? null : { m: d.getUTCMonth() + 1, d: d.getUTCDate(), w: WEEK[d.getUTCDay()] };
 }
 /** 오후 2:30 처럼 */
-function timeLabel(time?: string) {
+export function timeLabel(time?: string) {
   const m = /^(\d{1,2}):(\d{2})/.exec(time ?? '');
   if (!m) return time ?? '';
   const h = Number(m[1]);

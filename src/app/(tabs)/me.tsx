@@ -7,6 +7,7 @@ import { canJoinMembership, canSeeSuggestions } from '@/core/rooms';
 import { actions } from '@/core/store';
 import { enableWebPush, webPushState } from '@/core/web-push';
 import { HonorsCard } from '@/ui/honors';
+import { Icon } from '@/ui/icons';
 import { usePresenceColor } from '@/ui/presence';
 import { Avatar, Badge, Button, Card, Chip, Chips, Screen, Section, Sub, T } from '@/ui/kit';
 import { family, space, useColors } from '@/ui/theme';
@@ -23,7 +24,7 @@ export default function MeScreen() {
   const account = s.accounts.find((a) => a.userId === user.id);
   const open = s.suggestions.filter((x) => x.status === 'open').length;
   return (
-    <Screen title="나">
+    <Screen title="MY">
       <Card onPress={() => router.push('/profile')}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
           <Avatar name={user.nickname} uri={user.photo} dot={user.role === 'client' ? undefined : dot(user)} />
@@ -38,6 +39,16 @@ export default function MeScreen() {
             </View>
           </View>
           <Text style={{ ...family.semibold, fontSize: 14, color: c.accent }}>편집</Text>
+        </View>
+      </Card>
+      <Card onPress={() => router.push({ pathname: '/room/[id]', params: { id: actions.openSelfChat() } })}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+          <Icon name="chat" color={c.accent} size={22} />
+          <View style={{ flex: 1 }}>
+            <T bold>나와의 메시지</T>
+            <Sub>메모·파일을 나에게 보내 두는 대화방</Sub>
+          </View>
+          <Icon name="chevron" color={c.faint} size={18} />
         </View>
       </Card>
       {canJoinMembership(user) ? (
