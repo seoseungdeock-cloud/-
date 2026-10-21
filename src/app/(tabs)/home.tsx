@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { boardOf } from '@/core/board';
 import home from '@/data/home.json';
+import { GOLD, goldSheen, HonorsMark } from '@/ui/honors';
 import { Icon } from '@/ui/icons';
 import { Badge, T } from '@/ui/kit';
 import { family, MAX_WIDTH, radius, space, useColors } from '@/ui/theme';
@@ -24,7 +25,7 @@ export default function HomeScreen() {
 
   const banners = [
     { top: '변호사 상담부터 법률 서류 제출까지 한 번에!', title: 'GRAND OPENING', cta: '변호사 찾아보기', go: () => router.push('/find') },
-    { top: '사건이 끝날 때까지 챙겨 드립니다', title: '라잇나우 멤버십', cta: '혜택 보기', go: () => router.push('/membership') },
+    { top: '사건이 끝날 때까지 챙겨 드립니다', title: '대륜 아너스', cta: '혜택 보기', honors: true, go: () => router.push('/membership') },
   ];
 
   return (
@@ -80,15 +81,29 @@ export default function HomeScreen() {
             onScroll={(e) => setSlide(Math.round(e.nativeEvent.contentOffset.x / inner))}
             scrollEventThrottle={64}
             style={{ marginTop: space.lg, borderRadius: radius.lg }}>
-            {banners.map((b) => (
-              <View key={b.title} style={{ width: inner, backgroundColor: c.accentSoft, borderRadius: radius.lg, padding: space.xl, gap: space.sm }}>
-                <T size="small" color={c.sub}>{b.top}</T>
-                <Text style={{ ...family.heavy, fontSize: 30, color: c.accent }}>{b.title}</Text>
-                <Pressable onPress={b.go} style={{ alignSelf: 'flex-start', backgroundColor: c.accent, borderRadius: radius.pill, paddingHorizontal: space.lg, paddingVertical: space.sm, marginTop: space.sm }}>
-                  <Text style={{ color: '#FFFFFF', ...family.bold }}>{b.cta}</Text>
-                </Pressable>
-              </View>
-            ))}
+            {banners.map((b) =>
+              'honors' in b ? (
+                <View key={b.title} style={{ width: inner, backgroundColor: GOLD.card, ...goldSheen('#2A231A', '#14110D'), borderRadius: radius.lg, padding: space.xl, gap: space.sm, overflow: 'hidden' }}>
+                  <View style={{ position: 'absolute', right: -24, bottom: -30, opacity: 0.12 }}>
+                    <HonorsMark width={170} color={GOLD.light} />
+                  </View>
+                  <Text style={{ color: GOLD.gold, fontSize: 11, letterSpacing: 3, ...family.bold }}>DAERYUN HONORS</Text>
+                  <Text style={{ ...family.heavy, fontSize: 30, color: GOLD.light }}>{b.title}</Text>
+                  <T size="small" color={GOLD.sub}>{b.top}</T>
+                  <Pressable onPress={b.go} style={{ alignSelf: 'flex-start', backgroundColor: GOLD.gold, ...goldSheen(GOLD.light, GOLD.deep), borderRadius: radius.pill, paddingHorizontal: space.lg, paddingVertical: space.sm, marginTop: space.sm }}>
+                    <Text style={{ color: GOLD.bg, ...family.bold }}>{b.cta}</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View key={b.title} style={{ width: inner, backgroundColor: c.accentSoft, borderRadius: radius.lg, padding: space.xl, gap: space.sm }}>
+                  <T size="small" color={c.sub}>{b.top}</T>
+                  <Text style={{ ...family.heavy, fontSize: 30, color: c.accent }}>{b.title}</Text>
+                  <Pressable onPress={b.go} style={{ alignSelf: 'flex-start', backgroundColor: c.accent, borderRadius: radius.pill, paddingHorizontal: space.lg, paddingVertical: space.sm, marginTop: space.sm }}>
+                    <Text style={{ color: '#FFFFFF', ...family.bold }}>{b.cta}</Text>
+                  </Pressable>
+                </View>
+              ),
+            )}
           </ScrollView>
           <View style={{ alignSelf: 'flex-end', marginTop: -36, marginRight: space.md, backgroundColor: c.bg, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 2 }}>
             <T size="tiny">{slide + 1}/{banners.length}</T>

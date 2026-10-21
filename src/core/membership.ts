@@ -1,4 +1,4 @@
-// 라잇나우 멤버십: 의뢰인이 대접받는 느낌을 주는 혜택
+// 대륜 아너스(멤버십): 의뢰인이 대접받는 느낌을 주는 혜택
 
 export type Benefit = { title: string; detail: string };
 

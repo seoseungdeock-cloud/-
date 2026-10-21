@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 
-import { ackStatus, CHANGE_LABEL, clientUnackedHours, dDay, dDayLabel, pendingFor, reminderPlan, whenLabel } from '@/core/hearings';
+import { ackStatus, CHANGE_LABEL, clientUnackedHours, dateLabel, dDay, dDayLabel, pendingFor, reminderPlan, whenLabel } from '@/core/hearings';
 import { actions } from '@/core/store';
 import type { Hearing, HearingAlert } from '@/core/types';
 import { Icon } from './icons';
@@ -23,24 +23,69 @@ export function DBadge({ date }: { date: string }) {
   );
 }
 
+const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+function parts(date: string) {
+  const d = new Date(`${date}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? null : { m: d.getUTCMonth() + 1, d: d.getUTCDate(), w: WEEK[d.getUTCDay()] };
+}
+/** 오후 2:30 처럼 */
+function timeLabel(time?: string) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(time ?? '');
+  if (!m) return time ?? '';
+  const h = Number(m[1]);
+  return `${h < 12 ? '오전' : '오후'} ${h % 12 || 12}:${m[2]}`;
+}
+
+/** 달력 한 장 모양의 날짜 */
+function DateTile({ date, size, muted }: { date: string; size: number; muted?: boolean }) {
+  const c = useColors();
+  const p = parts(date);
+  if (!p) return null;
+  const tone = muted ? c.faint : c.accent;
+  return (
+    <View style={{ width: size, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: muted ? c.line : tone, backgroundColor: c.bg }}>
+      <View style={{ backgroundColor: tone, paddingVertical: size * 0.06, alignItems: 'center' }}>
+        <Text style={{ ...family.bold, fontSize: size * 0.17, color: '#FFFFFF' }}>{p.m}월</Text>
+      </View>
+      <View style={{ alignItems: 'center', paddingTop: size * 0.04, paddingBottom: size * 0.07 }}>
+        <Text style={{ ...family.bold, fontSize: size * 0.42, lineHeight: size * 0.5, color: muted ? c.faint : c.text, textDecorationLine: muted ? 'line-through' : 'none' }}>{p.d}</Text>
+        <Text style={{ ...family.semibold, fontSize: size * 0.15, color: c.sub }}>{p.w}요일</Text>
+      </View>
+    </View>
+  );
+}
+
 /** 알람 내용 (카드와 확인 창이 같이 씀) */
 function AlertBody({ a, big }: { a: HearingAlert; big?: boolean }) {
   const c = useColors();
   const cancelled = a.change === 'cancelled';
+  const changed = a.change === 'changed' && !!a.prevDate;
+  const tone = cancelled ? c.faint : c.accent;
   return (
-    <View style={{ gap: 4 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
-        <Icon name="calendar" color={c.accent} size={big ? 22 : 18} />
-        <Text style={{ ...family.heavy, fontSize: big ? 20 : 16, color: c.accent }}>{CHANGE_LABEL[a.change]}</Text>
+    <View style={{ gap: big ? space.md : space.sm }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: cancelled ? c.surface : c.accentSoft, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4 }}>
+          <Icon name="calendar" color={tone} size={14} />
+          <Text style={{ ...family.bold, fontSize: 13, color: tone }}>{CHANGE_LABEL[a.change]}</Text>
+        </View>
         {!cancelled ? <DBadge date={a.date} /> : null}
       </View>
-      <Text style={{ ...family.bold, fontSize: big ? 17 : 15, color: c.text }}>{a.label}</Text>
-      {a.change === 'changed' && a.prevDate ? (
-        <Text style={{ ...family.regular, fontSize: 14, color: c.faint, textDecorationLine: 'line-through' }}>{whenLabel(a.prevDate, a.prevTime)}</Text>
+      <Text style={{ ...family.bold, fontSize: big ? 19 : 16, color: c.text, letterSpacing: -0.3 }}>{a.label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: big ? space.md : space.sm }}>
+        <DateTile date={a.date} size={big ? 76 : 58} muted={cancelled} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ ...family.bold, fontSize: big ? 22 : 18, color: cancelled ? c.faint : c.text, textDecorationLine: cancelled ? 'line-through' : 'none', letterSpacing: -0.4 }}>{timeLabel(a.time) || dateLabel(a.date)}</Text>
+          {a.place && !cancelled ? <Text style={{ ...family.regular, fontSize: 14, color: c.sub }}>{a.place}</Text> : null}
+          {cancelled ? <Text style={{ ...family.semibold, fontSize: 14, color: c.sub }}>이 기일은 열리지 않습니다</Text> : null}
+        </View>
+      </View>
+      {changed ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.surface, borderRadius: radius.sm + 2, paddingHorizontal: space.md, paddingVertical: space.sm }}>
+          <Text style={{ ...family.semibold, fontSize: 12, color: c.sub }}>변경 전</Text>
+          <Text style={{ flex: 1, minWidth: 0, ...family.regular, fontSize: 13, color: c.faint, textDecorationLine: 'line-through' }}>{whenLabel(a.prevDate!, a.prevTime)}</Text>
+        </View>
       ) : null}
-      <Text style={{ ...family.heavy, fontSize: big ? 24 : 19, color: cancelled ? c.faint : c.text, textDecorationLine: cancelled ? 'line-through' : 'none' }}>{whenLabel(a.date, a.time)}</Text>
-      {a.place && !cancelled ? <Text style={{ ...family.regular, fontSize: 14, color: c.sub }}>{a.place}</Text> : null}
-      <Text style={{ ...family.semibold, fontSize: 12, color: c.faint }}>{a.source === 'daeryuntop' ? '대륜탑 자동 연동' : '담당 변호사 입력'}</Text>
+      <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{a.source === 'daeryuntop' ? '대륜탑에서 자동으로 받은 일정' : '담당 변호사가 입력한 일정'}</Text>
     </View>
   );
 }
@@ -57,7 +102,7 @@ export function HearingCard({ alertId }: { alertId: string }) {
   const missing = status.some((x) => !x.at);
   const unackedClient = clientUnackedHours(a, s.users);
   return (
-    <View style={{ width: 250, gap: space.sm }}>
+    <View style={{ width: 236, gap: space.md }}>
       <AlertBody a={a} />
       <View style={{ borderTopWidth: 1, borderTopColor: c.line, paddingTop: space.sm, gap: 3 }}>
         {status.map(({ user: u, at }) => (
@@ -100,19 +145,24 @@ export function HearingAlertModal() {
   };
   return (
     <Modal visible transparent animationType="fade">
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: space.lg }}>
-        <View style={{ backgroundColor: c.bg, borderRadius: radius.lg, borderTopWidth: 6, borderTopColor: c.accent, padding: space.lg, gap: space.md, width: '100%', maxWidth: 420, alignSelf: 'center' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(17,19,23,0.55)', justifyContent: 'center', padding: space.lg }}>
+        <View style={{ backgroundColor: c.bg, borderRadius: 22, overflow: 'hidden', width: '100%', maxWidth: 400, alignSelf: 'center', shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 24, shadowOffset: { width: 0, height: 12 } }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.lg }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.accent }} />
             <Text numberOfLines={1} style={{ flex: 1, ...family.semibold, fontSize: 13, color: c.sub }}>{room ? roomTitle(room) : '사건방'}</Text>
-            {pending.length > 1 ? <Text style={{ ...family.bold, fontSize: 13, color: c.accent }}>1/{pending.length}</Text> : null}
+            {pending.length > 1 ? <Text style={{ ...family.semibold, fontSize: 12, color: c.faint }}>{pending.length}건 중 1</Text> : null}
           </View>
-          <AlertBody a={a} big />
-          <Pressable accessibilityLabel="기일 알람 확인" onPress={() => actions.ackHearing(a.id)} style={{ backgroundColor: c.accent, borderRadius: radius.md, paddingVertical: space.md, alignItems: 'center' }}>
-            <Text style={{ ...family.bold, fontSize: 16, color: '#FFFFFF' }}>확인했습니다</Text>
-          </Pressable>
-          <Pressable onPress={open} style={{ paddingVertical: space.xs, alignItems: 'center' }}>
-            <Text style={{ ...family.semibold, fontSize: 14, color: c.sub }}>확인하고 사건방 열기</Text>
-          </Pressable>
+          <View style={{ padding: space.lg, paddingTop: space.md }}>
+            <AlertBody a={a} big />
+          </View>
+          <View style={{ padding: space.lg, paddingTop: 0, gap: space.xs }}>
+            <Pressable accessibilityLabel="기일 알람 확인" onPress={() => actions.ackHearing(a.id)} style={({ pressed }) => ({ backgroundColor: c.accent, borderRadius: 14, height: 52, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.85 : 1 })}>
+              <Text style={{ ...family.bold, fontSize: 16, color: '#FFFFFF' }}>확인했습니다</Text>
+            </Pressable>
+            <Pressable onPress={open} style={{ height: 44, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ ...family.semibold, fontSize: 14, color: c.sub }}>확인하고 사건방 열기</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
     </Modal>

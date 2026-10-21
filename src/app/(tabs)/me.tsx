@@ -1,11 +1,12 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Platform, Text, View } from 'react-native';
+import { Platform, Pressable, Text, View } from 'react-native';
 
 import { presenceOf } from '@/core/messenger';
 import { canJoinMembership, canSeeSuggestions } from '@/core/rooms';
 import { actions } from '@/core/store';
 import { enableWebPush, webPushState } from '@/core/web-push';
+import { HonorsCard } from '@/ui/honors';
 import { usePresenceColor } from '@/ui/presence';
 import { Avatar, Badge, Button, Card, Chip, Chips, Screen, Section, Sub, T } from '@/ui/kit';
 import { family, space, useColors } from '@/ui/theme';
@@ -32,7 +33,7 @@ export default function MeScreen() {
             <Sub>{[user.title, account?.loginId].filter(Boolean).join(' · ')}</Sub>
             <View style={{ flexDirection: 'row', gap: space.xs, marginTop: space.xs, flexWrap: 'wrap' }}>
               <Badge label={ROLE_LABEL[user.role]} tone="plain" />
-              {user.membership === 'rightnow' ? <Badge label="라잇나우 멤버" tone="member" /> : null}
+              {user.membership === 'rightnow' ? <Badge label="대륜 아너스" tone="member" /> : null}
               {user.superAdmin && user.role === 'admin' ? <Badge label="관리자어드민" tone="accent" /> : null}
             </View>
           </View>
@@ -40,10 +41,10 @@ export default function MeScreen() {
         </View>
       </Card>
       {canJoinMembership(user) ? (
-        <Section title="라잇나우 멤버십">
-          <Card onPress={() => router.push('/membership')}>
-            <T bold>{user.membership === 'rightnow' ? '멤버 혜택 보기' : '멤버십 알아보기'}</T>
-          </Card>
+        <Section title="멤버십">
+          <Pressable accessibilityRole="button" onPress={() => router.push('/membership')} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
+            <HonorsCard name={user.nickname} member={user.membership === 'rightnow'} compact />
+          </Pressable>
         </Section>
       ) : null}
       <WebPushCard />
