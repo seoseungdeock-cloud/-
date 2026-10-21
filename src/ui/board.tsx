@@ -88,8 +88,14 @@ export function fileSize(n?: number): string {
 // 서버에 올라간 첨부는 임시 주소로 열어 크게 보거나 내려받습니다
 export const isVideo = (a: Attachment) => !!a.mime?.startsWith('video/');
 export const canOpen = (a: Attachment) => /^https?:/.test(a.uri) || (Platform.OS === 'web' && /^(blob|data):/.test(a.uri));
+/** 브라우저가 화면에서 바로 여는 형식 (사진·동영상·음성·PDF·글). hwp·zip 등은 저장만 */
+export const viewable = (a: Attachment) =>
+  /^(image|video|audio)\/|^application\/pdf$|^text\/plain$/.test(a.mime ?? '') || /\.(jpe?g|png|gif|webp|bmp|svg|heic|mp4|webm|mov|m4v|mp3|wav|m4a|ogg|pdf|txt)$/i.test(a.name);
+/** 열 수 있는 형식은 새 창으로, 나머지는 내려받기 */
 export const openFile = (a: Attachment) => {
-  if (canOpen(a)) void WebBrowser.openBrowserAsync(a.uri);
+  if (!canOpen(a)) return;
+  if (viewable(a)) void WebBrowser.openBrowserAsync(a.uri);
+  else downloadFile(a);
 };
 /** 내려받기: 서버 임시 주소에 download를 붙이면 저장소가 '다운로드'로 보내 줍니다 */
 export const downloadFile = (a: Attachment) => {
@@ -111,12 +117,17 @@ export function FileActions({ a, color, onOpen }: { a: Attachment; color?: strin
   if (!canOpen(a)) return null;
   const tone = color ?? c.faint;
   const style = { ...family.regular, fontSize: 12, color: tone };
+  const open = !!onOpen || viewable(a);
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${a.name} 열기`} hitSlop={6} onPress={onOpen ?? (() => openFile(a))}>
-        <Text style={style}>열기</Text>
-      </Pressable>
-      <Text style={[style, { opacity: 0.6 }]}>|</Text>
+      {open ? (
+        <>
+          <Pressable accessibilityRole="button" accessibilityLabel={`${a.name} 열기`} hitSlop={6} onPress={onOpen ?? (() => openFile(a))}>
+            <Text style={style}>열기</Text>
+          </Pressable>
+          <Text style={[style, { opacity: 0.6 }]}>|</Text>
+        </>
+      ) : null}
       <Pressable accessibilityRole="button" accessibilityLabel={`${a.name} 저장`} hitSlop={6} onPress={() => downloadFile(a)}>
         <Text style={style}>저장</Text>
       </Pressable>

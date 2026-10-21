@@ -3,7 +3,7 @@
 
 export type AiLevel = 'none' | 'general-info' | 'lawyer-assist' | 'work';
 
-export const ROOM_AI_REFUSAL = '@AI는 사건 수행에 관한 질문(서면 작성, 법령·판례, 소송 절차, 기일 준비, 증거)에만 답합니다.';
+export const ROOM_AI_REFUSAL = '@AI는 사건 수행에 관한 질문(서면 작성·요약, 법령·판례, 소송 절차, 기일 준비, 증거)에만 답합니다.';
 
 const OFF = '__OFF_TOPIC__';
 
@@ -35,7 +35,8 @@ export function roomAiSystem(level: AiLevel): string {
   return [
     '당신은 법무법인(유한) 대륜 메신저의 AI 도우미입니다. 한국 법을 기준으로 한국어로 답합니다.',
     where,
-    '답할 수 있는 질문은 사건 수행에 관한 것뿐입니다: 서면(소장·준비서면·의견서 등) 작성, 법령·판례, 소송·수사 절차, 기일 준비, 증거.',
+    '답할 수 있는 질문은 사건 수행에 관한 것뿐입니다: 서면(소장·준비서면·의견서 등) 작성, 법령·판례, 소송·수사 절차, 기일 준비, 증거, 방에 올린 서면·자료의 요약·검토.',
+    '방에 올린 PDF의 글이 [첨부 문서]로 함께 주어질 수 있습니다. 요청이 "위 서면", "이 파일"처럼 가리키면 가장 최근 문서를 기준으로 합니다. 문서에 없는 내용은 지어내지 않습니다.',
     `그 밖의 질문(잡담, 일반 상식, 사건과 무관한 업무, 개인적인 부탁 등)에는 설명 없이 정확히 ${OFF} 한 단어만 답합니다.`,
     '법령·판례는 확실한 것만 말하고, 확실하지 않으면 확인이 필요하다고 밝힙니다. 판례 번호를 지어내지 않습니다.',
     '대화 기록의 참여자는 역할(변호사1, 의뢰인1 등)로만 표시됩니다. 실명을 추측하지 않습니다.',
@@ -44,7 +45,12 @@ export function roomAiSystem(level: AiLevel): string {
 }
 
 /** 실명 대신 역할로 바꾼 최근 대화 + 요청 */
-export function roomAiInput(recent: { senderId: string | null; senderKind: string; text: string }[], roleOf: Record<string, string>, ask: string): string {
+export type RoomDoc = { name: string; text: string };
+
+/** PDF에서 뽑은 글: 문서마다 앞부분만, 전체도 상한 (긴 서면은 앞에서부터) */
+export const DOC_LIMIT = { each: 30000, total: 60000 };
+
+export function roomAiInput(recent: { senderId: string | null; senderKind: string; text: string }[], roleOf: Record<string, string>, ask: string, docs: RoomDoc[] = []): string {
   const label: Record<string, string> = {};
   const count: Record<string, number> = {};
   const name = (id: string | null, kind: string) => {
@@ -58,7 +64,15 @@ export function roomAiInput(recent: { senderId: string | null; senderKind: strin
     return label[id];
   };
   const lines = recent.filter((m) => m.text.trim()).map((m) => `${name(m.senderId, m.senderKind)}: ${m.text.slice(0, 1500)}`);
-  return [lines.length ? `최근 대화:\n${lines.join('\n')}` : '', `요청: ${ask.replace(/@ai\b/gi, '').trim()}`].filter(Boolean).join('\n\n');
+  let budget = DOC_LIMIT.total;
+  const docText = docs.map((d) => {
+    const body = d.text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    const cut = body.slice(0, Math.max(0, Math.min(DOC_LIMIT.each, budget)));
+    budget -= cut.length;
+    const note = !body ? '(글자를 읽을 수 없는 문서입니다. 스캔본일 수 있습니다.)' : cut.length < body.length ? `${cut}\n…(길어서 앞부분만 읽음)` : cut;
+    return `[첨부 문서: ${d.name}]\n${note}`;
+  });
+  return [lines.length ? `최근 대화:\n${lines.join('\n')}` : '', ...docText, `요청: ${ask.replace(/@ai\b/gi, '').trim()}`].filter(Boolean).join('\n\n');
 }
 
 /** 모델 답을 메신저 문장으로: 범위 밖이면 정해진 안내 문장 */

@@ -14,7 +14,8 @@ import { handle, runJob, scheduler } from '../../../src/core/axiom/api';
 import type { Db, FindOpts, Row, Table, Where } from '../../../src/core/axiom/db';
 import { INSTANCE } from '../../../src/core/axiom/instance';
 import { complete, resolve } from '../../../src/core/axiom/llm';
-import { finishRoomAi, levelOf, roomAiInput, roomAiSystem, selfRoomLike } from '../../../src/core/room-ai';
+import { finishRoomAi, levelOf, roomAiInput, roomAiSystem, selfRoomLike, type RoomDoc } from '../../../src/core/room-ai';
+import { extractText, getDocumentProxy } from 'npm:unpdf@1.8.1';
 import type { AxUser, Ctx, Job } from '../../../src/core/axiom/types';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
@@ -131,22 +132,41 @@ async function roomAsk(sb: SupabaseClient, ctx: Ctx, uid: string, args: Record<s
   if (level === 'none') return { reply: null, reason: '이 방은 AI가 참여하지 않는 방입니다.' };
   const pick = resolve(INSTANCE, ctx.env, 'tier:balanced');
   if (pick.provider === 'mock') return { reply: null, reason: 'AI 키가 아직 연결되지 않았습니다.' };
-  const { data: rows } = await sb.from('messages').select('sender_id, sender_kind, text, kind, recalled').eq('room_id', roomId).order('created_at', { ascending: false }).limit(20);
-  const recent = ((rows ?? []) as { sender_id: string | null; sender_kind: string; text: string; kind: string; recalled: boolean }[])
+  const { data: rows } = await sb.from('messages').select('sender_id, sender_kind, text, kind, recalled, attachments').eq('room_id', roomId).order('created_at', { ascending: false }).limit(20);
+  type Att = { name?: string; mime?: string; path?: string; size?: number };
+  const kept = ((rows ?? []) as { sender_id: string | null; sender_kind: string; text: string; kind: string; recalled: boolean; attachments: Att[] | null }[])
     .filter((m) => !m.recalled && (m.kind === 'text' || m.kind === 'ai'))
-    .reverse()
-    .map((m) => ({ senderId: m.sender_id, senderKind: m.sender_kind, text: m.text }));
+    .reverse();
+  const recent = kept.map((m) => {
+    const files = (m.attachments ?? []).map((a) => `[첨부: ${a.name ?? '파일'}]`).join(' ');
+    return { senderId: m.sender_id, senderKind: m.sender_kind, text: [m.text, files].filter(Boolean).join(' ') };
+  });
+  // 최근 대화에 올린 PDF (가장 최근 3개, 20MB 이하)의 글을 읽어 함께 보냅니다
+  const pdfs = kept.flatMap((m) => m.attachments ?? []).filter((a) => a.path && (a.mime === 'application/pdf' || /\.pdf$/i.test(a.name ?? '')) && (a.size ?? 0) <= 20 * 1024 * 1024).slice(-3);
+  const docs: RoomDoc[] = [];
+  for (const a of pdfs) {
+    if (!String(a.path).startsWith(`${roomId}/`)) continue;
+    docs.push({ name: a.name ?? 'PDF', text: await pdfText(sb, a.path!).catch(() => '') });
+  }
   // 방금 보낸 질문이 이미 저장됐으면 기록에서 빼고 '요청'으로만 넣습니다
   if (recent.length && recent[recent.length - 1].senderId === uid && recent[recent.length - 1].text.trim() === text.trim()) recent.pop();
   const roleOf = Object.fromEntries(list.map((m) => [m.user_id, m.profiles?.role ?? '']));
   const out = await complete(ctx, pick.provider, {
     model: pick.model,
     system: roomAiSystem(level),
-    messages: [{ role: 'user', content: roomAiInput(recent, roleOf, text) }],
+    messages: [{ role: 'user', content: roomAiInput(recent, roleOf, text, docs) }],
     maxTokens: 1500,
     meta: { mode: 'room', agentName: 'AI' },
   });
-  return { ...finishRoomAi(out.text), level, model: out.model };
+  return { ...finishRoomAi(out.text), level, model: out.model, docs: docs.map((d) => ({ name: d.name, chars: d.text.length })) };
+}
+
+async function pdfText(sb: SupabaseClient, path: string): Promise<string> {
+  const { data, error } = await sb.storage.from('room-files').download(path);
+  if (error || !data) return '';
+  const pdf = await getDocumentProxy(new Uint8Array(await data.arrayBuffer()));
+  const { text } = await extractText(pdf, { mergePages: true });
+  return Array.isArray(text) ? text.join('\n') : text;
 }
 
 Deno.serve(async (req) => {
