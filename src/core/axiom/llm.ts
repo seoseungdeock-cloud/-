@@ -23,7 +23,31 @@ export function available(env: Env): Record<Provider, boolean> {
 
 function tierModel(inst: Instance, p: string, tier: string): string {
   const t = (inst.models?.tiers?.[p] || {}) as Record<string, string>;
-  return t[tier] || t.balanced || '';
+  // OpenAI 모델 이름을 비워 두면 키로 쓸 수 있는 최신 GPT를 서버가 골라 씁니다
+  return t[tier] || t.balanced || (p === 'openai' ? `auto:${tier}` : '');
+}
+
+let openAiModels: Promise<string[]> | null = null;
+const version = (id: string) => Number((id.match(/^gpt-(\d+(?:\.\d+)?)/) || [])[1] || 0);
+
+/** 키로 쓸 수 있는 GPT 중 가장 최신 (economy는 mini) */
+export function pickGpt(ids: string[], tier: string): string {
+  const chat = ids.filter((id) => /^gpt-\d/.test(id) && !/(audio|realtime|search|transcribe|tts|image|codex|nano|instruct|preview|chat-latest|oss|\d{4}-\d{2}-\d{2})/.test(id));
+  const mini = chat.filter((id) => /-mini$/.test(id));
+  const full = chat.filter((id) => /^gpt-\d+(\.\d+)?o?$/.test(id));
+  const pool = tier === 'economy' ? (mini.length ? mini : full) : full.length ? full : mini;
+  return [...pool].sort((x, y) => version(y) - version(x))[0] || 'gpt-4o-mini';
+}
+
+async function gptFor(ctx: Ctx, key: string, tier: string): Promise<string> {
+  openAiModels ??= (async () => {
+    const res = await (ctx.fetch ?? fetch)('https://api.openai.com/v1/models', { headers: { authorization: `Bearer ${key}` } });
+    const data: any = await res.json().catch(() => ({}));
+    return res.ok ? (data.data || []).map((m: any) => String(m.id)) : [];
+  })().catch(() => []);
+  const ids = await openAiModels;
+  if (!ids.length) openAiModels = null; // 다음에 다시 물어봄
+  return pickGpt(ids, tier);
 }
 
 // spec: 'tier:balanced' | 'anthropic:claude-sonnet-5-5'
@@ -92,10 +116,13 @@ export async function complete(ctx: Ctx, provider: Provider, a: Args): Promise<R
     return { text, usage: { in: data.usage?.input_tokens || 0, out: data.usage?.output_tokens || 0 }, model: data.model || a.model };
   }
   if (provider === 'openai') {
-    const body: Record<string, unknown> = { model: a.model, messages: [{ role: 'system', content: a.system }, ...a.messages], max_completion_tokens: a.maxTokens };
+    const model = a.model.startsWith('auto:') ? await gptFor(ctx, key, a.model.slice(5)) : a.model;
+    const body: Record<string, unknown> = { model, messages: [{ role: 'system', content: a.system }, ...a.messages], max_completion_tokens: a.maxTokens };
+    // 추론형 GPT는 생각에 토큰을 덜 쓰도록
+    if (/^(gpt-5|o\d)/.test(model)) body.reasoning_effort = 'low';
     if (a.json) body.response_format = { type: 'json_object' };
     const data = await postJson(ctx, 'https://api.openai.com/v1/chat/completions', { authorization: `Bearer ${key}` }, body, 'OpenAI');
-    return { text: data.choices?.[0]?.message?.content || '', usage: { in: data.usage?.prompt_tokens || 0, out: data.usage?.completion_tokens || 0 }, model: data.model || a.model };
+    return { text: data.choices?.[0]?.message?.content || '', usage: { in: data.usage?.prompt_tokens || 0, out: data.usage?.completion_tokens || 0 }, model: data.model || model };
   }
   const body = {
     systemInstruction: { parts: [{ text: a.system }] },

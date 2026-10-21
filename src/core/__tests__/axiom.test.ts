@@ -3,7 +3,7 @@ import { parseState } from '../axiom/council';
 import { MemoryDb } from '../axiom/db';
 import { scan } from '../axiom/guardrails';
 import { INSTANCE } from '../axiom/instance';
-import { resolve } from '../axiom/llm';
+import { pickGpt, resolve } from '../axiom/llm';
 import { runAgent } from '../axiom/runner';
 import { describe as describeSpec, lastDue, parseSpec, runReport, tick } from '../axiom/scheduler';
 import type { AxUser, Ctx, Env, Job } from '../axiom/types';
@@ -198,6 +198,15 @@ describe('AXIOM 엔진 (라잇나우판)', () => {
     expect(critic.provider).toBe('anthropic');
     expect(critic.note).toContain('OpenAI');
     expect(resolve(INSTANCE, { ANTHROPIC_API_KEY: 'k', AXIOM_LLM: 'mock' }, 'tier:best')).toMatchObject({ provider: 'mock' });
+  });
+
+  test('GPT 키만 있으면 GPT로, 모델은 키로 쓸 수 있는 최신 GPT를 고름', () => {
+    expect(resolve(INSTANCE, { OPENAI_API_KEY: 'k' }, 'tier:balanced')).toEqual({ provider: 'openai', model: 'auto:balanced', note: null });
+    const ids = ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5.1', 'gpt-5.1-mini', 'gpt-4o-realtime-preview', 'gpt-5-2025-08-07', 'gpt-image-1', 'gpt-3.5-turbo'];
+    expect(pickGpt(ids, 'balanced')).toBe('gpt-5.1');
+    expect(pickGpt(ids, 'best')).toBe('gpt-5.1');
+    expect(pickGpt(ids, 'economy')).toBe('gpt-5.1-mini');
+    expect(pickGpt([], 'balanced')).toBe('gpt-4o-mini');
   });
 
   test('실제 AI 호출 형식 (가짜 서버) + JSON 보정 1회', async () => {
