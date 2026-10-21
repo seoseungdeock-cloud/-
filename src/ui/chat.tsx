@@ -9,7 +9,7 @@ import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Attachment, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
 import { Icon, type IconName } from './icons';
 import { HearingCard } from './hearing';
-import { fileSize } from './board';
+import { FileActions, fileSize } from './board';
 import { Avatar } from './kit';
 import { chatTime, clockTime, roomTitle } from './room-row';
 import { family, radius, space, useColors } from './theme';
@@ -849,6 +849,7 @@ function MessageFiles({ items, mine }: { items: Attachment[]; mine: boolean }) {
           <View style={{ flex: 1 }}>
             <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 14, color: fg }}>{a.name}</Text>
             {a.size ? <Text style={{ ...family.regular, fontSize: 12, color: mine ? c.bubbleMineText : c.sub }}>{fileSize(a.size)}</Text> : null}
+            <FileActions a={a} color={mine ? 'rgba(255,255,255,0.75)' : undefined} />
           </View>
         </Pressable>
       ))}

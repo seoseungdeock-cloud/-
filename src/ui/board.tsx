@@ -1,6 +1,6 @@
 import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
-import { Image, Pressable, Text, View } from 'react-native';
+import { Image, Linking, Platform, Pressable, Text, View } from 'react-native';
 
 import { REPORT_REASONS, score, type AuthorView } from '@/core/board';
 import type { Attachment, Votes } from '@/core/types';
@@ -85,10 +85,42 @@ export function fileSize(n?: number): string {
 
 // 첨부: 사진은 크게, 파일은 이름·크기 한 줄. onRemove가 있으면 글쓰기 화면의 빼기 버튼.
 // 서버에 올라간 첨부는 임시 주소로 열어 크게 보거나 내려받습니다
-const canOpen = (a: Attachment) => /^https?:/.test(a.uri);
-const openFile = (a: Attachment) => {
+export const canOpen = (a: Attachment) => /^https?:/.test(a.uri);
+export const openFile = (a: Attachment) => {
   if (canOpen(a)) void WebBrowser.openBrowserAsync(a.uri);
 };
+/** 내려받기: 서버 임시 주소에 download를 붙이면 저장소가 '다운로드'로 보내 줍니다 */
+export const downloadFile = (a: Attachment) => {
+  if (!canOpen(a)) return;
+  const url = `${a.uri}${a.uri.includes('?') ? '&' : '?'}download=${encodeURIComponent(a.name)}`;
+  if (Platform.OS === 'web') {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = a.name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } else void Linking.openURL(url);
+};
+
+/** 올린 파일 아래 작은 회색 글씨: 열기 · 다운로드 */
+export function FileActions({ a, color }: { a: Attachment; color?: string }) {
+  const c = useColors();
+  if (!canOpen(a)) return null;
+  const tone = color ?? c.faint;
+  const style = { ...family.regular, fontSize: 12, color: tone };
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${a.name} 열기`} hitSlop={6} onPress={() => openFile(a)}>
+        <Text style={style}>열기</Text>
+      </Pressable>
+      <Text style={style}>·</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${a.name} 다운로드`} hitSlop={6} onPress={() => downloadFile(a)}>
+        <Text style={style}>다운로드</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 export function Attachments({ items, onRemove, compact }: { items: Attachment[]; onRemove?: (id: string) => void; compact?: boolean }) {
   const c = useColors();
@@ -124,12 +156,15 @@ export function Attachments({ items, onRemove, compact }: { items: Attachment[];
         ))
       )}
       {files.map((a) => (
-        <Pressable key={a.id} accessibilityLabel={`파일 ${a.name}`} disabled={!!onRemove || !canOpen(a)} onPress={() => openFile(a)} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, borderWidth: 1, borderColor: c.line, borderRadius: radius.md, paddingHorizontal: space.md, paddingVertical: space.sm }}>
-          <Icon name="file" color={c.sub} size={20} />
-          <Text numberOfLines={1} style={{ flex: 1, ...family.semibold, fontSize: 14, color: c.text }}>{a.name}</Text>
-          <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{fileSize(a.size)}</Text>
-          {remove(a.id)}
-        </Pressable>
+        <View key={a.id}>
+          <Pressable accessibilityLabel={`파일 ${a.name}`} disabled={!!onRemove || !canOpen(a)} onPress={() => openFile(a)} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, borderWidth: 1, borderColor: c.line, borderRadius: radius.md, paddingHorizontal: space.md, paddingVertical: space.sm }}>
+            <Icon name="file" color={c.sub} size={20} />
+            <Text numberOfLines={1} style={{ flex: 1, ...family.semibold, fontSize: 14, color: c.text }}>{a.name}</Text>
+            <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{fileSize(a.size)}</Text>
+            {remove(a.id)}
+          </Pressable>
+          {onRemove ? null : <View style={{ paddingLeft: space.md }}><FileActions a={a} /></View>}
+        </View>
       ))}
     </View>
   );
