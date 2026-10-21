@@ -19,8 +19,8 @@ self.addEventListener('push', (e) => {
       if (data.kind === 'message' && wins.some((w) => w.focused && w.visibilityState === 'visible')) return;
       return self.registration.showNotification(msg.title || '대륜톡', {
         body: msg.body || '',
-        icon: base + 'app-icon-192.png',
-        badge: base + 'app-icon-192.png',
+        icon: base + 'icon-maskable-192.png',
+        badge: base + 'icon-192.png',
         tag: data.roomId ? 'room-' + data.roomId : undefined,
         renotify: !!data.roomId,
         requireInteraction: data.kind === 'hearing' || data.kind === 'deadline',

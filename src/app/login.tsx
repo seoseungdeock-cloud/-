@@ -9,7 +9,6 @@ import { Icon, type IconName } from '@/ui/icons';
 import { Notice, Sub } from '@/ui/kit';
 import { family, font, radius, space, useColors } from '@/ui/theme';
 
-export const APP_NAME = '대륜톡';
 const SAVED_ID = 'daeryuntalk.loginId';
 
 // PC·웹에서만 아이디를 기억합니다 (폰은 저장된 로그인이 이어짐)
@@ -96,9 +95,8 @@ export default function LoginScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: space.xl, width: '100%', maxWidth: 420, alignSelf: 'center' }}>
           <View style={{ alignItems: 'center', marginBottom: space.xxl + space.sm }}>
-            <AppMark />
-            <Text style={{ marginTop: space.lg, fontSize: 30, ...family.bold, color: c.text, letterSpacing: -0.5 }}>{APP_NAME}</Text>
-            <Image source={WORDMARK} accessibilityLabel="법무법인(유한) 대륜" style={{ marginTop: space.md, width: 150, height: 150 * (175 / 900), tintColor: c.sub }} resizeMode="contain" />
+            <AppMark width={120} />
+            <Image source={WORDMARK} accessibilityLabel="법무법인(유한) 대륜" style={{ marginTop: space.xl, width: 220, height: 220 * (175 / 900), tintColor: c.text }} resizeMode="contain" />
           </View>
 
           <Field icon="me" placeholder="아이디" autoCapitalize="none" autoCorrect={false} autoComplete="username" value={loginId} onChangeText={setLoginId} returnKeyType="next" />
