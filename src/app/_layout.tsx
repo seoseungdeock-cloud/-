@@ -73,6 +73,21 @@ export default function RootLayout() {
           <Stack.Screen name="board/notes" />
           <Stack.Screen name="board/reports" />
           <Stack.Screen name="board/note/[id]" />
+          <Stack.Screen name="axiom/index" />
+          <Stack.Screen name="axiom/council/index" />
+          <Stack.Screen name="axiom/council/new" />
+          <Stack.Screen name="axiom/council/[id]" />
+          <Stack.Screen name="axiom/doc/index" />
+          <Stack.Screen name="axiom/doc/new" />
+          <Stack.Screen name="axiom/doc/[id]" />
+          <Stack.Screen name="axiom/agent/index" />
+          <Stack.Screen name="axiom/agent/form" />
+          <Stack.Screen name="axiom/agent/chat" />
+          <Stack.Screen name="axiom/agent/[slug]" />
+          <Stack.Screen name="axiom/work/index" />
+          <Stack.Screen name="axiom/work/[id]" />
+          <Stack.Screen name="axiom/ledger" />
+          <Stack.Screen name="axiom/settings" />
         </Stack.Protected>
         <Stack.Protected guard={!signedIn}>
           <Stack.Screen name="login" />

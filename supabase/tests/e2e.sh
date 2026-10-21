@@ -34,9 +34,21 @@ fi
 PGRST_DB_URI="postgres://authenticator@localhost:$PG_PORT/t" PGRST_DB_SCHEMAS=public PGRST_DB_ANON_ROLE=anon \
   PGRST_JWT_SECRET=$SECRET PGRST_SERVER_PORT=$REST_PORT PGRST_LOG_LEVEL=error "$PGRST" >"$WORK/pgrst.log" 2>&1 &
 PIDS+=($!)
-node "$ROOT/supabase/tests/gateway.mjs" $GW_PORT $REST_PORT $SECRET localhost $PG_PORT >"$WORK/gw.log" 2>&1 &
+# AXIOM 서버 함수: 실제 코드를 묶어 Node 로 돌림 (supabase-js 는 앱의 node_modules 것을 씀)
+FN_PORT=55437
+SERVICE=$(node -e "
+const c=require('crypto');const b=(x)=>Buffer.from(JSON.stringify(x)).toString('base64url');
+const h=b({alg:'HS256',typ:'JWT'}),p=b({role:'service_role'});
+console.log(h+'.'+p+'.'+c.createHmac('sha256',process.argv[1]).update(h+'.'+p).digest('base64url'))" $SECRET)
+mkdir -p "$WORK/fn" && printf "export * from '%s';\n" "$ROOT/node_modules/@supabase/supabase-js/dist/index.mjs" > "$WORK/fn/supabase.mjs"
+npx --yes esbuild@0.25.10 "$ROOT/supabase/functions/axiom/index.ts" --bundle --format=esm --platform=node --target=node20 \
+  --alias:npm:@supabase/supabase-js@2="$WORK/fn/supabase.mjs" --external:"$ROOT/node_modules/*" --log-level=warning --outfile="$WORK/fn/axiom.mjs"
+FN_SUPABASE_URL="http://localhost:$GW_PORT" FN_SERVICE_KEY="$SERVICE" FN_JOB_SECRET=e2e-job-secret \
+  node "$ROOT/supabase/tests/axiom-fn.mjs" "$WORK/fn/axiom.mjs" $FN_PORT >"$WORK/fn.log" 2>&1 &
 PIDS+=($!)
-for _ in $(seq 50); do curl -s "localhost:$REST_PORT/" >/dev/null 2>&1 && curl -s "localhost:$GW_PORT/" >/dev/null 2>&1 && break; sleep 0.2; done
+AXIOM_FN_PORT=$FN_PORT node "$ROOT/supabase/tests/gateway.mjs" $GW_PORT $REST_PORT $SECRET localhost $PG_PORT >"$WORK/gw.log" 2>&1 &
+PIDS+=($!)
+for _ in $(seq 50); do curl -s "localhost:$REST_PORT/" >/dev/null 2>&1 && curl -s "localhost:$GW_PORT/" >/dev/null 2>&1 && curl -s "localhost:$FN_PORT/" >/dev/null 2>&1 && break; sleep 0.2; done
 
 ANON=$(node -e "
 const c=require('crypto');const b=(x)=>Buffer.from(JSON.stringify(x)).toString('base64url');
@@ -44,4 +56,4 @@ const h=b({alg:'HS256',typ:'JWT'}),p=b({role:'anon'});
 console.log(h+'.'+p+'.'+c.createHmac('sha256',process.argv[1]).update(h+'.'+p).digest('base64url'))" $SECRET)
 cd "$ROOT"
 EXPO_PUBLIC_SUPABASE_URL="http://localhost:$GW_PORT" EXPO_PUBLIC_SUPABASE_ANON_KEY="$ANON" E2E_GATEWAY="http://localhost:$GW_PORT" \
-  npx jest --no-cache --testMatch '**/__e2e__/*.e2e.ts' --setupFilesAfterEnv ./supabase/tests/e2e.setup.js "$@" || { echo '--- PostgREST'; tail -20 "$WORK/pgrst.log"; echo '--- gateway'; tail -20 "$WORK/gw.log"; exit 1; }
+  npx jest --no-cache --testMatch '**/__e2e__/*.e2e.ts' --setupFilesAfterEnv ./supabase/tests/e2e.setup.js "$@" || { echo '--- PostgREST'; tail -20 "$WORK/pgrst.log"; echo '--- gateway'; tail -20 "$WORK/gw.log"; echo '--- axiom'; tail -20 "$WORK/fn.log"; exit 1; }

@@ -496,6 +496,20 @@ reset role;
 select tst.check('방 이름: 마스터가 바꿈', (select title = '임대차 소송' from rooms where id = '10000000-0000-0000-0000-000000000001'));
 update rooms set title = '테스트 사건' where id = '10000000-0000-0000-0000-000000000001';
 
+-- ── AXIOM 표: 앱 계정은 직접 못 읽고 못 씀 (서버 함수만) ──
+insert into ax_documents (id, kind, title, created_at, updated_at) values ('d_test', 'note', '기밀 메모', '2026-10-21T00:00:00Z', '2026-10-21T00:00:00Z');
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000a');
+select tst.throws('AXIOM: 어드민도 표를 직접 못 읽음', $$select 1/count(*) from ax_documents$$, 'permission denied');
+select tst.throws('AXIOM: 어드민도 표에 직접 못 씀', $$insert into ax_approvals (id, kind, tier, title, created_at) values ('x', 'report', 'post', 't', 'n')$$, 'permission denied');
+select tst.throws('AXIOM: 예약 깨우기 함수 못 부름', $$select kick_axiom()$$, 'permission denied');
+reset role;
+set role anon;
+select tst.throws('AXIOM: 비로그인 못 읽음', $$select 1/count(*) from ax_runs$$, 'permission denied');
+reset role;
+select kick_axiom();
+select tst.check('AXIOM: 정기 보고 깨우기 함수가 오류 없이 돎', true);
+
 -- ── 로그인 안 한 사람 ──
 reset role;
 set role anon;

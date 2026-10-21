@@ -1,7 +1,8 @@
 import { router, type Href } from 'expo-router';
 
 import { canSeeWorkTab, canUseAgents } from '@/core/rooms';
-import { Card, Empty, Notice, Screen, Section, T } from '@/ui/kit';
+import { useAx, type R } from '@/ui/axiom';
+import { Badge, Card, Empty, Notice, Row, Screen, Section, T } from '@/ui/kit';
 import { useMe } from '@/ui/use-app';
 
 const AGENT: { href: Href; title: string; sub: string }[] = [
@@ -11,12 +12,32 @@ const AGENT: { href: Href; title: string; sub: string }[] = [
   { href: '/agent/builder', title: '프로그램 만들기', sub: '필요한 사내 도구를 말로 요청합니다' },
 ];
 
+const AXIOM: { href: Href; title: string }[] = [
+  { href: '/axiom/council', title: '경영위원회' },
+  { href: '/axiom/work', title: '작업지시' },
+  { href: '/axiom/doc', title: '저장소' },
+  { href: '/axiom/agent', title: '에이전트' },
+  { href: '/axiom/ledger', title: '예측 원장' },
+  { href: '/axiom/settings', title: '설정' },
+];
+
+function AxiomSection() {
+  const s = useAx<R>('status').data;
+  return (
+    <Section title="AXIOM 경영관리">
+      <Row title="결재함" right={s?.pending ? <Badge label={`${s.pending}`} /> : undefined} onPress={() => router.push('/axiom')} />
+      {AXIOM.map((a) => <Row key={a.title} title={a.title} onPress={() => router.push(a.href)} />)}
+    </Section>
+  );
+}
+
 export default function WorkScreen() {
   const user = useMe();
   if (!canSeeWorkTab(user)) return <Screen title="업무"><Empty text="어드민 계정만 쓸 수 있습니다." /></Screen>;
   const allowed = canUseAgents(user);
   return (
     <Screen title="업무">
+      <AxiomSection />
       <Section title="경영 에이전트">
         {allowed ? (
           AGENT.map((a) => (

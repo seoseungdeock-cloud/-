@@ -73,6 +73,16 @@ createServer(async (req, res) => {
     passwords.set(email, b.password);
     return json(res, 200, { ok: true, userId: id });
   }
+  if (url.pathname === '/functions/v1/axiom' && process.env.AXIOM_FN_PORT) {
+    // AXIOM 서버 함수는 흉내가 아니라 실제 코드를 Node 로 돌린 것(axiom-fn.mjs)으로 넘깁니다
+    const up = request({ host: 'localhost', port: process.env.AXIOM_FN_PORT, method: req.method, path: url.pathname + url.search, headers: req.headers }, (r) => {
+      res.writeHead(r.statusCode ?? 500, { ...r.headers, 'Access-Control-Allow-Origin': '*' });
+      r.pipe(res);
+    });
+    up.on('error', (e) => json(res, 502, { message: String(e) }));
+    up.end(raw);
+    return;
+  }
   if (url.pathname.startsWith('/rest/v1/')) {
     const headers = { ...req.headers, host: `localhost:${restPort}` };
     delete headers.apikey;

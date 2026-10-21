@@ -1,9 +1,10 @@
 // 앱 ↔ 서버 끝까지 시험. supabase/tests/e2e.sh 로만 실행합니다 (로컬 가짜 서버가 필요).
+import { axiom } from '../axiom/client';
 import { aliasIn } from '../board';
 import { pendingFor } from '../hearings';
 import { unreadCount } from '../messenger';
 import { actions, clearSyncError, getState, me, refresh, settled } from '../store';
-import { serverEnabled } from '../supabase';
+import { serverEnabled, supabase } from '../supabase';
 
 const GW = process.env.E2E_GATEWAY!;
 const post = async (path: string, body: unknown) => {
@@ -320,5 +321,72 @@ describe('백오피스', () => {
     actions.logout();
     expect(await actions.signIn('newlawyer', 'newlawyer-1234')).toEqual({ ok: true });
     expect(me().nickname).toBe('정변호');
+  });
+});
+
+describe('AXIOM (업무 탭, 실제 서버 함수 코드)', () => {
+  const SUB = '00000000-0000-4000-8000-0000000000aa';
+  const wait = async (fn: () => Promise<boolean>) => {
+    for (let i = 0; i < 100; i++) {
+      if (await fn()) return;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error('기다려도 끝나지 않음');
+  };
+  const call = async (op: string, args: Record<string, unknown> = {}) => {
+    const r = await axiom(me(), op, args);
+    if (!r.ok) throw new Error(r.reason);
+    return r.data as any;
+  };
+
+  it('어드민만 쓰고, 표는 직접 못 읽음', async () => {
+    await as('lawyer');
+    expect(await axiom(me(), 'status')).toMatchObject({ ok: false });
+    // 앱 검사를 건너뛰고 직접 불러도 함수가 막음
+    const { data } = await supabase!.functions.invoke('axiom', { body: { op: 'status' } });
+    expect(data).toMatchObject({ ok: false, reason: '어드민 계정만 쓸 수 있습니다.' });
+    expect((await supabase!.from('ax_documents').select('id')).error).toBeTruthy();
+    await as('admin');
+    const st = await call('status');
+    expect(st.mock_mode).toBe(true);
+    expect(await call('agents.list')).toHaveLength(12);
+  });
+
+  it('경영위원회 → 결재 → 작업지시 (단계마다 함수를 새로 부름)', async () => {
+    await as('admin');
+    const c = await call('councils.start', {
+      title: '4분기 전략',
+      meeting_text: '경영회의\n1. 형사 분야 검색광고 확대\n2. 블로그 하루 10건 발행',
+      state_text: '월 매출,1000000000,원',
+      objective: '형사 분야 매출을 3개월 안에 10% 늘린다',
+    });
+    await wait(async () => (await call('councils.get', { id: c.id })).status !== 'running');
+    const done = await call('councils.get', { id: c.id });
+    expect(done.status).toBe('awaiting_approval');
+    expect(done.runs).toHaveLength(1 + 4 + 5);
+    const ap = (await call('approvals.list')).find((a: any) => a.kind === 'council_final');
+    await call('approvals.decide', { id: ap.id, action: 'approve' });
+    await wait(async () => (await call('work.list', { council_id: c.id })).some((w: any) => w.status === 'review'));
+    const works = await call('work.list', { council_id: c.id });
+    expect(works.find((w: any) => w.team === 'hr').visibility).toBe('confidential');
+    expect((await call('ledger.get')).forecasts.length).toBe(2);
+    // 한국어 검색(ilike)과 개정 이력
+    expect((await call('docs.list', { q: '검색광고' })).some((d: any) => d.kind === 'meeting')).toBe(true);
+    const wo = works.find((w: any) => w.team === 'marketing');
+    await wait(async () => !!(await call('work.get', { id: wo.id })).deliverable_doc_id);
+  });
+
+  it('다른 어드민(팀장 권한)은 기밀을 못 보고 사전 승인을 못 함', async () => {
+    await post('/__seed', { id: SUB, login: 'subadmin', password: 'subadmin-pass-1234', nickname: '부관리', role: 'admin', firm: '대륜' });
+    await as('admin');
+    const secret = await call('docs.create', { kind: 'note', title: '인사 메모', body: '평가', visibility: 'confidential' });
+    actions.logout();
+    expect(await actions.signIn('subadmin', 'subadmin-pass-1234')).toEqual({ ok: true });
+    expect((await call('docs.list')).some((d: any) => d.id === secret.id)).toBe(false);
+    expect(await axiom(me(), 'docs.get', { id: secret.id })).toMatchObject({ ok: false, reason: '열람 권한이 없는 자료입니다.' });
+    const pre = (await call('approvals.list')).filter((a: any) => a.tier === 'pre');
+    expect(pre.every((a: any) => !a.can_decide)).toBe(true);
+    const chat = await call('agents.chat', { slug: 'advocate', message: '블로그 계획 검토' });
+    expect(chat.reply).toContain('[모의 응답]');
   });
 });
