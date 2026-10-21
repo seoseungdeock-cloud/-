@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import type { ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { displayName, orgGroups, presenceOf } from '@/core/messenger';
@@ -107,11 +107,42 @@ export function UnderlineTabs<K extends string>({ tabs, value, onChange, dots, s
       ))}
     </View>
   );
-  // 탭이 많으면 가로로 밀어 봅니다.
+  // 탭이 많으면 가로로 밀어 보거나 양옆 화살표로 넘깁니다.
   if (!scroll) return row;
+  return <ScrollTabs>{row}</ScrollTabs>;
+}
+
+function ScrollTabs({ children }: { children: ReactNode }) {
+  const c = useColors();
+  const ref = useRef<ScrollView>(null);
+  const [x, setX] = useState(0);
+  const [box, setBox] = useState(0);
+  const [content, setContent] = useState(0);
+  const max = Math.max(0, content - box);
+  const move = (dir: 1 | -1) => ref.current?.scrollTo({ x: Math.min(max, Math.max(0, x + dir * box * 0.7)), animated: true });
+  const arrow = (dir: 1 | -1) => (
+    <Pressable
+      accessibilityLabel={dir < 0 ? '앞 게시판' : '다음 게시판'}
+      onPress={() => move(dir)}
+      hitSlop={6}
+      style={{ position: 'absolute', top: 0, bottom: 1, [dir < 0 ? 'left' : 'right']: 0, width: 34, alignItems: 'center', justifyContent: 'center', backgroundColor: c.bg, shadowColor: c.bg, shadowOpacity: 1, shadowRadius: 10, shadowOffset: { width: dir * -12, height: 0 } }}>
+      <Icon name={dir < 0 ? 'back' : 'chevron'} color={c.text} size={20} />
+    </Pressable>
+  );
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, borderBottomWidth: 1, borderBottomColor: c.line }}>
-      {row}
-    </ScrollView>
+    <View style={{ borderBottomWidth: 1, borderBottomColor: c.line }} onLayout={(e) => setBox(e.nativeEvent.layout.width)}>
+      <ScrollView
+        ref={ref}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={{ flexGrow: 0 }}
+        onContentSizeChange={(w) => setContent(w)}
+        onScroll={(e) => setX(e.nativeEvent.contentOffset.x)}
+        scrollEventThrottle={32}>
+        {children}
+      </ScrollView>
+      {x > 2 ? arrow(-1) : null}
+      {x < max - 2 ? arrow(1) : null}
+    </View>
   );
 }
