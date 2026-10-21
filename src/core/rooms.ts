@@ -1,3 +1,4 @@
+import { levelOf, type AiLevel } from './room-ai';
 import type { Room, RoomKind, RoomMode, User } from './types';
 
 export const ROOM_KIND_LABEL: Record<RoomKind, string> = {
@@ -62,11 +63,8 @@ export function aiCanJoin(room: Room): boolean {
  * 변호사 없이 AI가 의뢰인에게 법률 의견을 주면 변호사법 109조 위험이 있어
  * 변호사가 함께 있는 방에서만 '변호사 보조' 수준으로 답합니다.
  */
-export function aiAnswerLevel(room: Room, members: User[]): 'none' | 'general-info' | 'lawyer-assist' | 'work' {
-  if (!aiCanJoin(room)) return 'none';
-  if (room.kind === 'meeting' || room.kind === 'marketing' || room.kind === 'office') return 'work';
-  const hasLawyer = members.some((u) => u.role === 'lawyer');
-  return hasLawyer ? 'lawyer-assist' : 'general-info';
+export function aiAnswerLevel(room: Room, members: User[]): AiLevel {
+  return levelOf(room.mode, room.kind, members.some((u) => u.role === 'lawyer'));
 }
 
 export function canUseAgents(user: User): boolean {

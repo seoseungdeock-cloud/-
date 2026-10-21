@@ -5,6 +5,7 @@
 //   1) 앱(어드민 계정): { op, args } — 로그인 토큰으로 계정을 확인하고 AXIOM 권한으로 바꿔 처리
 //   2) 이 함수 자신: { job } — 오래 걸리는 일(위원회 한 단계, 작업지시 수행)을 새 실행 시간으로 넘김
 //   3) 예약 작업(5분마다): { tick: true } — 예정 시각이 지난 정기 보고
+//   4) 대화방 @AI(모든 계정): { op: 'room.ask', args: { roomId, text } } — AI 참여방 참여자만, 사건 수행 질문만
 // 2·3 은 x-axiom-job 머리글에 푸시 함수와 같은 비밀값(PUSH_CRON_SECRET)이 있어야 합니다.
 // AI 키(ANTHROPIC_API_KEY · OPENAI_API_KEY · GEMINI_API_KEY)는 Supabase 함수 비밀값에만 둡니다. 없으면 모의 응답.
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
@@ -12,6 +13,8 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { handle, runJob, scheduler } from '../../../src/core/axiom/api';
 import type { Db, FindOpts, Row, Table, Where } from '../../../src/core/axiom/db';
 import { INSTANCE } from '../../../src/core/axiom/instance';
+import { complete, resolve } from '../../../src/core/axiom/llm';
+import { finishRoomAi, levelOf, roomAiInput, roomAiSystem } from '../../../src/core/room-ai';
 import type { AxUser, Ctx, Job } from '../../../src/core/axiom/types';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
@@ -111,6 +114,40 @@ function makeCtx(sb: SupabaseClient, url: string, secret: string): Ctx {
   };
 }
 
+/** 대화방 @AI: 방 참여자인지, AI 참여방인지 서버에서 다시 확인하고 최근 대화(실명 대신 역할)로 답합니다 */
+async function roomAsk(sb: SupabaseClient, ctx: Ctx, uid: string, args: Record<string, unknown>) {
+  const roomId = String(args.roomId ?? '');
+  const text = String(args.text ?? '').slice(0, 4000);
+  if (!/^[0-9a-f-]{36}$/.test(roomId) || !text.trim()) throw Object.assign(new Error('bad request'), { status: 400 });
+  const [{ data: room }, { data: members }] = await Promise.all([
+    sb.from('rooms').select('id, kind, mode').eq('id', roomId).maybeSingle(),
+    sb.from('room_members').select('user_id, profiles(role, active)').eq('room_id', roomId),
+  ]);
+  const list = (members ?? []) as unknown as { user_id: string; profiles: { role: string; active: boolean } | null }[];
+  const me = list.find((m) => m.user_id === uid);
+  if (!room || !me?.profiles?.active) return { reply: null, reason: '참여 중인 방이 아닙니다.' };
+  const level = levelOf(room.mode, room.kind, list.some((m) => m.profiles?.role === 'lawyer'));
+  if (level === 'none') return { reply: null, reason: '사건수행방에서는 AI가 대화에 참여하지 않습니다.' };
+  const pick = resolve(INSTANCE, ctx.env, 'tier:balanced');
+  if (pick.provider === 'mock') return { reply: null, reason: 'AI 키가 아직 연결되지 않았습니다.' };
+  const { data: rows } = await sb.from('messages').select('sender_id, sender_kind, text, kind, recalled').eq('room_id', roomId).order('created_at', { ascending: false }).limit(20);
+  const recent = ((rows ?? []) as { sender_id: string | null; sender_kind: string; text: string; kind: string; recalled: boolean }[])
+    .filter((m) => !m.recalled && (m.kind === 'text' || m.kind === 'ai'))
+    .reverse()
+    .map((m) => ({ senderId: m.sender_id, senderKind: m.sender_kind, text: m.text }));
+  // 방금 보낸 질문이 이미 저장됐으면 기록에서 빼고 '요청'으로만 넣습니다
+  if (recent.length && recent[recent.length - 1].senderId === uid && recent[recent.length - 1].text.trim() === text.trim()) recent.pop();
+  const roleOf = Object.fromEntries(list.map((m) => [m.user_id, m.profiles?.role ?? '']));
+  const out = await complete(ctx, pick.provider, {
+    model: pick.model,
+    system: roomAiSystem(level),
+    messages: [{ role: 'user', content: roomAiInput(recent, roleOf, text) }],
+    maxTokens: 1500,
+    meta: { mode: 'room', agentName: 'AI' },
+  });
+  return { ...finishRoomAi(out.text), level, model: out.model };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const url = Deno.env.get('SUPABASE_URL')!;
@@ -137,6 +174,14 @@ Deno.serve(async (req) => {
   const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer /, '');
   const { data: who } = await sb.auth.getUser(token);
   if (!who.user) return reply(200, { ok: false, status: 401, reason: '다시 로그인해 주세요.' });
+  if (body.op === 'room.ask') {
+    try {
+      return reply(200, { ok: true, data: await roomAsk(sb, ctx, who.user.id, body.args ?? {}) });
+    } catch (e) {
+      console.error('[room.ask]', (e as Error).message);
+      return reply(200, { ok: false, status: 500, reason: 'AI가 답하지 못했습니다. 잠시 후 다시 시도해 주세요.' });
+    }
+  }
   const user = await ctx.userById(who.user.id);
   if (!user) return reply(200, { ok: false, status: 403, reason: '어드민 계정만 쓸 수 있습니다.' });
   try {

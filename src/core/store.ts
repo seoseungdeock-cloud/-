@@ -38,6 +38,7 @@ import { displayName, isMaster, parseMentions, roomMasters, type Reads } from '.
 import { findLawyer } from './offices';
 import { aliasOf, canManageOpen, canUseOpenChat, checkAlias, checkOpenPassword, isOpenMember, OPEN_MAX_OPTIONS, parseTags } from './open-chat';
 import { procedureReply } from './procedures';
+import { roomAiInput, roomAiSystem } from './room-ai';
 import { aiAnswerLevel, canCreateRoom, canJoinMembership, canSeeSuggestions, canUseAgents, type RoomCheck } from './rooms';
 import { latest, parseRows, refreshTemplate, type DataRow, type ImageTemplate } from './templates';
 import {
@@ -1067,15 +1068,24 @@ export const actions = {
       pushMessage(roomId, AI_SENDER, 'ai', runCommand(roomId, cmd));
       return;
     }
-    const recent = state.messages.filter((m) => m.roomId === roomId).slice(-20).map((m) => `${m.senderId}: ${m.text}`).join('\n');
-    const system =
-      level === 'lawyer-assist'
-        ? '변호사가 함께 있는 사건방입니다. 담당 변호사를 보조하는 의견을 냅니다.'
-        : level === 'general-info'
-          ? '변호사가 없는 방입니다. 개별 사건에 대한 법률 판단은 하지 말고 일반적인 법률 정보만 안내합니다.'
-          : '로펌 내부 업무방입니다.';
-    let reply = await getAi().complete({ task: 'room-reply', system, input: `${recent}\n\n요청: ${text}` });
-    if (level === 'general-info') reply += '\n\n※ 일반 법률 정보이며 개별 사건의 법률 자문이 아닙니다. 변호사 상담을 받아 보세요.';
+    let reply: string;
+    let refused = false;
+    if (supabase) {
+      // 실제 AI는 서버에서만 (키는 서버 비밀값에만). 서버가 방·참여자를 다시 확인하고 사건 수행 질문에만 답합니다.
+      const { data, error } = await supabase.functions.invoke('axiom', { body: { op: 'room.ask', args: { roomId, text } } });
+      const res = data as { ok: boolean; reason?: string; data?: { reply: string | null; reason?: string; refused?: boolean } } | null;
+      if (error || !res?.ok || !res.data?.reply) {
+        pushMessage(roomId, SYSTEM_SENDER, 'system', res?.data?.reason ?? res?.reason ?? 'AI가 답하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        return;
+      }
+      reply = res.data.reply;
+      refused = !!res.data.refused;
+    } else {
+      const recent = state.messages.filter((m) => m.roomId === roomId).slice(-20).map((m) => ({ senderId: m.senderId, senderKind: m.kind === 'ai' ? 'ai' : 'user', text: m.text }));
+      const roleOf = Object.fromEntries(members.map((u) => [u.id, u.role]));
+      reply = await getAi().complete({ task: 'room-reply', system: roomAiSystem(level), input: roomAiInput(recent, roleOf, text) });
+    }
+    if (level === 'general-info' && !refused) reply += '\n\n※ 일반 법률 정보이며 개별 사건의 법률 자문이 아닙니다. 변호사 상담을 받아 보세요.';
     pushMessage(roomId, AI_SENDER, 'ai', reply);
   },
 
