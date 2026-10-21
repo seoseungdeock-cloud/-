@@ -902,15 +902,17 @@ function MessageFiles({ items, mine, title, boxed }: { items: Attachment[]; mine
         </View>
       ))}
       {files.map((a) => (
-        <View key={a.id} style={boxed ? { backgroundColor: mine ? c.bubbleMine : c.bubbleOther, borderRadius: radius.lg, paddingHorizontal: space.md, paddingVertical: space.sm + 2 } : undefined}>
-          <Pressable accessibilityLabel={`파일 ${a.name}`} onPress={() => openFile(a)} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minWidth: 200, maxWidth: 236 }}>
-            <Icon name="file" color={fg} size={22} />
-            <View style={{ flex: 1 }}>
-              <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 14, color: fg }}>{a.name}</Text>
-              {a.size ? <Text style={{ ...family.regular, fontSize: 12, color: mine ? c.bubbleMineText : c.sub }}>{fileSize(a.size)}</Text> : null}
-            </View>
-          </Pressable>
-          <FileActions a={a} color={mine ? 'rgba(255,255,255,0.75)' : undefined} />
+        <View key={a.id} style={{ gap: 2, alignItems: mine ? 'flex-end' : 'flex-start' }}>
+          <View style={boxed ? { backgroundColor: mine ? c.bubbleMine : c.bubbleOther, borderRadius: radius.lg, paddingHorizontal: space.md, paddingVertical: space.sm + 2 } : undefined}>
+            <Pressable accessibilityLabel={`파일 ${a.name}`} onPress={() => openFile(a)} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minWidth: 200, maxWidth: 236 }}>
+              <Icon name="file" color={fg} size={22} />
+              <View style={{ flex: 1 }}>
+                <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 14, color: fg }}>{a.name}</Text>
+                {a.size ? <Text style={{ ...family.regular, fontSize: 12, color: mine ? c.bubbleMineText : c.sub }}>{fileSize(a.size)}</Text> : null}
+              </View>
+            </Pressable>
+          </View>
+          <FileActions a={a} color={mine && !boxed ? 'rgba(255,255,255,0.75)' : undefined} />
         </View>
       ))}
     </View>

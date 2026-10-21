@@ -36,7 +36,16 @@ function ViewerWindow({ v }: { v: NonNullable<Viewer> }) {
   const [index, setIndex] = useState(v.index);
   const [zoom, setZoom] = useState(1);
   const [turn, setTurn] = useState(0);
+  const [toast, setToast] = useState('');
   const a = v.items[index];
+  const copy = () => {
+    void copyImage(a.uri).then((ok) => setToast(ok ? '사진을 복사했습니다' : '이 브라우저에서는 사진 복사가 되지 않습니다'));
+  };
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(''), 1600);
+    return () => clearTimeout(t);
+  }, [toast]);
   const go = (n: number) => {
     const next = index + n;
     if (next < 0 || next >= v.items.length) return;
@@ -83,6 +92,11 @@ function ViewerWindow({ v }: { v: NonNullable<Viewer> }) {
           <Image source={{ uri: a.uri }} resizeMode="contain" accessibilityLabel={a.name} style={{ width: '100%', height: '100%', transform: [{ scale: zoom }, { rotate: `${turn}deg` }] }} />
           {arrow(-1)}
           {arrow(1)}
+          {toast ? (
+            <View style={{ position: 'absolute', bottom: space.lg, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radius.pill, paddingHorizontal: space.lg, paddingVertical: space.sm }}>
+              <Text style={{ color: '#111', fontSize: 13, ...family.semibold }}>{toast}</Text>
+            </View>
+          ) : null}
         </View>
         <View style={{ height: 76, alignItems: 'center', justifyContent: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: radius.pill, paddingHorizontal: space.sm, paddingVertical: 4 }}>
@@ -90,6 +104,7 @@ function ViewerWindow({ v }: { v: NonNullable<Viewer> }) {
             {tool('minus', '축소', () => setZoom((z) => Math.max(0.25, z / 1.25)))}
             {tool('plus', '확대', () => setZoom((z) => Math.min(6, z * 1.25)))}
             {tool('rotate', '회전', () => setTurn((t) => (t + 90) % 360))}
+            {Platform.OS === 'web' ? tool('copy', '복사', copy) : null}
             {tool('down', '저장', () => downloadFile(a))}
           </View>
           <Pressable onPress={() => openFile(a)} style={{ position: 'absolute', right: space.lg, backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 6 }}>
@@ -99,4 +114,25 @@ function ViewerWindow({ v }: { v: NonNullable<Viewer> }) {
       </View>
     </Modal>
   );
+}
+
+/** 사진을 컴퓨터 클립보드에 (PNG로 바꿔서 넣어야 대부분의 프로그램에 붙여 넣어집니다) */
+async function copyImage(uri: string): Promise<boolean> {
+  try {
+    if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) return false;
+    const png = (async () => {
+      const blob = await (await fetch(uri)).blob();
+      if (blob.type === 'image/png') return blob;
+      const bmp = await createImageBitmap(blob);
+      const canvas = document.createElement('canvas');
+      canvas.width = bmp.width;
+      canvas.height = bmp.height;
+      canvas.getContext('2d')!.drawImage(bmp, 0, 0);
+      return await new Promise<Blob>((ok, no) => canvas.toBlob((b) => (b ? ok(b) : no(new Error('png'))), 'image/png'));
+    })();
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+    return true;
+  } catch {
+    return false;
+  }
 }
