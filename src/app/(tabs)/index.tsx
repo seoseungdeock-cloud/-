@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { isSelfRoom, SELF_ROOM_TITLE } from '@/core/calendar';
 import { contactsFor } from '@/core/contacts';
 import { clientCanSee, externalContacts, hasClient, isHidden, markParts, searchAll, sortRooms, unreadCount, searchDirectory, type DirectoryHit } from '@/core/messenger';
 import { actions } from '@/core/store';
@@ -69,7 +70,7 @@ function ClientMessenger() {
   const c = useColors();
   const [q, setQ] = useState('');
   const query = q.trim();
-  const rooms = useMemo(() => sortRooms(s.rooms.filter((r) => clientCanSee(r, user)), user.id, s.messages), [s.rooms, s.messages, user]);
+  const rooms = useMemo(() => sortRooms(s.rooms.filter((r) => clientCanSee(r, user) || (isSelfRoom(r, user.id) && !isHidden(r, user.id, s.messages))), user.id, s.messages), [s.rooms, s.messages, user]);
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top', 'left', 'right']}>
       <View style={{ width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', flex: 1 }}>
@@ -81,6 +82,7 @@ function ClientMessenger() {
           <SearchResults query={query} scope={(r) => clientCanSee(r, user)} />
         ) : (
           <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: 96 }}>
+            <SelfChatRow />
             {rooms.length ? rooms.map((r) => <RoomRow key={r.id} room={r} />) : <Empty text="진행 중인 사건방이 없습니다." />}
           </ScrollView>
         )}
@@ -255,6 +257,7 @@ function RoomsPanel({ query, onSelecting, scope }: { query: string; onSelecting:
       )}
       <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 96 }}>
         {scope === 'internal' && filter === 'all' && !selecting ? <AuthBotRow /> : null}
+        {scope === 'internal' && filter === 'all' && !selecting ? <SelfChatRow /> : null}
         {rooms.length ? (
           rooms.map((r) => <RoomRow key={r.id} room={r} selecting={selecting} selected={selected.includes(r.id)} onToggle={() => toggle(r.id)} />)
         ) : (
@@ -366,5 +369,23 @@ function SearchResults({ query, scope }: { query: string; scope: (r: Room) => bo
         ))}
       </Section>
     </ScrollView>
+  );
+}
+
+/** 나와의 메시지를 아직 안 열었으면(또는 목록에서 숨겼으면) 대화 목록 맨 위에 자리를 보여 줍니다. 한 번 열면 일반 대화방처럼 목록에 섞입니다. */
+function SelfChatRow() {
+  const s = useApp();
+  const user = useMe();
+  const c = useColors();
+  const room = s.rooms.find((r) => isSelfRoom(r, user.id));
+  if (room && !isHidden(room, user.id, s.messages)) return null;
+  return (
+    <Pressable onPress={() => router.push({ pathname: '/room/[id]', params: { id: actions.openSelfChat() } })} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md, opacity: pressed ? 0.7 : 1 })}>
+      <Avatar name={user.nickname} uri={user.photo} />
+      <View style={{ flex: 1 }}>
+        <Text style={{ ...family.bold, fontSize: 16, color: c.text }}>{SELF_ROOM_TITLE}</Text>
+        <Text numberOfLines={1} style={{ ...family.regular, fontSize: 14, color: c.sub, marginTop: 2 }}>메모나 파일을 나에게 보내 두세요</Text>
+      </View>
+    </Pressable>
   );
 }
