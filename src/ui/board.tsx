@@ -15,16 +15,16 @@ export function BoardAuthor({ v, time }: { v: AuthorView; time?: string }) {
     return (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
         <Avatar name={v.profile.nickname} uri={v.profile.photo} size={28} />
-        <Text numberOfLines={1} style={{ flexShrink: 0, fontFamily: family.bold, fontSize: 14, color: c.text }}>{v.alias}</Text>
-        {v.profile.title || v.profile.branch ? <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: family.regular, fontSize: 12, color: c.sub }}>{[v.profile.title, v.profile.branch].filter(Boolean).join(' · ')}</Text> : null}
-        {time ? <Text style={{ flexShrink: 0, fontFamily: family.regular, fontSize: 12, color: c.faint }}>· {time}</Text> : null}
+        <Text numberOfLines={1} style={{ flexShrink: 0, ...family.bold, fontSize: 14, color: c.text }}>{v.alias}</Text>
+        {v.profile.title || v.profile.branch ? <Text numberOfLines={1} style={{ flexShrink: 1, ...family.regular, fontSize: 12, color: c.sub }}>{[v.profile.title, v.profile.branch].filter(Boolean).join(' · ')}</Text> : null}
+        {time ? <Text style={{ flexShrink: 0, ...family.regular, fontSize: 12, color: c.faint }}>· {time}</Text> : null}
       </View>
     );
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs, flexWrap: 'wrap' }}>
-      <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.sub }}>{v.alias}</Text>
+      <Text style={{ ...family.semibold, fontSize: 13, color: c.sub }}>{v.alias}</Text>
       {v.real ? <Badge label={`작성자 ${v.real}`} tone="warn" /> : null}
-      {time ? <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>· {time}</Text> : null}
+      {time ? <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>· {time}</Text> : null}
     </View>
   );
 }
@@ -39,7 +39,7 @@ export function VoteBar({ votes, userId, onVote, vertical }: { votes: Votes; use
       <Pressable accessibilityLabel="추천" onPress={() => onVote(1)} hitSlop={8}>
         <Icon name="up" size={vertical ? 22 : 18} color={mine === 1 ? c.accent : c.faint} />
       </Pressable>
-      <Text style={{ fontFamily: family.bold, fontSize: vertical ? 14 : 13, color: mine === 1 ? c.accent : mine === -1 ? c.sub : c.text, minWidth: 18, textAlign: 'center' }}>{n}</Text>
+      <Text style={{ ...family.bold, fontSize: vertical ? 14 : 13, color: mine === 1 ? c.accent : mine === -1 ? c.sub : c.text, minWidth: 18, textAlign: 'center' }}>{n}</Text>
       <Pressable accessibilityLabel="비추천" onPress={() => onVote(-1)} hitSlop={8}>
         <Icon name="down" size={vertical ? 22 : 18} color={mine === -1 ? c.sub : c.faint} />
       </Pressable>
@@ -53,7 +53,7 @@ export function TextButton({ label, onPress, icon, danger }: { label: string; on
   return (
     <Pressable onPress={onPress} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
       {icon ? <Icon name={icon} size={16} color={color} /> : null}
-      <Text style={{ fontFamily: family.semibold, fontSize: 13, color }}>{label}</Text>
+      <Text style={{ ...family.semibold, fontSize: 13, color }}>{label}</Text>
     </Pressable>
   );
 }
@@ -64,7 +64,7 @@ export function ReportPanel({ onSubmit, onCancel }: { onSubmit: (reason: string)
   const [reason, setReason] = useState('');
   return (
     <View style={{ backgroundColor: c.surface, borderRadius: radius.md, padding: space.md, marginVertical: space.sm, gap: space.sm }}>
-      <Text style={{ fontFamily: family.bold, fontSize: 14, color: c.text }}>신고 사유</Text>
+      <Text style={{ ...family.bold, fontSize: 14, color: c.text }}>신고 사유</Text>
       <Chips>
         {REPORT_REASONS.map((r) => <Chip key={r} label={r} active={reason === r} onPress={() => setReason(r)} />)}
       </Chips>
@@ -126,8 +126,8 @@ export function Attachments({ items, onRemove, compact }: { items: Attachment[];
       {files.map((a) => (
         <Pressable key={a.id} accessibilityLabel={`파일 ${a.name}`} disabled={!!onRemove || !canOpen(a)} onPress={() => openFile(a)} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, borderWidth: 1, borderColor: c.line, borderRadius: radius.md, paddingHorizontal: space.md, paddingVertical: space.sm }}>
           <Icon name="file" color={c.sub} size={20} />
-          <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.semibold, fontSize: 14, color: c.text }}>{a.name}</Text>
-          <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{fileSize(a.size)}</Text>
+          <Text numberOfLines={1} style={{ flex: 1, ...family.semibold, fontSize: 14, color: c.text }}>{a.name}</Text>
+          <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{fileSize(a.size)}</Text>
           {remove(a.id)}
         </Pressable>
       ))}

@@ -17,7 +17,7 @@ export function DBadge({ date }: { date: string }) {
   const n = dDay(date);
   const soon = n >= 0 && n <= 7;
   return (
-    <Text numberOfLines={1} style={{ width: BADGE_WIDTH, textAlign: 'center', fontFamily: family.bold, fontSize: 12, color: soon ? '#FFFFFF' : c.accent, backgroundColor: soon ? c.accent : c.accentSoft, borderRadius: radius.pill, paddingVertical: 2, overflow: 'hidden' }}>
+    <Text numberOfLines={1} style={{ width: BADGE_WIDTH, textAlign: 'center', ...family.bold, fontSize: 12, color: soon ? '#FFFFFF' : c.accent, backgroundColor: soon ? c.accent : c.accentSoft, borderRadius: radius.pill, paddingVertical: 2, overflow: 'hidden' }}>
       {dDayLabel(n)}
     </Text>
   );
@@ -31,16 +31,16 @@ function AlertBody({ a, big }: { a: HearingAlert; big?: boolean }) {
     <View style={{ gap: 4 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
         <Icon name="calendar" color={c.accent} size={big ? 22 : 18} />
-        <Text style={{ fontFamily: family.heavy, fontSize: big ? 20 : 16, color: c.accent }}>{CHANGE_LABEL[a.change]}</Text>
+        <Text style={{ ...family.heavy, fontSize: big ? 20 : 16, color: c.accent }}>{CHANGE_LABEL[a.change]}</Text>
         {!cancelled ? <DBadge date={a.date} /> : null}
       </View>
-      <Text style={{ fontFamily: family.bold, fontSize: big ? 17 : 15, color: c.text }}>{a.label}</Text>
+      <Text style={{ ...family.bold, fontSize: big ? 17 : 15, color: c.text }}>{a.label}</Text>
       {a.change === 'changed' && a.prevDate ? (
-        <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.faint, textDecorationLine: 'line-through' }}>{whenLabel(a.prevDate, a.prevTime)}</Text>
+        <Text style={{ ...family.regular, fontSize: 14, color: c.faint, textDecorationLine: 'line-through' }}>{whenLabel(a.prevDate, a.prevTime)}</Text>
       ) : null}
-      <Text style={{ fontFamily: family.heavy, fontSize: big ? 24 : 19, color: cancelled ? c.faint : c.text, textDecorationLine: cancelled ? 'line-through' : 'none' }}>{whenLabel(a.date, a.time)}</Text>
-      {a.place && !cancelled ? <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.sub }}>{a.place}</Text> : null}
-      <Text style={{ fontFamily: family.semibold, fontSize: 12, color: c.faint }}>{a.source === 'daeryuntop' ? '대륜탑 자동 연동' : '담당 변호사 입력'}</Text>
+      <Text style={{ ...family.heavy, fontSize: big ? 24 : 19, color: cancelled ? c.faint : c.text, textDecorationLine: cancelled ? 'line-through' : 'none' }}>{whenLabel(a.date, a.time)}</Text>
+      {a.place && !cancelled ? <Text style={{ ...family.regular, fontSize: 14, color: c.sub }}>{a.place}</Text> : null}
+      <Text style={{ ...family.semibold, fontSize: 12, color: c.faint }}>{a.source === 'daeryuntop' ? '대륜탑 자동 연동' : '담당 변호사 입력'}</Text>
     </View>
   );
 }
@@ -63,7 +63,7 @@ export function HearingCard({ alertId }: { alertId: string }) {
         {status.map(({ user: u, at }) => (
           <View key={u.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Icon name={at ? 'check' : 'close'} color={at ? c.secure : c.accent} size={14} />
-            <Text style={{ fontFamily: family.semibold, fontSize: 13, color: at ? c.sub : c.accent }}>
+            <Text style={{ ...family.semibold, fontSize: 13, color: at ? c.sub : c.accent }}>
               {u.nickname}
               {u.role === 'client' ? ' (의뢰인)' : ''} {at ? '확인' : '미확인'}
             </Text>
@@ -72,11 +72,11 @@ export function HearingCard({ alertId }: { alertId: string }) {
       </View>
       {mine ? (
         <Pressable onPress={() => actions.ackHearing(a.id)} style={{ backgroundColor: c.accent, borderRadius: radius.md, paddingVertical: space.sm, alignItems: 'center' }}>
-          <Text style={{ fontFamily: family.bold, fontSize: 14, color: '#FFFFFF' }}>확인했습니다</Text>
+          <Text style={{ ...family.bold, fontSize: 14, color: '#FFFFFF' }}>확인했습니다</Text>
         </Pressable>
       ) : user.role !== 'client' && missing ? (
         <Pressable onPress={() => actions.remindHearing(a.id)} style={{ borderWidth: 1, borderColor: c.accent, borderRadius: radius.md, paddingVertical: space.sm, alignItems: 'center' }}>
-          <Text style={{ fontFamily: family.bold, fontSize: 14, color: c.accent }}>
+          <Text style={{ ...family.bold, fontSize: 14, color: c.accent }}>
             다시 알리기{unackedClient !== undefined && unackedClient > 0 ? ` · 의뢰인 미확인 ${unackedClient}시간` : ''}
           </Text>
         </Pressable>
@@ -103,15 +103,15 @@ export function HearingAlertModal() {
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: space.lg }}>
         <View style={{ backgroundColor: c.bg, borderRadius: radius.lg, borderTopWidth: 6, borderTopColor: c.accent, padding: space.lg, gap: space.md, width: '100%', maxWidth: 420, alignSelf: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.semibold, fontSize: 13, color: c.sub }}>{room ? roomTitle(room) : '사건방'}</Text>
-            {pending.length > 1 ? <Text style={{ fontFamily: family.bold, fontSize: 13, color: c.accent }}>1/{pending.length}</Text> : null}
+            <Text numberOfLines={1} style={{ flex: 1, ...family.semibold, fontSize: 13, color: c.sub }}>{room ? roomTitle(room) : '사건방'}</Text>
+            {pending.length > 1 ? <Text style={{ ...family.bold, fontSize: 13, color: c.accent }}>1/{pending.length}</Text> : null}
           </View>
           <AlertBody a={a} big />
           <Pressable accessibilityLabel="기일 알람 확인" onPress={() => actions.ackHearing(a.id)} style={{ backgroundColor: c.accent, borderRadius: radius.md, paddingVertical: space.md, alignItems: 'center' }}>
-            <Text style={{ fontFamily: family.bold, fontSize: 16, color: '#FFFFFF' }}>확인했습니다</Text>
+            <Text style={{ ...family.bold, fontSize: 16, color: '#FFFFFF' }}>확인했습니다</Text>
           </Pressable>
           <Pressable onPress={open} style={{ paddingVertical: space.xs, alignItems: 'center' }}>
-            <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.sub }}>확인하고 사건방 열기</Text>
+            <Text style={{ ...family.semibold, fontSize: 14, color: c.sub }}>확인하고 사건방 열기</Text>
           </Pressable>
         </View>
       </View>
@@ -125,7 +125,7 @@ export function HearingList({ hearings }: { hearings: Hearing[] }) {
   const [showPlan, setShowPlan] = useState(false);
   const sorted = [...hearings].sort((a, b) => a.date.localeCompare(b.date));
   const next = sorted.find((h) => dDay(h.date) >= 0);
-  if (!sorted.length) return <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.sub }}>기일: 없음</Text>;
+  if (!sorted.length) return <Text style={{ ...family.regular, fontSize: 14, color: c.sub }}>기일: 없음</Text>;
   const plan = next ? reminderPlan(next) : [];
   const fmt = (iso: string) => {
     const k = new Date(Date.parse(iso) + 9 * 3_600_000);
@@ -137,18 +137,18 @@ export function HearingList({ hearings }: { hearings: Hearing[] }) {
         <View key={h.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, opacity: dDay(h.date) < 0 ? 0.5 : 1 }}>
           <DBadge date={h.date} />
           <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: family.bold, fontSize: 14, color: c.text }}>
+            <Text style={{ ...family.bold, fontSize: 14, color: c.text }}>
               {h.label} · {whenLabel(h.date, h.time)}
             </Text>
             {h.place || h.source === 'daeryuntop' ? (
-              <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{[h.place, h.source === 'daeryuntop' ? '대륜탑' : '', h.firmOnly ? '변호사·직원만' : ''].filter(Boolean).join(' · ')}</Text>
+              <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.sub }}>{[h.place, h.source === 'daeryuntop' ? '대륜탑' : '', h.firmOnly ? '변호사·직원만' : ''].filter(Boolean).join(' · ')}</Text>
             ) : null}
           </View>
         </View>
       ))}
       {plan.length ? (
         <Pressable onPress={() => setShowPlan((v) => !v)} hitSlop={6}>
-          <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.accent }}>
+          <Text style={{ ...family.semibold, fontSize: 13, color: c.accent }}>
             미리 알림 {plan.length}회 {showPlan ? '' : `· ${plan.map((p) => p.label).join(', ')}`}
           </Text>
         </Pressable>
@@ -157,8 +157,8 @@ export function HearingList({ hearings }: { hearings: Hearing[] }) {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.xs }}>
           {plan.map((p) => (
             <View key={p.label} style={{ borderWidth: 1, borderColor: c.line, borderRadius: radius.md, paddingHorizontal: space.sm, paddingVertical: 4 }}>
-              <Text style={{ fontFamily: family.semibold, fontSize: 12, color: c.text }}>{p.label}</Text>
-              <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{fmt(p.at)}</Text>
+              <Text style={{ ...family.semibold, fontSize: 12, color: c.text }}>{p.label}</Text>
+              <Text style={{ ...family.regular, fontSize: 12, color: c.sub }}>{fmt(p.at)}</Text>
             </View>
           ))}
         </ScrollView>

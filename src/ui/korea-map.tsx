@@ -1,7 +1,7 @@
 import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
 
 import { KOREA_MAP_VIEWBOX, KOREA_REGIONS } from '@/data/korea-map';
-import { family, useColors } from './theme';
+import { SVG_FONT, useColors } from './theme';
 
 // scripts/build-korea-map.mjs 와 같은 투영
 const lon0 = 124.5, lat0 = 33.0, lat1 = 38.7, lon1 = 131.0;
@@ -46,11 +46,11 @@ export function KoreaMap({ counts, selected, onSelect, pins = [] }: Props) {
         const active = selected === r.code;
         return (
           <G key={`l${r.code}`} onPress={() => onSelect(active ? undefined : r.code)}>
-            <SvgText x={r.cx} y={r.cy} fontSize={11} fontFamily={family.bold} fill={active ? '#FFFFFF' : c.text} textAnchor="middle">
+            <SvgText x={r.cx} y={r.cy} fontSize={11} fontFamily={SVG_FONT} fontWeight="700" fill={active ? '#FFFFFF' : c.text} textAnchor="middle">
               {r.short}
             </SvgText>
             {n > 0 ? (
-              <SvgText x={r.cx} y={r.cy + 13} fontSize={10} fontFamily={family.regular} fill={active ? '#FFFFFF' : c.accent} textAnchor="middle">
+              <SvgText x={r.cx} y={r.cy + 13} fontSize={10} fontFamily={SVG_FONT} fill={active ? '#FFFFFF' : c.accent} textAnchor="middle">
                 {n}곳
               </SvgText>
             ) : null}

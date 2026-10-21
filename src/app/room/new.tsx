@@ -60,7 +60,7 @@ export default function PickMembersScreen() {
 
   const right = (
     <Pressable onPress={confirm} hitSlop={10}>
-      <Text style={{ fontFamily: family.bold, fontSize: 16, color: picked.length ? c.accent : c.faint }}>확인 ({picked.length})</Text>
+      <Text style={{ ...family.bold, fontSize: 16, color: picked.length ? c.accent : c.faint }}>확인 ({picked.length})</Text>
     </Pressable>
   );
 
@@ -68,7 +68,7 @@ export default function PickMembersScreen() {
     <Screen title={room ? '멤버 초대' : '멤버 선택'} back right={right} scroll={false}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.surface, borderRadius: radius.pill, paddingHorizontal: space.md, marginBottom: space.sm }}>
         <Icon name="search" color={c.faint} size={18} />
-        <TextInput value={q} onChangeText={setQ} placeholder="연락처 검색" placeholderTextColor={c.faint} style={{ flex: 1, paddingVertical: space.sm + 2, fontSize: 15, fontFamily: family.regular, color: c.text }} />
+        <TextInput value={q} onChangeText={setQ} placeholder="연락처 검색" placeholderTextColor={c.faint} style={{ flex: 1, paddingVertical: space.sm + 2, fontSize: 15, ...family.regular, color: c.text }} />
       </View>
       {!query ? (
         <UnderlineTabs
@@ -93,7 +93,7 @@ export default function PickMembersScreen() {
         )}
         {!room && isWorkUser(user) ? (
           <Pressable onPress={() => router.push('/room/create')} style={{ paddingVertical: space.lg, alignItems: 'center' }}>
-            <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.sub }}>방 종류를 골라 만들기 (사무소·회의·마케팅)</Text>
+            <Text style={{ ...family.semibold, fontSize: 14, color: c.sub }}>방 종류를 골라 만들기 (사무소·회의·마케팅)</Text>
           </Pressable>
         ) : null}
       </ScrollView>
@@ -105,7 +105,7 @@ export default function PickMembersScreen() {
             return (
               <Pressable key={id} onPress={() => toggle(id)} style={{ alignItems: 'center', width: 64 }}>
                 <Avatar name={u.nickname} size={48} uri={u.photo} />
-                <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub, marginTop: 2 }}>{displayName(u)}</Text>
+                <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.sub, marginTop: 2 }}>{displayName(u)}</Text>
               </Pressable>
             );
           })}

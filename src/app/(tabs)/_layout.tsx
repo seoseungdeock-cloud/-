@@ -18,7 +18,7 @@ export default function TabLayout() {
         tabBarActiveTintColor: c.text,
         tabBarInactiveTintColor: c.faint,
         tabBarStyle: { backgroundColor: c.bg, borderTopColor: c.line, ...(Platform.OS === 'web' ? { height: 64, paddingBottom: 8 } : null) },
-        tabBarLabelStyle: { fontSize: 11, fontFamily: family.semibold },
+        tabBarLabelStyle: { fontSize: 11, ...family.semibold },
       }}>
       <Tabs.Screen name="home" options={{ title: '홈', tabBarIcon: icon('home'), href: user.role === 'client' ? undefined : null }} />
       <Tabs.Screen name="index" options={{ title: '대화', tabBarIcon: icon('chat') }} />

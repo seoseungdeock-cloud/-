@@ -67,7 +67,7 @@ export default function PostScreen() {
       ) : null}
       {restricting && restricting.commentId === t.commentId ? (
         <View style={{ backgroundColor: c.surface, borderRadius: radius.md, padding: space.md, marginVertical: space.sm, gap: space.sm }}>
-          <Text style={{ fontFamily: family.bold, fontSize: 14, color: c.text }}>{nameIn(post, t.authorId, s.users)} 이용 제한</Text>
+          <Text style={{ ...family.bold, fontSize: 14, color: c.text }}>{nameIn(post, t.authorId, s.users)} 이용 제한</Text>
           <Chips>
             {RESTRICT_OPTIONS.map((o) => (
               <Chip
@@ -99,16 +99,16 @@ export default function PostScreen() {
   return (
     <Screen title={BOARD_LABEL[boardOf(post)]} back>
       <BoardAuthor v={authorView(user, post, post.authorId, s.users)} time={timeAgo(post.at)} />
-      <Text style={{ fontFamily: family.bold, fontSize: 20, lineHeight: 28, color: c.text, marginTop: space.xs }}>{post.title}</Text>
+      <Text style={{ ...family.bold, fontSize: 20, lineHeight: 28, color: c.text, marginTop: space.xs }}>{post.title}</Text>
       <View style={{ flexDirection: 'row', gap: space.xs, marginVertical: space.sm }}>
         {isNotice ? <Badge label="공지" /> : null}
         {post.field ? <Badge label={post.field} tone="plain" /> : null}
       </View>
-      <Text style={{ fontFamily: family.regular, fontSize: 16, lineHeight: 24, color: c.text }}>{post.body}</Text>
+      <Text style={{ ...family.regular, fontSize: 16, lineHeight: 24, color: c.text }}>{post.body}</Text>
       <Attachments items={post.attachments ?? []} />
       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.lg, marginTop: space.md }}>
         <VoteBar votes={post.votes} userId={user.id} onVote={(v) => run(actions.votePost(post.id, v))} />
-        <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.sub }}>댓글 {post.comments.length}</Text>
+        <Text style={{ ...family.semibold, fontSize: 13, color: c.sub }}>댓글 {post.comments.length}</Text>
         {actionsFor({ authorId: post.authorId })}
       </View>
       {panels({ authorId: post.authorId })}
@@ -118,11 +118,11 @@ export default function PostScreen() {
       {commentTree(post).map(({ c: cm, depth }) => (
         <View key={cm.id} style={{ marginLeft: Math.min(depth, 4) * space.lg, paddingLeft: depth ? space.md : 0, borderLeftWidth: depth ? 2 : 0, borderLeftColor: c.line, paddingVertical: space.md }}>
           {cm.deleted ? (
-            <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.faint }}>삭제된 댓글입니다.</Text>
+            <Text style={{ ...family.regular, fontSize: 14, color: c.faint }}>삭제된 댓글입니다.</Text>
           ) : (
             <>
               <BoardAuthor v={authorView(user, post, cm.authorId, s.users)} time={timeAgo(cm.at)} />
-              <Text style={{ fontFamily: family.regular, fontSize: 15, lineHeight: 22, color: c.text, marginVertical: space.xs }}>{cm.text}</Text>
+              <Text style={{ ...family.regular, fontSize: 15, lineHeight: 22, color: c.text, marginVertical: space.xs }}>{cm.text}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.lg }}>
                 <VoteBar votes={cm.votes} userId={user.id} onVote={(v) => run(actions.voteComment(post.id, cm.id, v))} />
                 <TextButton label="답글" onPress={() => setReplyTo(cm.id)} />
@@ -137,7 +137,7 @@ export default function PostScreen() {
       <View style={{ marginTop: space.lg }}>
         {replyTarget ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm }}>
-            <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.accent }}>{nameIn(post, replyTarget.authorId, s.users)}에게 답글</Text>
+            <Text style={{ ...family.semibold, fontSize: 13, color: c.accent }}>{nameIn(post, replyTarget.authorId, s.users)}에게 답글</Text>
             <TextButton label="취소" onPress={() => setReplyTo(undefined)} />
           </View>
         ) : null}

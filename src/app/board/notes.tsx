@@ -31,7 +31,7 @@ export default function NotesScreen() {
               sub={`${post?.title ?? ''} · ${last.text}`}
               right={
                 <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                  <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{timeAgo(last.at)}</Text>
+                  <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{timeAgo(last.at)}</Text>
                   {unread ? <Badge label={`${unread}`} /> : null}
                 </View>
               }

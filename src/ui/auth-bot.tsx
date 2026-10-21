@@ -26,17 +26,17 @@ export function AuthBotRow() {
       </View>
       <View style={{ flex: 1, gap: 3 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
-          <Text style={{ fontFamily: family.bold, fontSize: 16, color: c.text }}>{AUTH_BOT_NAME}</Text>
-          <Text style={{ fontFamily: family.semibold, fontSize: 11, color: c.accent, borderWidth: 1, borderColor: c.accent, borderRadius: radius.pill, paddingHorizontal: 5 }}>봇</Text>
-          {last ? <Text style={{ marginLeft: 'auto', fontFamily: family.regular, fontSize: 12, color: c.faint }}>{chatTime(last.at)}</Text> : null}
+          <Text style={{ ...family.bold, fontSize: 16, color: c.text }}>{AUTH_BOT_NAME}</Text>
+          <Text style={{ ...family.semibold, fontSize: 11, color: c.accent, borderWidth: 1, borderColor: c.accent, borderRadius: radius.pill, paddingHorizontal: 5 }}>봇</Text>
+          {last ? <Text style={{ marginLeft: 'auto', ...family.regular, fontSize: 12, color: c.faint }}>{chatTime(last.at)}</Text> : null}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.regular, fontSize: 14, color: c.sub }}>
+          <Text numberOfLines={1} style={{ flex: 1, ...family.regular, fontSize: 14, color: c.sub }}>
             {last ? (left ? `인증코드가 도착했습니다 · ${Math.ceil(left / 60)}분 안에 입력` : '인증코드 (만료)') : '받은 인증코드 없음'}
           </Text>
           {unread ? (
             <View style={{ minWidth: 20, height: 20, borderRadius: 10, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
-              <Text style={{ color: '#FFFFFF', fontSize: 11, fontFamily: family.bold }}>{unread}</Text>
+              <Text style={{ color: '#FFFFFF', fontSize: 11, ...family.bold }}>{unread}</Text>
             </View>
           ) : null}
         </View>

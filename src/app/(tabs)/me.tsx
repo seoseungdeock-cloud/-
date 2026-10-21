@@ -36,7 +36,7 @@ export default function MeScreen() {
               {user.superAdmin && user.role === 'admin' ? <Badge label="관리자어드민" tone="accent" /> : null}
             </View>
           </View>
-          <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.accent }}>편집</Text>
+          <Text style={{ ...family.semibold, fontSize: 14, color: c.accent }}>편집</Text>
         </View>
       </Card>
       {canJoinMembership(user) ? (

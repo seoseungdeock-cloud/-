@@ -44,7 +44,7 @@ export function Screen({ title, children, right, back, scroll = true }: { title?
 
 export function T({ children, size = 'body', color, bold, style }: { children: ReactNode; size?: keyof typeof font; color?: string; bold?: boolean; style?: object }) {
   const c = useColors();
-  return <Text style={[{ fontSize: font[size], color: color ?? c.text, fontFamily: bold ? family.bold : family.regular, lineHeight: font[size] * 1.45 }, style]}>{children}</Text>;
+  return <Text style={[{ fontSize: font[size], color: color ?? c.text, ...(bold ? family.bold : family.regular), lineHeight: font[size] * 1.45 }, style]}>{children}</Text>;
 }
 
 export function Sub({ children }: { children: ReactNode }) {
@@ -93,7 +93,7 @@ export function Button({ label, onPress, kind = 'primary', disabled, small }: { 
         alignItems: 'center',
         opacity: disabled ? 0.4 : pressed ? 0.75 : 1,
       })}>
-      <Text style={{ color: fg, fontSize: small ? font.small : font.body, fontFamily: family.bold }}>{label}</Text>
+      <Text style={{ color: fg, fontSize: small ? font.small : font.body, ...family.bold }}>{label}</Text>
     </Pressable>
   );
 }
@@ -123,7 +123,7 @@ export function Input(props: TextInputProps & { label?: string }) {
         placeholderTextColor={c.faint}
         {...props}
         style={[
-          { backgroundColor: c.surface, color: c.text, borderRadius: radius.md, padding: space.md, fontSize: font.body, fontFamily: family.regular, marginTop: props.label ? space.xs : 0, minHeight: props.multiline ? 96 : undefined, textAlignVertical: props.multiline ? 'top' : 'center' },
+          { backgroundColor: c.surface, color: c.text, borderRadius: radius.md, padding: space.md, fontSize: font.body, ...family.regular, marginTop: props.label ? space.xs : 0, minHeight: props.multiline ? 96 : undefined, textAlignVertical: props.multiline ? 'top' : 'center' },
           props.style,
         ]}
       />
@@ -137,7 +137,7 @@ export function Chip({ label, active, onPress }: { label: string; active?: boole
     <Pressable
       onPress={onPress}
       style={{ backgroundColor: active ? c.text : c.surface, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: space.sm - 2, marginRight: space.sm, marginBottom: space.sm }}>
-      <Text style={{ color: active ? c.bg : c.text, fontSize: font.small, fontFamily: active ? family.semibold : family.regular }}>{label}</Text>
+      <Text style={{ color: active ? c.bg : c.text, fontSize: font.small, ...(active ? family.semibold : family.regular) }}>{label}</Text>
     </Pressable>
   );
 }
@@ -162,7 +162,7 @@ export function Badge({ label, tone = 'accent', fixed }: { label: string; tone?:
   const [bg, fg] = map[tone];
   return (
     <View style={{ backgroundColor: bg, borderRadius: radius.pill, paddingHorizontal: space.sm, paddingVertical: 2, alignSelf: fixed ? 'center' : 'flex-start', ...(fixed ? { width: BADGE_WIDTH, alignItems: 'center' as const } : {}) }}>
-      <Text numberOfLines={1} style={{ color: fg, fontSize: font.tiny, fontFamily: family.semibold }}>{label}</Text>
+      <Text numberOfLines={1} style={{ color: fg, fontSize: font.tiny, ...family.semibold }}>{label}</Text>
     </View>
   );
 }
@@ -202,7 +202,7 @@ export function Row({ title, sub, right, onPress, left }: { title: string; sub?:
       {left}
       <View style={{ flex: 1 }}>
         <T bold>{title}</T>
-        {sub ? <Text numberOfLines={1} style={{ fontSize: font.small, fontFamily: family.regular, color: c.sub, lineHeight: font.small * 1.45 }}>{sub}</Text> : null}
+        {sub ? <Text numberOfLines={1} style={{ fontSize: font.small, ...family.regular, color: c.sub, lineHeight: font.small * 1.45 }}>{sub}</Text> : null}
       </View>
       {right}
       {onPress ? <Icon name="chevron" color={c.faint} size={18} /> : null}
@@ -227,7 +227,7 @@ export function Avatar({ name, tone, size = 44, group, uri, dot }: { name: strin
         <Image source={{ uri }} accessibilityLabel={`${name} 프로필 사진`} style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c.surface }} />
       ) : (
         <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: tone ?? c.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: c.accent, fontFamily: family.bold, fontSize: Math.round(size * 0.36) }}>{name.slice(0, group ? 2 : 1)}</Text>
+          <Text style={{ color: c.accent, ...family.bold, fontSize: Math.round(size * 0.36) }}>{name.slice(0, group ? 2 : 1)}</Text>
         </View>
       )}
       {group ? (
@@ -245,5 +245,5 @@ export function Avatar({ name, tone, size = 44, group, uri, dot }: { name: strin
 const styles = StyleSheet.create({
   inner: { width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', paddingHorizontal: space.lg, flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', paddingTop: space.lg, paddingBottom: space.sm },
-  title: { fontSize: font.title, fontFamily: family.heavy, flexShrink: 1 },
+  title: { fontSize: font.title, ...family.heavy, flexShrink: 1 },
 });

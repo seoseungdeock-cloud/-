@@ -12,14 +12,14 @@ export function SuggestionCard({ s, author, children }: { s: Suggestion; author?
     <View style={{ paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: c.line, gap: space.xs }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs, flexWrap: 'wrap' }}>
         <Badge label={SUGGESTION_STATUS[s.status]} tone={s.status === 'done' ? 'secure' : s.status === 'hold' ? 'plain' : 'accent'} />
-        {author ? <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.sub }}>{author}</Text> : null}
-        <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{timeAgo(s.at)}</Text>
+        {author ? <Text style={{ ...family.semibold, fontSize: 13, color: c.sub }}>{author}</Text> : null}
+        <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{timeAgo(s.at)}</Text>
       </View>
-      <Text style={{ fontFamily: family.regular, fontSize: 15, lineHeight: 22, color: c.text }}>{s.body}</Text>
+      <Text style={{ ...family.regular, fontSize: 15, lineHeight: 22, color: c.text }}>{s.body}</Text>
       {s.answer ? (
         <View style={{ backgroundColor: c.surface, borderRadius: radius.md, padding: space.md }}>
-          <Text style={{ fontFamily: family.bold, fontSize: 13, color: c.accent, marginBottom: 2 }}>답변</Text>
-          <Text style={{ fontFamily: family.regular, fontSize: 14, lineHeight: 20, color: c.text }}>{s.answer}</Text>
+          <Text style={{ ...family.bold, fontSize: 13, color: c.accent, marginBottom: 2 }}>답변</Text>
+          <Text style={{ ...family.regular, fontSize: 14, lineHeight: 20, color: c.text }}>{s.answer}</Text>
         </View>
       ) : null}
       {children}

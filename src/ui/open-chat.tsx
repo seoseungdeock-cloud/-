@@ -16,7 +16,7 @@ export function OpenAvatar({ label, size = 48 }: { label: string; size?: number 
   const c = useColors();
   return (
     <View style={{ width: size, height: size, borderRadius: size * 0.32, backgroundColor: c.text, alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ color: c.bg, fontFamily: family.bold, fontSize: Math.round(size * 0.38) }}>{label.slice(0, 1)}</Text>
+      <Text style={{ color: c.bg, ...family.bold, fontSize: Math.round(size * 0.38) }}>{label.slice(0, 1)}</Text>
     </View>
   );
 }
@@ -34,24 +34,24 @@ function OpenRow({ room, mine }: { room: OpenRoom; mine: boolean }) {
       <OpenAvatar label={room.title} />
       <View style={{ flex: 1, gap: 3 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
-          <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: family.bold, fontSize: 16, color: c.text }}>{room.title}</Text>
-          <Text style={{ fontFamily: family.regular, fontSize: 13, color: c.faint }}>{room.members.length}</Text>
+          <Text numberOfLines={1} style={{ flexShrink: 1, ...family.bold, fontSize: 16, color: c.text }}>{room.title}</Text>
+          <Text style={{ ...family.regular, fontSize: 13, color: c.faint }}>{room.members.length}</Text>
           {isLocked(room) ? <Icon name="lock" color={c.faint} size={14} /> : null}
-          {mine && last ? <Text style={{ marginLeft: 'auto', fontFamily: family.regular, fontSize: 12, color: c.faint }}>{chatTime(last.at)}</Text> : null}
+          {mine && last ? <Text style={{ marginLeft: 'auto', ...family.regular, fontSize: 12, color: c.faint }}>{chatTime(last.at)}</Text> : null}
         </View>
-        <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 14, color: c.sub }}>
+        <Text numberOfLines={1} style={{ ...family.regular, fontSize: 14, color: c.sub }}>
           {mine ? (last ? `${lastAlias ? `${lastAlias}: ` : ''}${last.text}` : room.description) : room.description || ' '}
         </Text>
         {!mine ? (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
             {room.tags.map((t) => (
               <View key={t} style={{ backgroundColor: c.surface, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 }}>
-                <Text style={{ fontFamily: family.semibold, fontSize: 12, color: c.sub }}>#{t}</Text>
+                <Text style={{ ...family.semibold, fontSize: 12, color: c.sub }}>#{t}</Text>
               </View>
             ))}
           </View>
         ) : (
-          <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{`내 닉네임 ${aliasOf(room, user.id)}${room.hostId === user.id ? ' · 방장' : ''}`}</Text>
+          <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{`내 닉네임 ${aliasOf(room, user.id)}${room.hostId === user.id ? ' · 방장' : ''}`}</Text>
         )}
       </View>
     </Pressable>
@@ -66,7 +66,7 @@ export function OpenPanel({ query }: { query: string }) {
   const shownMine = searchOpenRooms(mine, query);
   const shownOthers = searchOpenRooms(others, query);
   const head = (t: string, n: number) => (
-    <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.text, marginTop: space.md }}>
+    <Text style={{ ...family.bold, fontSize: 15, color: c.text, marginTop: space.md }}>
       {t} <Text style={{ color: c.accent }}>{n}</Text>
     </Text>
   );

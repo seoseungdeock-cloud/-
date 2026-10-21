@@ -30,14 +30,14 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top', 'left', 'right']}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingVertical: space.md, width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center' }}>
-        <Text style={{ fontFamily: family.heavy, fontSize: 22, color: c.accent, letterSpacing: 0.5 }}>RIGHTS NOW</Text>
+        <Text style={{ ...family.heavy, fontSize: 22, color: c.accent, letterSpacing: 0.5 }}>RIGHTS NOW</Text>
         <Pressable accessibilityLabel="검색" onPress={() => router.push('/find')} style={{ marginLeft: 'auto' }} hitSlop={12}>
           <Icon name="search" color={c.text} size={26} />
         </Pressable>
       </View>
       <ScrollView contentContainerStyle={{ paddingBottom: space.xxl }}>
         <View style={{ width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', paddingHorizontal: space.lg }}>
-          <Text style={{ fontFamily: family.heavy, fontSize: 28, lineHeight: 38, color: c.text, marginTop: space.sm }}>
+          <Text style={{ ...family.heavy, fontSize: 28, lineHeight: 38, color: c.text, marginTop: space.sm }}>
             긴급한 법률 상담{'\n'}
             <Text style={{ color: c.accent }}>라잇나우</Text>가 필요해!
           </Text>
@@ -51,7 +51,7 @@ export default function HomeScreen() {
                 <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
                   <Icon name={b.icon} color={c.accent} size={34} />
                 </View>
-                <Text style={{ fontFamily: family.bold, fontSize: 20, lineHeight: 28, textAlign: 'center', color: c.text }}>{b.label}</Text>
+                <Text style={{ ...family.bold, fontSize: 20, lineHeight: 28, textAlign: 'center', color: c.text }}>{b.label}</Text>
               </Pressable>
             ))}
           </View>
@@ -59,17 +59,17 @@ export default function HomeScreen() {
           <Pressable onPress={() => router.push('/board')} style={({ pressed }) => ({ marginTop: space.lg, borderRadius: radius.lg, backgroundColor: c.accent, padding: space.xl, opacity: pressed ? 0.85 : 1 })}>
             <View style={{ flexDirection: 'row', gap: space.xs, marginBottom: space.sm }}>
               {['100% 익명', '변호사 참여'].map((t) => (
-                <Text key={t} style={{ fontFamily: family.bold, fontSize: 12, color: c.accent, backgroundColor: '#FFFFFF', borderRadius: radius.pill, paddingHorizontal: space.sm, paddingVertical: 2, overflow: 'hidden' }}>{t}</Text>
+                <Text key={t} style={{ ...family.bold, fontSize: 12, color: c.accent, backgroundColor: '#FFFFFF', borderRadius: radius.pill, paddingHorizontal: space.sm, paddingVertical: 2, overflow: 'hidden' }}>{t}</Text>
               ))}
             </View>
-            <Text style={{ fontFamily: family.heavy, fontSize: 24, lineHeight: 32, color: '#FFFFFF' }}>이름은 지우고,{'\n'}변호사와 터놓고.</Text>
-            <Text style={{ fontFamily: family.semibold, fontSize: 15, lineHeight: 22, color: '#FFFFFF', opacity: 0.9, marginTop: space.sm }}>완전 익명으로 묻고, 변호사와 격의 없이 나누는 대화</Text>
+            <Text style={{ ...family.heavy, fontSize: 24, lineHeight: 32, color: '#FFFFFF' }}>이름은 지우고,{'\n'}변호사와 터놓고.</Text>
+            <Text style={{ ...family.semibold, fontSize: 15, lineHeight: 22, color: '#FFFFFF', opacity: 0.9, marginTop: space.sm }}>완전 익명으로 묻고, 변호사와 격의 없이 나누는 대화</Text>
             {s.posts.filter((p) => boardOf(p) === 'anon').slice(0, 2).map((p) => (
-              <Text key={p.id} numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 14, color: '#FFFFFF', marginTop: space.sm, opacity: 0.95 }}>
+              <Text key={p.id} numberOfLines={1} style={{ ...family.regular, fontSize: 14, color: '#FFFFFF', marginTop: space.sm, opacity: 0.95 }}>
                 Q. {p.title} · 댓글 {p.comments.length}
               </Text>
             ))}
-            <Text style={{ fontFamily: family.bold, fontSize: 16, color: '#FFFFFF', marginTop: space.lg }}>익명 게시판 입장 →</Text>
+            <Text style={{ ...family.bold, fontSize: 16, color: '#FFFFFF', marginTop: space.lg }}>익명 게시판 입장 →</Text>
           </Pressable>
 
           <ScrollView
@@ -83,9 +83,9 @@ export default function HomeScreen() {
             {banners.map((b) => (
               <View key={b.title} style={{ width: inner, backgroundColor: c.accentSoft, borderRadius: radius.lg, padding: space.xl, gap: space.sm }}>
                 <T size="small" color={c.sub}>{b.top}</T>
-                <Text style={{ fontFamily: family.heavy, fontSize: 30, color: c.accent }}>{b.title}</Text>
+                <Text style={{ ...family.heavy, fontSize: 30, color: c.accent }}>{b.title}</Text>
                 <Pressable onPress={b.go} style={{ alignSelf: 'flex-start', backgroundColor: c.accent, borderRadius: radius.pill, paddingHorizontal: space.lg, paddingVertical: space.sm, marginTop: space.sm }}>
-                  <Text style={{ color: '#FFFFFF', fontFamily: family.bold }}>{b.cta}</Text>
+                  <Text style={{ color: '#FFFFFF', ...family.bold }}>{b.cta}</Text>
                 </Pressable>
               </View>
             ))}
@@ -103,7 +103,7 @@ export default function HomeScreen() {
                 key={d.name}
                 onPress={() => router.push({ pathname: '/service/[name]', params: { name: d.name } })}
                 style={({ pressed }) => [card, { width: (inner - space.sm * 2) / 3, minHeight: 96, padding: space.md, justifyContent: 'space-between', opacity: pressed ? 0.7 : 1 }]}>
-                <Text style={{ fontFamily: family.bold, fontSize: 16, color: c.text }}>{d.name}</Text>
+                <Text style={{ ...family.bold, fontSize: 16, color: c.text }}>{d.name}</Text>
                 <View style={{ alignSelf: 'flex-end' }}><Icon name="case" color={c.accent} size={26} /></View>
               </Pressable>
             ))}
@@ -114,9 +114,9 @@ export default function HomeScreen() {
             {fields.map((f) => (
               <Pressable key={f} onPress={() => router.push({ pathname: '/find', params: { field: f } })} style={{ width: inner / 4, alignItems: 'center', gap: space.xs }}>
                 <View style={{ width: 56, height: 56, borderRadius: radius.md, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontFamily: family.heavy, fontSize: 18, color: c.accent }}>{f.slice(0, 1)}</Text>
+                  <Text style={{ ...family.heavy, fontSize: 18, color: c.accent }}>{f.slice(0, 1)}</Text>
                 </View>
-                <Text style={{ fontFamily: family.regular, fontSize: 13, color: c.text, textAlign: 'center', paddingHorizontal: 2 }}>{f}</Text>
+                <Text style={{ ...family.regular, fontSize: 13, color: c.text, textAlign: 'center', paddingHorizontal: 2 }}>{f}</Text>
               </Pressable>
             ))}
           </View>
@@ -133,7 +133,7 @@ export default function HomeScreen() {
                   {x.sample ? <Badge label="샘플" tone="plain" /> : null}
                 </View>
                 <T bold>{x.title}</T>
-                <Text numberOfLines={2} style={{ fontFamily: family.regular, color: c.sub, fontSize: 14, lineHeight: 20 }}>{x.summary}</Text>
+                <Text numberOfLines={2} style={{ ...family.regular, color: c.sub, fontSize: 14, lineHeight: 20 }}>{x.summary}</Text>
               </View>
             ))}
           </ScrollView>
@@ -142,7 +142,7 @@ export default function HomeScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.md }}>
             {home.articles.map((a) => (
               <View key={a.title} style={[card, { width: inner * 0.45, minHeight: 170, padding: space.lg, justifyContent: 'space-between' }]}>
-                <Text numberOfLines={3} style={{ fontFamily: family.bold, fontSize: 17, lineHeight: 24, color: c.text }}>{a.title}</Text>
+                <Text numberOfLines={3} style={{ ...family.bold, fontSize: 17, lineHeight: 24, color: c.text }}>{a.title}</Text>
                 <View style={{ flexDirection: 'row', gap: space.xs, flexWrap: 'wrap' }}>
                   <Badge label={a.field} />
                   {a.sample ? <Badge label="샘플" tone="plain" /> : null}
@@ -158,5 +158,5 @@ export default function HomeScreen() {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   const c = useColors();
-  return <Text style={{ fontFamily: family.bold, fontSize: 20, color: c.text, marginTop: space.xxl, marginBottom: space.md }}>{children}</Text>;
+  return <Text style={{ ...family.bold, fontSize: 20, color: c.text, marginTop: space.xxl, marginBottom: space.md }}>{children}</Text>;
 }

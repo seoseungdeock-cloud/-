@@ -51,7 +51,7 @@ function SearchBar({ value, onChange, placeholder }: { value: string; onChange: 
         onChangeText={onChange}
         placeholder={placeholder}
         placeholderTextColor={c.faint}
-        style={{ flex: 1, paddingVertical: space.sm + 2, fontSize: font.body, fontFamily: family.regular, color: c.text }}
+        style={{ flex: 1, paddingVertical: space.sm + 2, fontSize: font.body, ...family.regular, color: c.text }}
       />
       {value ? (
         <Pressable accessibilityLabel="검색어 지우기" onPress={() => onChange('')} hitSlop={8}>
@@ -74,7 +74,7 @@ function ClientMessenger() {
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top', 'left', 'right']}>
       <View style={{ width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', flex: 1 }}>
         <View style={{ paddingHorizontal: space.lg, paddingTop: space.md, gap: space.md }}>
-          <Text style={{ fontFamily: family.heavy, fontSize: font.title, color: c.text }}>대화</Text>
+          <Text style={{ ...family.heavy, fontSize: font.title, color: c.text }}>대화</Text>
           <SearchBar value={q} onChange={setQ} placeholder="사건방·메시지 검색" />
         </View>
         {query ? (
@@ -167,7 +167,7 @@ function ContactsPanel({ query }: { query: string }) {
             <>
               {!dept && favorites.length ? (
                 <View style={{ paddingTop: space.md }}>
-                  <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.faint }}>즐겨찾기 {favorites.length}</Text>
+                  <Text style={{ ...family.semibold, fontSize: 13, color: c.faint }}>즐겨찾기 {favorites.length}</Text>
                   {favorites.map((u) => <ContactRow key={u!.id} u={u!} />)}
                 </View>
               ) : null}
@@ -197,8 +197,8 @@ function HitRow({ h, onDept }: { h: DirectoryHit; onDept: (d: string) => void })
       onPress={() => (h.type === 'dept' ? onDept(h.dept) : router.push({ pathname: '/room/[id]', params: { id: h.room.id } }))}
       style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm + 2, opacity: pressed ? 0.6 : 1 })}>
       <Avatar name={label} size={48} group />
-      <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.bold, fontSize: 16, color: c.text }}>{label}</Text>
-      {h.type === 'dept' ? <Text style={{ color: c.faint, fontFamily: family.regular }}>{h.count}</Text> : null}
+      <Text numberOfLines={1} style={{ flex: 1, ...family.bold, fontSize: 16, color: c.text }}>{label}</Text>
+      {h.type === 'dept' ? <Text style={{ color: c.faint, ...family.regular }}>{h.count}</Text> : null}
       <Icon name="chevron" color={c.faint} size={16} />
     </Pressable>
   );
@@ -236,9 +236,9 @@ function RoomsPanel({ query, onSelecting, scope }: { query: string; onSelecting:
     <View style={{ flex: 1 }}>
       {selecting ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingVertical: space.md }}>
-          <Text style={{ fontFamily: family.bold, fontSize: 16, color: c.text }}>{selected.length}개 선택</Text>
+          <Text style={{ ...family.bold, fontSize: 16, color: c.text }}>{selected.length}개 선택</Text>
           <Pressable onPress={() => setSelected([])} style={{ marginLeft: 'auto' }} hitSlop={8}>
-            <Text style={{ fontFamily: family.semibold, fontSize: 15, color: c.sub }}>모두 취소</Text>
+            <Text style={{ ...family.semibold, fontSize: 15, color: c.sub }}>모두 취소</Text>
           </Pressable>
         </View>
       ) : scope === 'clients' ? (
@@ -247,7 +247,7 @@ function RoomsPanel({ query, onSelecting, scope }: { query: string; onSelecting:
         <View style={{ flexDirection: 'row', gap: space.lg, paddingHorizontal: space.lg, paddingVertical: space.md }}>
           {FILTERS.map(([k, label]) => (
             <Pressable key={k} onPress={() => setFilter(k)} style={{ flexDirection: 'row' }}>
-              <Text style={{ fontFamily: filter === k ? family.bold : family.regular, fontSize: font.small + 1, color: filter === k ? c.text : c.faint }}>{label}</Text>
+              <Text style={{ ...(filter === k ? family.bold : family.regular), fontSize: font.small + 1, color: filter === k ? c.text : c.faint }}>{label}</Text>
               {dots[k] ? <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: c.accent, marginLeft: 2 }} /> : null}
             </Pressable>
           ))}
@@ -281,7 +281,7 @@ function BarButton({ icon, label, onPress }: { icon: 'pin' | 'mute' | 'hide' | '
   return (
     <Pressable onPress={onPress} style={{ alignItems: 'center', gap: 2, minWidth: 64 }}>
       <Icon name={icon} color={c.accent} size={22} />
-      <Text style={{ fontFamily: family.semibold, fontSize: 12, color: c.sub }}>{label}</Text>
+      <Text style={{ ...family.semibold, fontSize: 12, color: c.sub }}>{label}</Text>
     </Pressable>
   );
 }
@@ -311,13 +311,13 @@ function SearchResults({ query, scope }: { query: string; scope: (r: Room) => bo
   const Section = ({ k, title, count, children }: { k: string; title: string; count: number; children: ReactNode }) => (
     <View style={{ borderBottomWidth: 1, borderBottomColor: c.line }}>
       <Pressable accessibilityLabel={`${title} 접기`} onPress={() => setClosed((x) => ({ ...x, [k]: !x[k] }))} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: space.md }}>
-        <Text style={{ fontFamily: family.bold, fontSize: 16, color: c.text }}>{title}</Text>
-        <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.accent, marginLeft: 6 }}>{count}</Text>
+        <Text style={{ ...family.bold, fontSize: 16, color: c.text }}>{title}</Text>
+        <Text style={{ ...family.semibold, fontSize: 14, color: c.accent, marginLeft: 6 }}>{count}</Text>
         <View style={{ marginLeft: 'auto', transform: [{ rotate: closed[k] ? '90deg' : '-90deg' }] }}>
           <Icon name="chevron" color={c.faint} size={18} />
         </View>
       </Pressable>
-      {closed[k] ? null : count ? <View style={{ paddingBottom: space.sm }}>{children}</View> : <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.faint, paddingBottom: space.md }}>결과 없음</Text>}
+      {closed[k] ? null : count ? <View style={{ paddingBottom: space.sm }}>{children}</View> : <Text style={{ ...family.regular, fontSize: 14, color: c.faint, paddingBottom: space.md }}>결과 없음</Text>}
     </View>
   );
   return (
@@ -338,10 +338,10 @@ function SearchResults({ query, scope }: { query: string; scope: (r: Room) => bo
               <Avatar name={r.title} size={44} group={r.memberIds.length > 2} />
               <View style={{ flex: 1, gap: 2 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.bold, fontSize: 15, color: c.text }}>{roomTitle(r)}</Text>
-                  <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{chatTime(m.at)}</Text>
+                  <Text numberOfLines={1} style={{ flex: 1, ...family.bold, fontSize: 15, color: c.text }}>{roomTitle(r)}</Text>
+                  <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{chatTime(m.at)}</Text>
                 </View>
-                <Mark text={`${sender(m)}: ${m.bundle ? m.bundle.items.map((i) => i.text).join(' / ') : m.text}`} style={{ fontFamily: family.regular, fontSize: 14, lineHeight: 20, color: c.sub }} />
+                <Mark text={`${sender(m)}: ${m.bundle ? m.bundle.items.map((i) => i.text).join(' / ') : m.text}`} style={{ ...family.regular, fontSize: 14, lineHeight: 20, color: c.sub }} />
               </View>
             </Pressable>
           );
@@ -357,8 +357,8 @@ function SearchResults({ query, scope }: { query: string; scope: (r: Room) => bo
               <Icon name="file" color={c.sub} size={22} />
             </View>
             <View style={{ flex: 1 }}>
-              <Mark text={f.name} style={{ fontFamily: family.semibold, fontSize: 15, color: c.text }} />
-              <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>
+              <Mark text={f.name} style={{ ...family.semibold, fontSize: 15, color: c.text }} />
+              <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.faint }}>
                 {roomTitle(f.room)} · {chatTime(f.at)}
               </Text>
             </View>

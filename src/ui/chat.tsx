@@ -26,9 +26,9 @@ function nameOf(users: User[], id: string): string {
 function Body({ text, names, color, mention, mark }: { text: string; names: string[]; color: string; mention: string; mark?: string }) {
   const c = useColors();
   return (
-    <Text style={{ fontFamily: family.regular, fontSize: 16, lineHeight: 23, color }}>
+    <Text style={{ ...family.regular, fontSize: 16, lineHeight: 23, color }}>
       {splitMentions(text, names).map((p, i) => (
-        <Text key={i} style={p.mention ? { color: mention, fontFamily: family.semibold } : undefined}>
+        <Text key={i} style={p.mention ? { color: mention, ...family.semibold } : undefined}>
           {mark
             ? markParts(p.text, mark).map((q, j) =>
                 q.mark ? (
@@ -86,7 +86,7 @@ export function Bubble({
   if (m.senderId === SYSTEM_SENDER) {
     return (
       <View style={{ alignItems: 'center', marginVertical: space.sm }}>
-        <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint, textAlign: 'center' }}>{m.text}</Text>
+        <Text style={{ ...family.regular, fontSize: 12, color: c.faint, textAlign: 'center' }}>{m.text}</Text>
       </View>
     );
   }
@@ -94,7 +94,7 @@ export function Bubble({
   if (m.recalled) {
     return (
       <View style={{ alignItems: 'center', marginVertical: space.sm }}>
-        <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{sender?.nickname ?? ''}님이 메시지를 회수하였습니다.</Text>
+        <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{sender?.nickname ?? ''}님이 메시지를 회수하였습니다.</Text>
       </View>
     );
   }
@@ -114,10 +114,10 @@ export function Bubble({
     <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', justifyContent: 'flex-end', paddingHorizontal: 4 }}>
       {read > 0 ? (
         <Pressable accessibilityLabel="읽은 사람 보기" disabled={!onReads} onPress={onReads} hitSlop={6}>
-          <Text style={{ fontFamily: family.semibold, fontSize: 11, color: c.accent }}>읽음 {read}</Text>
+          <Text style={{ ...family.semibold, fontSize: 11, color: c.accent }}>읽음 {read}</Text>
         </Pressable>
       ) : null}
-      <Text style={{ fontFamily: family.regular, fontSize: 11, color: c.faint }}>{clockTime(m.at)}</Text>
+      <Text style={{ ...family.regular, fontSize: 11, color: c.faint }}>{clockTime(m.at)}</Text>
     </View>
   );
 
@@ -127,7 +127,7 @@ export function Bubble({
       {!mine ? <Avatar name={isAi || isBot ? 'AI' : sender?.nickname ?? '?'} size={36} tone={isAi ? c.aiSoft : undefined} uri={isAi || isBot ? undefined : sender?.photo} /> : null}
       <View style={{ maxWidth: '78%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
         {!mine ? (
-          <Text numberOfLines={1} style={{ fontFamily: family.semibold, fontSize: 13, color: isAi ? c.ai : isBot ? c.accent : c.sub, marginBottom: 2 }}>
+          <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 13, color: isAi ? c.ai : isBot ? c.accent : c.sub, marginBottom: 2 }}>
             {isAi || isBot ? nameOf(users, m.senderId) : sender ? displayName(sender) : ''}
           </Text>
         ) : null}
@@ -150,8 +150,8 @@ export function Bubble({
             }}>
             {quoted ? (
               <View style={{ borderLeftWidth: 2, borderLeftColor: mine ? 'rgba(255,255,255,0.7)' : c.accent, paddingLeft: space.sm, marginBottom: 2 }}>
-                <Text style={{ fontFamily: family.semibold, fontSize: 12, color: mine ? c.bubbleMineText : c.sub }}>{nameOf(users, quoted.senderId)}에게 답장</Text>
-                <Text numberOfLines={2} style={{ fontFamily: family.regular, fontSize: 13, color: mine ? c.bubbleMineText : c.sub }}>
+                <Text style={{ ...family.semibold, fontSize: 12, color: mine ? c.bubbleMineText : c.sub }}>{nameOf(users, quoted.senderId)}에게 답장</Text>
+                <Text numberOfLines={2} style={{ ...family.regular, fontSize: 13, color: mine ? c.bubbleMineText : c.sub }}>
                   {quoted.recalled ? '회수된 메시지입니다.' : quoted.text}
                 </Text>
               </View>
@@ -162,15 +162,15 @@ export function Bubble({
               <BundleCard m={m} users={users} mark={mark} />
             ) : m.forwardOf ? (
               <>
-                <Text style={{ fontFamily: family.semibold, fontSize: 12, color: c.sub }}>전달 · {nameOf(users, m.forwardOf.senderId)}</Text>
+                <Text style={{ ...family.semibold, fontSize: 12, color: c.sub }}>전달 · {nameOf(users, m.forwardOf.senderId)}</Text>
                 <Body text={m.forwardOf.text} names={names} color={c.text} mention={c.accent} mark={mark} />
               </>
             ) : contact ? (
               <Pressable onPress={() => router.push({ pathname: '/contact/[id]', params: { id: contact.id } })} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minWidth: 200 }}>
                 <Avatar name={contact.nickname} size={40} uri={contact.photo} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.text }}>{contact.nickname}</Text>
-                  <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{[contact.title, contact.dept].filter(Boolean).join(' · ') || '연락처'}</Text>
+                  <Text style={{ ...family.bold, fontSize: 15, color: c.text }}>{contact.nickname}</Text>
+                  <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.sub }}>{[contact.title, contact.dept].filter(Boolean).join(' · ') || '연락처'}</Text>
                 </View>
                 <Icon name="chevron" color={c.faint} size={18} />
               </Pressable>
@@ -192,7 +192,7 @@ export function Bubble({
                 onPress={onReactions}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill, borderWidth: 1, borderColor: myReaction === e ? c.accent : c.line, backgroundColor: c.bg }}>
                 <Text style={{ fontSize: 13 }}>{e}</Text>
-                <Text style={{ fontFamily: family.semibold, fontSize: 12, color: myReaction === e ? c.accent : c.sub }}>{n}</Text>
+                <Text style={{ ...family.semibold, fontSize: 12, color: myReaction === e ? c.accent : c.sub }}>{n}</Text>
               </Pressable>
             ))}
           </View>
@@ -217,11 +217,11 @@ function BundleCard({ m, users, mark }: { m: Message; users: User[]; mark?: stri
   const b = m.bundle!;
   return (
     <View style={{ gap: space.sm }}>
-      <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.accent }}>전달</Text>
-      <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 13, color: c.sub }}>{b.title}</Text>
+      <Text style={{ ...family.bold, fontSize: 15, color: c.accent }}>전달</Text>
+      <Text numberOfLines={1} style={{ ...family.regular, fontSize: 13, color: c.sub }}>{b.title}</Text>
       <View style={{ height: 1, backgroundColor: c.line }} />
       {b.items.slice(0, 2).map((i, k) => (
-        <Text key={k} numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 14, color: c.text }}>
+        <Text key={k} numberOfLines={1} style={{ ...family.regular, fontSize: 14, color: c.text }}>
           {nameOf(users, i.senderId)}:{' '}
           {markParts(i.text.split('\n')[0], mark ?? '').map((q, j) =>
             q.mark ? (
@@ -234,12 +234,12 @@ function BundleCard({ m, users, mark }: { m: Message; users: User[]; mark?: stri
           )}
         </Text>
       ))}
-      {b.items.length > 2 ? <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>외 {b.items.length - 2}개</Text> : null}
+      {b.items.length > 2 ? <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>외 {b.items.length - 2}개</Text> : null}
       <Pressable
         accessibilityLabel="메시지 상세보기"
         onPress={() => router.push({ pathname: '/room/bundle/[id]', params: { id: m.id } })}
         style={({ pressed }) => ({ alignItems: 'center', paddingVertical: space.sm, borderRadius: radius.sm, backgroundColor: c.surface, opacity: pressed ? 0.6 : 1 })}>
-        <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.accent }}>메시지 상세보기</Text>
+        <Text style={{ ...family.semibold, fontSize: 14, color: c.accent }}>메시지 상세보기</Text>
       </Pressable>
     </View>
   );
@@ -251,7 +251,7 @@ export function DayDivider({ at }: { at: string }) {
   return (
     <View style={{ alignItems: 'center', marginVertical: space.md }}>
       <View style={{ backgroundColor: c.surface, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 4 }}>
-        <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{dayLabel(at)}</Text>
+        <Text style={{ ...family.regular, fontSize: 12, color: c.sub }}>{dayLabel(at)}</Text>
       </View>
     </View>
   );
@@ -263,8 +263,8 @@ function PersonRow({ u, right }: { u: User; right?: ReactNode }) {
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm }}>
       <Avatar name={u.nickname} size={36} uri={u.photo} />
       <View style={{ flex: 1 }}>
-        <Text numberOfLines={1} style={{ fontFamily: family.semibold, fontSize: 15, color: c.text }}>{displayName(u)}</Text>
-        {u.dept ? <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{u.dept}</Text> : null}
+        <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 15, color: c.text }}>{displayName(u)}</Text>
+        {u.dept ? <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.sub }}>{u.dept}</Text> : null}
       </View>
       {right}
     </View>
@@ -277,7 +277,7 @@ function SheetTabs<K extends string>({ tabs, value, onChange }: { tabs: [K, stri
     <View style={{ flexDirection: 'row', gap: space.lg, borderBottomWidth: 1, borderBottomColor: c.line }}>
       {tabs.map(([k, label]) => (
         <Pressable key={k} onPress={() => onChange(k)} style={{ paddingVertical: space.sm, borderBottomWidth: 2, borderBottomColor: value === k ? c.accent : 'transparent', marginBottom: -1 }}>
-          <Text style={{ fontFamily: family.semibold, fontSize: 15, color: value === k ? c.accent : c.sub }}>{label}</Text>
+          <Text style={{ ...family.semibold, fontSize: 15, color: value === k ? c.accent : c.sub }}>{label}</Text>
         </Pressable>
       ))}
     </View>
@@ -329,7 +329,7 @@ export function ReactionsSheet({ m, me, users, onClose }: { m?: Message; me: Use
             onClose();
           }}
           style={{ alignItems: 'center', paddingVertical: space.sm }}>
-          <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.faint }}>내 공감 {mine} 취소</Text>
+          <Text style={{ ...family.semibold, fontSize: 14, color: c.faint }}>내 공감 {mine} 취소</Text>
         </Pressable>
       ) : null}
     </Sheet>
@@ -355,7 +355,7 @@ function MenuItem({ icon, label, onPress, danger }: { icon: IconName; label: str
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ width: '25%', alignItems: 'center', gap: 6, paddingVertical: space.md, opacity: pressed ? 0.5 : 1 })}>
       <Icon name={icon} color={danger ? c.accent : c.text} size={24} />
-      <Text style={{ fontFamily: family.regular, fontSize: 13, color: danger ? c.accent : c.text }}>{label}</Text>
+      <Text style={{ ...family.regular, fontSize: 13, color: danger ? c.accent : c.text }}>{label}</Text>
     </Pressable>
   );
 }
@@ -418,7 +418,7 @@ export function ForwardSheet({ ids, rooms, onClose, onDone }: { ids?: string[]; 
   const c = useColors();
   return (
     <Sheet open={!!ids?.length} onClose={onClose}>
-      <Text style={{ fontFamily: family.bold, fontSize: 18, color: c.text }}>전달할 대화방</Text>
+      <Text style={{ ...family.bold, fontSize: 18, color: c.text }}>전달할 대화방</Text>
       <ScrollView>
         {rooms.map((r) => (
           <Pressable
@@ -429,7 +429,7 @@ export function ForwardSheet({ ids, rooms, onClose, onDone }: { ids?: string[]; 
             }}
             style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm, opacity: pressed ? 0.5 : 1 })}>
             <Avatar name={r.title} size={40} group={r.memberIds.length > 2} />
-            <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.semibold, fontSize: 15, color: c.text }}>{roomTitle(r)}</Text>
+            <Text numberOfLines={1} style={{ flex: 1, ...family.semibold, fontSize: 15, color: c.text }}>{roomTitle(r)}</Text>
           </Pressable>
         ))}
       </ScrollView>
@@ -442,7 +442,7 @@ export function ContactSheet({ open, contacts, onClose, onPick }: { open: boolea
   const c = useColors();
   return (
     <Sheet open={open} onClose={onClose}>
-      <Text style={{ fontFamily: family.bold, fontSize: 18, color: c.text }}>연락처 보내기</Text>
+      <Text style={{ ...family.bold, fontSize: 18, color: c.text }}>연락처 보내기</Text>
       <ScrollView>
         {contacts.map((u) => (
           <Pressable
@@ -454,8 +454,8 @@ export function ContactSheet({ open, contacts, onClose, onPick }: { open: boolea
             style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm, opacity: pressed ? 0.5 : 1 })}>
             <Avatar name={u.nickname} size={40} uri={u.photo} />
             <View style={{ flex: 1 }}>
-              <Text numberOfLines={1} style={{ fontFamily: family.semibold, fontSize: 15, color: c.text }}>{displayName(u)}</Text>
-              {u.dept ? <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{u.dept}</Text> : null}
+              <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 15, color: c.text }}>{displayName(u)}</Text>
+              {u.dept ? <Text style={{ ...family.regular, fontSize: 12, color: c.sub }}>{u.dept}</Text> : null}
             </View>
           </Pressable>
         ))}
@@ -477,8 +477,8 @@ export function NoticeBar({ room, me, users, onJump }: { room: Room; me: User; u
         <View key={n.id} style={{ flexDirection: 'row', gap: space.sm, alignItems: 'flex-start' }}>
           <Icon name="notice" color={c.accent} size={18} />
           <Pressable style={{ flex: 1 }} onPress={() => onJump(n.messageId)}>
-            <Text numberOfLines={open ? 4 : 1} style={{ fontFamily: family.semibold, fontSize: 14, color: c.text }}>{n.text}</Text>
-            {open ? <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{nameOf(users, n.by)} · {chatTime(n.at)}</Text> : null}
+            <Text numberOfLines={open ? 4 : 1} style={{ ...family.semibold, fontSize: 14, color: c.text }}>{n.text}</Text>
+            {open ? <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{nameOf(users, n.by)} · {chatTime(n.at)}</Text> : null}
           </Pressable>
           {open && (n.by === me.id || me.role === 'admin') ? (
             <Pressable accessibilityLabel="공지 내리기" hitSlop={8} onPress={() => actions.removeNotice(room.id, n.id)}>
@@ -495,10 +495,10 @@ export function NoticeBar({ room, me, users, onJump }: { room: Room; me: User; u
       {open ? (
         <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: c.line, paddingTop: space.sm }}>
           <Pressable style={{ flex: 1, alignItems: 'center' }} onPress={() => actions.hideNotices(room.id)}>
-            <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.sub }}>다시 보지 않기</Text>
+            <Text style={{ ...family.semibold, fontSize: 14, color: c.sub }}>다시 보지 않기</Text>
           </Pressable>
           <Pressable style={{ flex: 1, alignItems: 'center' }} onPress={() => setOpen(false)}>
-            <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.text }}>접기</Text>
+            <Text style={{ ...family.semibold, fontSize: 14, color: c.text }}>접기</Text>
           </Pressable>
         </View>
       ) : null}
@@ -514,7 +514,7 @@ const NOTIFY: [NotifyLevel, string][] = [
 
 function DrawerHead({ title }: { title: string }) {
   const c = useColors();
-  return <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.text, marginTop: space.md }}>{title}</Text>;
+  return <Text style={{ ...family.bold, fontSize: 15, color: c.text, marginTop: space.md }}>{title}</Text>;
 }
 
 /** 오른쪽 방 메뉴: 알림, 대화 중 멤버, 링크·문서, 새 메시지방, 나가기 */
@@ -564,7 +564,7 @@ export function RoomDrawer({
           <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.sm }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
               <Avatar name={room.title} size={48} group={members.length > 2} />
-              <Text numberOfLines={2} style={{ flex: 1, fontFamily: family.bold, fontSize: 17, color: c.text }}>{roomTitle(room)}</Text>
+              <Text numberOfLines={2} style={{ flex: 1, ...family.bold, fontSize: 17, color: c.text }}>{roomTitle(room)}</Text>
               <Pressable accessibilityLabel="메뉴 닫기" onPress={onClose} hitSlop={8}>
                 <Icon name="close" color={c.text} size={22} />
               </Pressable>
@@ -572,7 +572,7 @@ export function RoomDrawer({
             {canRename ? (
               rename === undefined ? (
                 <Pressable accessibilityLabel="방 이름 바꾸기" onPress={() => setRename(room.title)} hitSlop={6} style={{ alignSelf: 'flex-start' }}>
-                  <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.accent }}>방 이름 바꾸기</Text>
+                  <Text style={{ ...family.semibold, fontSize: 13, color: c.accent }}>방 이름 바꾸기</Text>
                 </Pressable>
               ) : (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
@@ -583,13 +583,13 @@ export function RoomDrawer({
                     value={rename}
                     onChangeText={setRename}
                     onSubmitEditing={saveName}
-                    style={{ flex: 1, backgroundColor: c.surface, color: c.text, borderRadius: radius.sm, paddingHorizontal: space.md, paddingVertical: space.sm, fontFamily: family.regular, fontSize: 15 }}
+                    style={{ flex: 1, backgroundColor: c.surface, color: c.text, borderRadius: radius.sm, paddingHorizontal: space.md, paddingVertical: space.sm, ...family.regular, fontSize: 15 }}
                   />
                   <Pressable accessibilityLabel="방 이름 저장" onPress={saveName} hitSlop={6}>
-                    <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.accent }}>저장</Text>
+                    <Text style={{ ...family.semibold, fontSize: 14, color: c.accent }}>저장</Text>
                   </Pressable>
                   <Pressable accessibilityLabel="방 이름 바꾸기 취소" onPress={() => setRename(undefined)} hitSlop={6}>
-                    <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.sub }}>취소</Text>
+                    <Text style={{ ...family.regular, fontSize: 14, color: c.sub }}>취소</Text>
                   </Pressable>
                 </View>
               )
@@ -602,19 +602,19 @@ export function RoomDrawer({
                   key={k}
                   onPress={() => actions.setNotify(room.id, k)}
                   style={{ flex: 1, alignItems: 'center', paddingVertical: space.sm, borderRadius: radius.sm, borderWidth: 1, borderColor: level === k ? c.accent : c.line, backgroundColor: level === k ? c.accentSoft : c.bg }}>
-                  <Text style={{ fontFamily: family.semibold, fontSize: 13, color: level === k ? c.accent : c.sub }}>{label}</Text>
+                  <Text style={{ ...family.semibold, fontSize: 13, color: level === k ? c.accent : c.sub }}>{label}</Text>
                 </Pressable>
               ))}
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: space.md }}>
-              <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.text }}>대화 중 멤버 ({members.length})</Text>
+              <Text style={{ ...family.bold, fontSize: 15, color: c.text }}>대화 중 멤버 ({members.length})</Text>
               <Pressable
                 accessibilityLabel="멤버 초대"
                 onPress={go(() => router.push({ pathname: '/room/new', params: { roomId: room.id } }))}
                 style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Icon name="plus" color={c.accent} size={18} />
-                <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.accent }}>멤버 초대</Text>
+                <Text style={{ ...family.semibold, fontSize: 14, color: c.accent }}>멤버 초대</Text>
               </Pressable>
             </View>
             {members.map((u) => (
@@ -626,22 +626,22 @@ export function RoomDrawer({
                     <Avatar name={u.nickname} size={34} uri={u.photo} />
                     <View style={{ flex: 1 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: family.semibold, fontSize: 14, color: c.text }}>
+                        <Text numberOfLines={1} style={{ flexShrink: 1, ...family.semibold, fontSize: 14, color: c.text }}>
                           {displayName(u)}
                           {u.id === me.id ? ' (나)' : ''}
                         </Text>
                         {isMaster(room, u.id) ? (
                           <View style={{ backgroundColor: c.accentSoft, borderRadius: radius.pill, paddingHorizontal: 6, paddingVertical: 1 }}>
-                            <Text style={{ fontFamily: family.bold, fontSize: 11, color: c.accent }}>마스터</Text>
+                            <Text style={{ ...family.bold, fontSize: 11, color: c.accent }}>마스터</Text>
                           </View>
                         ) : null}
                       </View>
-                      {u.dept ? <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{u.dept}</Text> : null}
+                      {u.dept ? <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.sub }}>{u.dept}</Text> : null}
                     </View>
                   </Pressable>
                   {amMaster && u.id !== me.id ? (
                     <Pressable accessibilityLabel={`${u.nickname} 관리`} hitSlop={8} onPress={() => setManage((x) => (x === u.id ? undefined : u.id))} style={{ padding: 4 }}>
-                      <Text style={{ fontFamily: family.bold, fontSize: 18, color: c.sub }}>⋯</Text>
+                      <Text style={{ ...family.bold, fontSize: 18, color: c.sub }}>⋯</Text>
                     </Pressable>
                   ) : null}
                 </View>
@@ -676,12 +676,12 @@ export function RoomDrawer({
               links.map((l, i) => (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
                   <Icon name="link" color={c.sub} size={16} />
-                  <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.regular, fontSize: 13, color: c.text }}>{l.url}</Text>
-                  <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{chatTime(l.at)}</Text>
+                  <Text numberOfLines={1} style={{ flex: 1, ...family.regular, fontSize: 13, color: c.text }}>{l.url}</Text>
+                  <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{chatTime(l.at)}</Text>
                 </View>
               ))
             ) : (
-              <Text style={{ fontFamily: family.regular, fontSize: 13, color: c.faint }}>없음</Text>
+              <Text style={{ ...family.regular, fontSize: 13, color: c.faint }}>없음</Text>
             )}
             {room.caseInfo ? (
               <>
@@ -689,7 +689,7 @@ export function RoomDrawer({
                 {docs.map((d) => (
                   <View key={d.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
                     <Icon name="file" color={c.sub} size={16} />
-                    <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.regular, fontSize: 13, color: c.text }}>{d.name}</Text>
+                    <Text numberOfLines={1} style={{ flex: 1, ...family.regular, fontSize: 13, color: c.text }}>{d.name}</Text>
                   </View>
                 ))}
               </>
@@ -731,7 +731,7 @@ function DrawerRow({ icon, label, onPress, danger }: { icon: IconName; label: st
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md, opacity: pressed ? 0.5 : 1 })}>
       <Icon name={icon} color={danger ? c.accent : c.text} size={20} />
-      <Text style={{ fontFamily: family.semibold, fontSize: 15, color: danger ? c.accent : c.text }}>{label}</Text>
+      <Text style={{ ...family.semibold, fontSize: 15, color: danger ? c.accent : c.text }}>{label}</Text>
     </Pressable>
   );
 }
@@ -769,7 +769,7 @@ export function CalendarSheet({ open, days, onClose, onPick }: { open: boolean; 
         <Pressable onPress={() => undefined} style={{ width: '100%', maxWidth: 360, backgroundColor: c.bg, borderRadius: radius.lg, padding: space.lg, gap: space.md }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <NavBtn dir={-1} enabled={hasBefore} />
-            <Text style={{ fontFamily: family.bold, fontSize: 18, color: c.text }}>
+            <Text style={{ ...family.bold, fontSize: 18, color: c.text }}>
               {month.y}년 {month.m + 1}월
             </Text>
             <NavBtn dir={1} enabled={hasAfter} />
@@ -777,7 +777,7 @@ export function CalendarSheet({ open, days, onClose, onPick }: { open: boolean; 
           <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
             {WEEK.map((w, i) => (
               <View key={w} style={{ width: `${100 / 7}%`, alignItems: 'center', paddingVertical: 6 }}>
-                <Text style={{ fontFamily: family.semibold, fontSize: 13, color: i === 0 ? c.accent : c.sub }}>{w}</Text>
+                <Text style={{ ...family.semibold, fontSize: 13, color: i === 0 ? c.accent : c.sub }}>{w}</Text>
               </View>
             ))}
             {cells.map((d, i) => {
@@ -788,7 +788,7 @@ export function CalendarSheet({ open, days, onClose, onPick }: { open: boolean; 
               return (
                 <Pressable key={k} accessibilityLabel={`${month.m + 1}월 ${d}일`} disabled={!on} onPress={() => setPicked(k)} style={{ width: `${100 / 7}%`, height: 42, alignItems: 'center', justifyContent: 'center' }}>
                   <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: sel ? c.accent : 'transparent' }}>
-                    <Text style={{ fontFamily: on ? family.bold : family.regular, fontSize: 15, color: sel ? '#FFFFFF' : on ? c.text : c.line }}>{d}</Text>
+                    <Text style={{ ...(on ? family.bold : family.regular), fontSize: 15, color: sel ? '#FFFFFF' : on ? c.text : c.line }}>{d}</Text>
                   </View>
                 </Pressable>
               );
@@ -796,7 +796,7 @@ export function CalendarSheet({ open, days, onClose, onPick }: { open: boolean; 
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: space.xl }}>
             <Pressable onPress={onClose} hitSlop={8}>
-              <Text style={{ fontFamily: family.semibold, fontSize: 16, color: c.sub }}>취소</Text>
+              <Text style={{ ...family.semibold, fontSize: 16, color: c.sub }}>취소</Text>
             </Pressable>
             <Pressable
               hitSlop={8}
@@ -805,7 +805,7 @@ export function CalendarSheet({ open, days, onClose, onPick }: { open: boolean; 
                 if (picked) onPick(picked);
                 onClose();
               }}>
-              <Text style={{ fontFamily: family.bold, fontSize: 16, color: c.accent }}>확인</Text>
+              <Text style={{ ...family.bold, fontSize: 16, color: c.accent }}>확인</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -818,7 +818,7 @@ function SmallAction({ label, onPress, danger }: { label: string; onPress: () =>
   const c = useColors();
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ paddingHorizontal: space.md, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: danger ? c.accent : c.line, opacity: pressed ? 0.5 : 1 })}>
-      <Text style={{ fontFamily: family.semibold, fontSize: 13, color: danger ? c.accent : c.text }}>{label}</Text>
+      <Text style={{ ...family.semibold, fontSize: 13, color: danger ? c.accent : c.text }}>{label}</Text>
     </Pressable>
   );
 }
@@ -847,8 +847,8 @@ function MessageFiles({ items, mine }: { items: Attachment[]; mine: boolean }) {
         <Pressable key={a.id} accessibilityLabel={`파일 ${a.name}`} onPress={() => open(a)} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minWidth: 200, maxWidth: 236 }}>
           <Icon name="file" color={fg} size={22} />
           <View style={{ flex: 1 }}>
-            <Text numberOfLines={1} style={{ fontFamily: family.semibold, fontSize: 14, color: fg }}>{a.name}</Text>
-            {a.size ? <Text style={{ fontFamily: family.regular, fontSize: 12, color: mine ? c.bubbleMineText : c.sub }}>{fileSize(a.size)}</Text> : null}
+            <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 14, color: fg }}>{a.name}</Text>
+            {a.size ? <Text style={{ ...family.regular, fontSize: 12, color: mine ? c.bubbleMineText : c.sub }}>{fileSize(a.size)}</Text> : null}
           </View>
         </Pressable>
       ))}

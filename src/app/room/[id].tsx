@@ -199,7 +199,7 @@ export default function RoomScreen() {
 
   const right = picking ? (
     <Pressable accessibilityLabel="선택 취소" hitSlop={8} onPress={() => setPicking(undefined)}>
-      <Text style={{ fontFamily: family.semibold, fontSize: 16, color: c.text }}>취소</Text>
+      <Text style={{ ...family.semibold, fontSize: 16, color: c.text }}>취소</Text>
     </Pressable>
   ) : (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
@@ -215,7 +215,7 @@ export default function RoomScreen() {
     </View>
   );
 
-  const inputStyle = { flex: 1, backgroundColor: c.surface, color: c.text, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, fontSize: font.body, fontFamily: family.regular, maxHeight: 120 };
+  const inputStyle = { flex: 1, backgroundColor: c.surface, color: c.text, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, fontSize: font.body, ...family.regular, maxHeight: 120 };
 
   return (
     <Screen title={roomTitle(room)} back scroll={false} right={right}>
@@ -223,7 +223,7 @@ export default function RoomScreen() {
         {search !== undefined ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm, backgroundColor: c.surface, borderRadius: radius.lg, paddingHorizontal: space.md }}>
             <Icon name="search" color={c.faint} size={18} />
-            <TextInput autoFocus value={search} onChangeText={setSearch} placeholder="대화내용 검색" placeholderTextColor={c.faint} style={{ flex: 1, paddingVertical: space.sm + 2, color: c.text, fontSize: font.body, fontFamily: family.regular }} />
+            <TextInput autoFocus value={search} onChangeText={setSearch} placeholder="대화내용 검색" placeholderTextColor={c.faint} style={{ flex: 1, paddingVertical: space.sm + 2, color: c.text, fontSize: font.body, ...family.regular }} />
             {search ? (
               <Pressable accessibilityLabel="검색어 지우기" hitSlop={8} onPress={() => setSearch('')}>
                 <Icon name="close" color={c.faint} size={16} />
@@ -248,7 +248,7 @@ export default function RoomScreen() {
             ) : 'divider' in item ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginVertical: space.md }}>
                 <View style={{ flex: 1, height: 1, backgroundColor: c.accent, opacity: 0.4 }} />
-                <Text style={{ fontFamily: family.semibold, fontSize: 12, color: c.accent }}>읽지 않은 메시지</Text>
+                <Text style={{ ...family.semibold, fontSize: 12, color: c.accent }}>읽지 않은 메시지</Text>
                 <View style={{ flex: 1, height: 1, backgroundColor: c.accent, opacity: 0.4 }} />
               </View>
             ) : (
@@ -274,7 +274,7 @@ export default function RoomScreen() {
         />
         {toast ? (
           <View style={{ alignSelf: 'center', backgroundColor: c.text, borderRadius: radius.pill, paddingHorizontal: space.lg, paddingVertical: space.sm, marginBottom: space.sm }}>
-            <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.bg }}>{toast}</Text>
+            <Text style={{ ...family.semibold, fontSize: 13, color: c.bg }}>{toast}</Text>
           </View>
         ) : null}
         {search !== undefined ? (
@@ -282,7 +282,7 @@ export default function RoomScreen() {
             <Pressable accessibilityLabel="날짜로 찾기" hitSlop={8} onPress={() => setCalendar(true)} style={{ padding: space.sm }}>
               <Icon name="calendar" color={c.text} size={24} />
             </Pressable>
-            <Text style={{ flex: 1, textAlign: 'center', fontFamily: family.bold, fontSize: 16, color: c.text }}>
+            <Text style={{ flex: 1, textAlign: 'center', ...family.bold, fontSize: 16, color: c.text }}>
               {query ? (hits.length ? `${hits.length - cursor}/${hits.length}` : '결과 없음') : ''}
             </Text>
             <SearchArrow dir="up" enabled={cursor > 0} onPress={() => setCursor((i) => i - 1)} />
@@ -290,14 +290,14 @@ export default function RoomScreen() {
           </View>
         ) : picking ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: space.md, borderTopWidth: 1, borderTopColor: c.line }}>
-            <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.text }}>{picking.length}개 선택</Text>
+            <Text style={{ ...family.bold, fontSize: 15, color: c.text }}>{picking.length}개 선택</Text>
             <Pressable
               accessibilityLabel="선택한 메시지 전달"
               disabled={!picking.length}
               onPress={() => setForwardIds(picking)}
               style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: picking.length ? c.accent : c.line, borderRadius: radius.pill, paddingHorizontal: space.lg, paddingVertical: space.sm }}>
               <Icon name="forward" color="#FFFFFF" size={18} />
-              <Text style={{ fontFamily: family.bold, fontSize: 15, color: '#FFFFFF' }}>전달</Text>
+              <Text style={{ ...family.bold, fontSize: 15, color: '#FFFFFF' }}>전달</Text>
             </Pressable>
           </View>
         ) : isMember ? (
@@ -306,10 +306,10 @@ export default function RoomScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, borderTopWidth: 1, borderTopColor: c.line, paddingTop: space.sm }}>
                 <Icon name="reply" color={c.accent} size={18} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.accent }}>
+                  <Text style={{ ...family.semibold, fontSize: 13, color: c.accent }}>
                     {s.users.find((u) => u.id === replyTo.senderId)?.nickname ?? ''}에게 답장
                   </Text>
-                  <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 13, color: c.sub }}>{replyTo.text}</Text>
+                  <Text numberOfLines={1} style={{ ...family.regular, fontSize: 13, color: c.sub }}>{replyTo.text}</Text>
                 </View>
                 <Pressable accessibilityLabel="답장 취소" hitSlop={8} onPress={() => setReplyTo(undefined)}>
                   <Icon name="close" color={c.faint} size={18} />
@@ -321,7 +321,7 @@ export default function RoomScreen() {
                 {mentionList.map((u) => (
                   <Pressable key={u.id} onPress={() => pickMention(u)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.sm, backgroundColor: pressed ? c.surface : c.bg })}>
                     <Avatar name={u.nickname} size={28} group={u.id === 'all'} uri={u.photo} />
-                    <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.text }}>{u.id === 'all' ? '전체' : displayName(u)}</Text>
+                    <Text style={{ ...family.semibold, fontSize: 14, color: c.text }}>{u.id === 'all' ? '전체' : displayName(u)}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -410,7 +410,7 @@ function PlusItem({ icon, label, onPress }: { icon: IconName; label: string; onP
       <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={icon} color={c.text} size={24} />
       </View>
-      <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.text }}>{label}</Text>
+      <Text style={{ ...family.regular, fontSize: 12, color: c.text }}>{label}</Text>
     </Pressable>
   );
 }

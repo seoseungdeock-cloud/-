@@ -14,7 +14,7 @@ import sys
 p, base = sys.argv[1], sys.argv[2].rstrip('/')
 s = open(p, encoding='utf-8').read()
 head = (f'<link rel="manifest" href="{base}/manifest.webmanifest"/>'
-        f'<meta name="theme-color" content="#C8102E"/>'
+        f'<meta name="theme-color" content="#A82235"/>'
         f'<link rel="apple-touch-icon" href="{base}/app-icon-192.png"/>'
         f'<meta name="apple-mobile-web-app-capable" content="yes"/>')
 body = (f"<script>if('serviceWorker' in navigator)navigator.serviceWorker.register('{base}/sw.js',{{scope:'{base}/'}})</script>")

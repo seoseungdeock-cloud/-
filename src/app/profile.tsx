@@ -49,7 +49,7 @@ export default function ProfileScreen() {
       back
       right={
         <Pressable accessibilityLabel="저장" onPress={save} hitSlop={8}>
-          <Text style={{ fontFamily: family.bold, fontSize: 16, color: c.accent }}>저장</Text>
+          <Text style={{ ...family.bold, fontSize: 16, color: c.accent }}>저장</Text>
         </Pressable>
       }>
       <View style={{ alignItems: 'center', gap: space.sm, marginVertical: space.lg }}>
@@ -61,7 +61,7 @@ export default function ProfileScreen() {
         </Pressable>
         {photo ? (
           <Pressable onPress={() => setPhoto(undefined)} hitSlop={8}>
-            <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.sub }}>사진 삭제</Text>
+            <Text style={{ ...family.semibold, fontSize: 14, color: c.sub }}>사진 삭제</Text>
           </Pressable>
         ) : null}
       </View>

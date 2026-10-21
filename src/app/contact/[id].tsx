@@ -49,16 +49,16 @@ export default function ContactScreen() {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg, marginTop: space.md }}>
         <Avatar name={u.nickname} size={88} uri={u.photo} dot={u.role === 'client' ? undefined : dot(u)} />
         <View style={{ flex: 1 }}>
-          <Text style={{ fontFamily: family.bold, fontSize: 22, color: c.text }}>{displayName(u)}</Text>
-          <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.sub, marginTop: 2 }}>
+          <Text style={{ ...family.bold, fontSize: 22, color: c.text }}>{displayName(u)}</Text>
+          <Text style={{ ...family.regular, fontSize: 14, color: c.sub, marginTop: 2 }}>
             {ROLE_LABEL[u.role]}
             {u.role !== 'client' ? ` · ${presenceOf(u).label}` : ''}
           </Text>
-          {u.status ? <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.text, marginTop: 4 }}>{u.status}</Text> : null}
+          {u.status ? <Text style={{ ...family.regular, fontSize: 14, color: c.text, marginTop: 4 }}>{u.status}</Text> : null}
         </View>
         {u.id === me.id ? (
           <Pressable accessibilityLabel="프로필 편집" onPress={() => router.push('/profile')} hitSlop={10}>
-            <Text style={{ fontFamily: family.semibold, fontSize: 15, color: c.accent }}>편집</Text>
+            <Text style={{ ...family.semibold, fontSize: 15, color: c.accent }}>편집</Text>
           </Pressable>
         ) : u.id !== me.id ? (
           <Pressable accessibilityLabel={fav ? '즐겨찾기 해제' : '즐겨찾기'} onPress={() => actions.toggleFavorite(u.id)} hitSlop={10}>
@@ -71,24 +71,24 @@ export default function ContactScreen() {
         {actionsRow.map((a) => (
           <Pressable key={a.label} disabled={!a.onPress} onPress={a.onPress} style={{ alignItems: 'center', gap: space.xs, opacity: a.onPress ? 1 : 0.35 }}>
             <Icon name={a.icon} color={c.accent} size={26} />
-            <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.accent }}>{a.label}</Text>
+            <Text style={{ ...family.semibold, fontSize: 14, color: c.accent }}>{a.label}</Text>
           </Pressable>
         ))}
       </View>
 
       {u.firm ? (
         <View style={{ paddingVertical: space.lg, borderBottomWidth: 1, borderBottomColor: c.line, gap: space.md }}>
-          <Text style={{ fontFamily: family.regular, fontSize: 13, color: c.faint }}>법무법인 {u.firm}</Text>
+          <Text style={{ ...family.regular, fontSize: 13, color: c.faint }}>법무법인 {u.firm}</Text>
           {[u.dept, u.branch].filter((v, i, a) => v && a.indexOf(v) === i).map((v) => (
-            <Text key={v} style={{ fontFamily: family.semibold, fontSize: 17, color: c.text }}>{v}</Text>
+            <Text key={v} style={{ ...family.semibold, fontSize: 17, color: c.text }}>{v}</Text>
           ))}
         </View>
       ) : null}
 
       {rows.filter(([, v]) => v).map(([label, v]) => (
         <View key={label} style={{ paddingVertical: space.lg, borderBottomWidth: 1, borderBottomColor: c.line, gap: space.xs }}>
-          <Text style={{ fontFamily: family.regular, fontSize: 13, color: c.faint }}>{label}</Text>
-          <Text style={{ fontFamily: family.regular, fontSize: 17, color: c.text }}>{v}</Text>
+          <Text style={{ ...family.regular, fontSize: 13, color: c.faint }}>{label}</Text>
+          <Text style={{ ...family.regular, fontSize: 17, color: c.text }}>{v}</Text>
         </View>
       ))}
     </Screen>

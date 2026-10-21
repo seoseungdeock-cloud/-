@@ -27,8 +27,8 @@ export function ContactRow({ u, left, onPress, me }: { u: User; left?: ReactNode
       {left}
       <Avatar name={u.nickname} size={48} uri={u.photo} dot={u.role === 'client' ? undefined : dot(u)} />
       <View style={{ flex: 1 }}>
-        <Text numberOfLines={1} style={{ fontFamily: family.bold, fontSize: 16, color: c.text }}>{displayName(u)}</Text>
-        <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 13, color: c.sub }}>
+        <Text numberOfLines={1} style={{ ...family.bold, fontSize: 16, color: c.text }}>{displayName(u)}</Text>
+        <Text numberOfLines={1} style={{ ...family.regular, fontSize: 13, color: c.sub }}>
           {me ? '나 · ' : ''}
           {u.dept ?? ROLE_LABEL[u.role]}
           {u.role !== 'client' && presence.key !== 'available' ? ` · ${presence.label}` : ''}
@@ -48,20 +48,20 @@ export function OrgBrowser({ people, dept, onDept, renderMember }: { people: Use
     <View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: c.line }}>
         <Pressable onPress={() => onDept(undefined)} hitSlop={8}>
-          <Text style={{ fontFamily: current ? family.regular : family.bold, fontSize: 15, color: current ? c.faint : c.text }}>TOP</Text>
+          <Text style={{ ...(current ? family.regular : family.bold), fontSize: 15, color: current ? c.faint : c.text }}>TOP</Text>
         </Pressable>
         {current ? (
           <>
             <Icon name="chevron" color={c.faint} size={14} />
-            <Text style={{ fontFamily: family.bold, fontSize: 15, color: c.text }}>{current.dept}</Text>
+            <Text style={{ ...family.bold, fontSize: 15, color: c.text }}>{current.dept}</Text>
           </>
         ) : null}
       </View>
       {current ? (
         <>
           <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: space.sm }}>
-            <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.sub }}>
-              전체 <Text style={{ color: c.accent, fontFamily: family.bold }}>{current.members.length}</Text>
+            <Text style={{ ...family.regular, fontSize: 14, color: c.sub }}>
+              전체 <Text style={{ color: c.accent, ...family.bold }}>{current.members.length}</Text>
             </Text>
             <Pressable
               accessibilityLabel="부서 전체 대화"
@@ -82,8 +82,8 @@ export function OrgBrowser({ people, dept, onDept, renderMember }: { people: Use
             <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="people" color={c.sub} size={20} />
             </View>
-            <Text style={{ flex: 1, fontFamily: family.semibold, fontSize: 16, color: c.text }}>{g.dept}</Text>
-            <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.faint }}>{g.members.length}</Text>
+            <Text style={{ flex: 1, ...family.semibold, fontSize: 16, color: c.text }}>{g.dept}</Text>
+            <Text style={{ ...family.regular, fontSize: 14, color: c.faint }}>{g.members.length}</Text>
             <Icon name="chevron" color={c.faint} size={16} />
           </Pressable>
         ))
@@ -101,7 +101,7 @@ export function UnderlineTabs<K extends string>({ tabs, value, onChange, dots, s
     <View style={{ flexDirection: 'row', borderBottomWidth: scroll ? 0 : 1, borderBottomColor: c.line }}>
       {tabs.map(([k, label]) => (
         <Pressable key={k} onPress={() => onChange(k)} style={{ paddingVertical: space.sm + 2, marginRight: space.xl, borderBottomWidth: 2.5, borderBottomColor: value === k ? c.accent : 'transparent', marginBottom: -1, flexDirection: 'row' }}>
-          <Text style={{ fontFamily: value === k ? family.bold : family.regular, fontSize: 15, color: value === k ? c.accent : c.sub }}>{label}</Text>
+          <Text style={{ ...(value === k ? family.bold : family.regular), fontSize: 15, color: value === k ? c.accent : c.sub }}>{label}</Text>
           {dots?.[k] ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.accent, marginLeft: 2, marginTop: 2 }} /> : null}
         </Pressable>
       ))}

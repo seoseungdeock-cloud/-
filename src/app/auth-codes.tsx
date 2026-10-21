@@ -45,9 +45,9 @@ export default function AuthCodesScreen() {
               {divider}
               <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4, marginVertical: space.xs }}>
                 <View style={{ width: 260, borderRadius: radius.lg, borderWidth: 1, borderColor: c.line, backgroundColor: c.bg, padding: space.md, gap: space.sm }}>
-                  <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.sub }}>대륜탑 로그인 인증코드</Text>
-                  <Text style={{ fontFamily: family.heavy, fontSize: 32, letterSpacing: 6, color: left ? c.text : c.faint, textDecorationLine: left ? 'none' : 'line-through' }}>{x.code}</Text>
-                  <Text style={{ fontFamily: family.semibold, fontSize: 13, color: left ? c.accent : c.faint }}>
+                  <Text style={{ ...family.semibold, fontSize: 13, color: c.sub }}>대륜탑 로그인 인증코드</Text>
+                  <Text style={{ ...family.heavy, fontSize: 32, letterSpacing: 6, color: left ? c.text : c.faint, textDecorationLine: left ? 'none' : 'line-through' }}>{x.code}</Text>
+                  <Text style={{ ...family.semibold, fontSize: 13, color: left ? c.accent : c.faint }}>
                     {left ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} 남음` : '만료됨'}
                   </Text>
                   {left ? (
@@ -57,11 +57,11 @@ export default function AuthCodesScreen() {
                         setToast('인증코드를 복사했습니다.');
                       }}
                       style={{ borderRadius: radius.md, backgroundColor: c.surface, paddingVertical: space.sm, alignItems: 'center' }}>
-                      <Text style={{ fontFamily: family.bold, fontSize: 14, color: c.text }}>코드 복사</Text>
+                      <Text style={{ ...family.bold, fontSize: 14, color: c.text }}>코드 복사</Text>
                     </Pressable>
                   ) : null}
                 </View>
-                <Text style={{ fontFamily: family.regular, fontSize: 11, color: c.faint }}>{clockTime(x.at)}</Text>
+                <Text style={{ ...family.regular, fontSize: 11, color: c.faint }}>{clockTime(x.at)}</Text>
               </View>
             </View>
           );

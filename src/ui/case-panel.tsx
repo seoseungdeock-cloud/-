@@ -76,8 +76,8 @@ export function CasePanel({ room, canEdit }: { room: Room; canEdit: boolean }) {
       <Pressable accessibilityLabel={open ? '사건 자료 접기' : '사건 자료 펼치기'} onPress={toggle} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
         <Badge label={ci.stage} />
         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: space.sm }}>
-          <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: family.bold, fontSize: 15, color: c.text }}>{ci.title}</Text>
-          <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{ci.field}</Text>
+          <Text numberOfLines={1} style={{ flexShrink: 1, ...family.bold, fontSize: 15, color: c.text }}>{ci.title}</Text>
+          <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.sub }}>{ci.field}</Text>
         </View>
         <View style={{ transform: [{ rotate: open ? '270deg' : '90deg' }] }}>
           <Icon name="chevron" color={c.sub} size={18} />
@@ -88,13 +88,13 @@ export function CasePanel({ room, canEdit }: { room: Room; canEdit: boolean }) {
           {nextHearing ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
               <DBadge date={nextHearing.date} />
-              <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.regular, fontSize: 13, color: c.text }}>{nextHearing.label} · {whenLabel(nextHearing.date, nextHearing.time)}</Text>
+              <Text numberOfLines={1} style={{ flex: 1, ...family.regular, fontSize: 13, color: c.text }}>{nextHearing.label} · {whenLabel(nextHearing.date, nextHearing.time)}</Text>
             </View>
           ) : null}
           {openLimits.length ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
               <Badge fixed label={limitStatus(openLimits[0]).label} tone={limitStatus(openLimits[0]).tone} />
-              <Text numberOfLines={1} style={{ flex: 1, fontFamily: family.regular, fontSize: 13, color: c.text }}>
+              <Text numberOfLines={1} style={{ flex: 1, ...family.regular, fontSize: 13, color: c.text }}>
                 불변기간 {openLimits[0].label}{openLimits.length > 1 ? ` 외 ${openLimits.length - 1}건` : ''}
               </Text>
             </View>
@@ -173,13 +173,13 @@ function LimitList({ room }: { room: Room }) {
           <View key={d.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: c.line }}>
             <Badge fixed label={st.label} tone={st.tone} />
             <View style={{ flex: 1, minWidth: 160 }}>
-              <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.text }}>{d.label}</Text>
-              <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{limitWhen(d)} · 담당 {who}{d.source === 'daeryuntop' ? ' · 대륜탑' : ''}</Text>
+              <Text style={{ ...family.semibold, fontSize: 14, color: c.text }}>{d.label}</Text>
+              <Text style={{ ...family.regular, fontSize: 12, color: c.sub }}>{limitWhen(d)} · 담당 {who}{d.source === 'daeryuntop' ? ' · 대륜탑' : ''}</Text>
             </View>
             <Button label={d.handledAt ? '완료 취소' : '조치 완료'} kind={d.handledAt ? 'ghost' : 'soft'} small onPress={() => run(actions.setLimitHandled(room.id, d.id, !d.handledAt))} />
             {d.source !== 'daeryuntop' ? (
               <Pressable accessibilityLabel={`${d.label} 삭제`} hitSlop={8} onPress={() => run(actions.removeLimit(room.id, d.id))}>
-                <Text style={{ fontFamily: family.regular, fontSize: 13, color: c.sub }}>삭제</Text>
+                <Text style={{ ...family.regular, fontSize: 13, color: c.sub }}>삭제</Text>
               </Pressable>
             ) : null}
           </View>
@@ -233,7 +233,7 @@ function LimitFinder({ room }: { room: Room }) {
           <View key={x.key} style={{ paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.line, gap: 2 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' }}>
               {x.due ? <Badge fixed label={limitStatus({ id: x.key, label: x.label, due: x.due }).label} tone={limitStatus({ id: x.key, label: x.label, due: x.due }).tone} /> : <Badge fixed label="기준일 필요" tone="plain" />}
-              <Text style={{ flex: 1, minWidth: 140, fontFamily: family.semibold, fontSize: 14, color: c.text }}>
+              <Text style={{ flex: 1, minWidth: 140, ...family.semibold, fontSize: 14, color: c.text }}>
                 {x.label}{x.due ? ` · ${md(x.due)} 24:00 만료` : ''}
               </Text>
               {x.due ? (
@@ -249,7 +249,7 @@ function LimitFinder({ room }: { room: Room }) {
                 />
               ) : null}
             </View>
-            <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>
+            <Text style={{ ...family.regular, fontSize: 12, color: c.sub }}>
               {x.basis} {x.base ? md(x.base) : '(못 찾음)'}부터 {periodLabel(x.period)} · {x.law}
               {x.movedFrom ? ` · ${md(x.movedFrom)}이 쉬는 날이라 다음 평일` : ''}
             </Text>

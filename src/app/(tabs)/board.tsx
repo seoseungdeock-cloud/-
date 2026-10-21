@@ -37,7 +37,7 @@ export default function BoardScreen() {
   const dot = (n: number) =>
     n ? (
       <View style={{ position: 'absolute', top: -4, right: -6, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 }}>
-        <Text style={{ color: '#FFFFFF', fontSize: 10, fontFamily: family.bold }}>{n}</Text>
+        <Text style={{ color: '#FFFFFF', fontSize: 10, ...family.bold }}>{n}</Text>
       </View>
     ) : null;
 
@@ -73,13 +73,13 @@ export default function BoardScreen() {
           onChangeText={setQ}
           placeholder="게시판 검색"
           placeholderTextColor={c.faint}
-          style={{ flex: 1, paddingVertical: space.sm + 2, fontSize: 15, fontFamily: family.regular, color: c.text }}
+          style={{ flex: 1, paddingVertical: space.sm + 2, fontSize: 15, ...family.regular, color: c.text }}
         />
       </View>
       <View style={{ flexDirection: 'row', gap: space.lg, marginBottom: space.sm }}>
         {(Object.keys(BOARD_SORT_LABEL) as BoardSort[]).map((k) => (
           <Pressable key={k} onPress={() => setSort(k)}>
-            <Text style={{ fontFamily: sort === k ? family.bold : family.regular, fontSize: 15, color: sort === k ? c.accent : c.faint }}>{BOARD_SORT_LABEL[k]}</Text>
+            <Text style={{ ...(sort === k ? family.bold : family.regular), fontSize: 15, color: sort === k ? c.accent : c.faint }}>{BOARD_SORT_LABEL[k]}</Text>
           </Pressable>
         ))}
       </View>
@@ -87,7 +87,7 @@ export default function BoardScreen() {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.xs, paddingBottom: space.md }}>
         {[undefined, ...home.fields].map((f) => (
           <Pressable key={f ?? 'all'} onPress={() => setField(f)} style={{ paddingHorizontal: space.md, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: field === f ? c.accent : c.line, backgroundColor: field === f ? c.accentSoft : c.bg }}>
-            <Text style={{ fontFamily: family.semibold, fontSize: 13, color: field === f ? c.accent : c.sub }}>{f ?? '전체'}</Text>
+            <Text style={{ ...family.semibold, fontSize: 13, color: field === f ? c.accent : c.sub }}>{f ?? '전체'}</Text>
           </Pressable>
         ))}
       </ScrollView>
@@ -98,14 +98,14 @@ export default function BoardScreen() {
             <VoteBar vertical votes={p.votes} userId={user.id} onVote={(v) => { actions.votePost(p.id, v); }} />
             <Pressable style={{ flex: 1, gap: 4 }} onPress={() => router.push({ pathname: '/board/[id]', params: { id: p.id } })}>
               <BoardAuthor v={authorView(user, p, p.authorId, s.users)} time={timeAgo(p.at)} />
-              <Text numberOfLines={2} style={{ fontFamily: family.bold, fontSize: 16, lineHeight: 22, color: c.text }}>{p.title}</Text>
+              <Text numberOfLines={2} style={{ ...family.bold, fontSize: 16, lineHeight: 22, color: c.text }}>{p.title}</Text>
               <View style={{ flexDirection: 'row', gap: space.xs }}>
                 {p.notice ? <Badge label="공지" /> : null}
                 {sort !== 'best' && isBestPost(p) ? <Badge label="베스트" tone="warn" /> : null}
                 {p.field ? <Badge label={p.field} tone="plain" /> : null}
               </View>
-              <Text numberOfLines={2} style={{ fontFamily: family.regular, fontSize: 14, lineHeight: 20, color: c.sub }}>{p.body}</Text>
-              <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.faint }}>댓글 {p.comments.length}</Text>
+              <Text numberOfLines={2} style={{ ...family.regular, fontSize: 14, lineHeight: 20, color: c.sub }}>{p.body}</Text>
+              <Text style={{ ...family.semibold, fontSize: 13, color: c.faint }}>댓글 {p.comments.length}</Text>
             </Pressable>
           </View>
         ))
@@ -123,16 +123,16 @@ function NoticePopup({ post, more, onOpen, onClose }: { post: BoardPost; more: n
     <View style={{ borderRadius: radius.lg, borderWidth: 1.5, borderColor: c.accent, backgroundColor: c.bg, padding: space.md, marginBottom: space.md, gap: space.xs, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 4 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
         <Icon name="notice" color={c.accent} size={18} />
-        <Text style={{ fontFamily: family.bold, fontSize: 13, color: c.accent }}>{boardOf(post) === 'notice' ? '새 공지' : `${BOARD_LABEL[boardOf(post)]} 새 공지`}</Text>
-        {more > 0 ? <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>외 {more}건</Text> : null}
+        <Text style={{ ...family.bold, fontSize: 13, color: c.accent }}>{boardOf(post) === 'notice' ? '새 공지' : `${BOARD_LABEL[boardOf(post)]} 새 공지`}</Text>
+        {more > 0 ? <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>외 {more}건</Text> : null}
         <Pressable accessibilityLabel="공지 닫기" hitSlop={8} onPress={onClose} style={{ marginLeft: 'auto' }}>
           <Icon name="close" color={c.sub} size={18} />
         </Pressable>
       </View>
       <Pressable onPress={() => onOpen(post.id)}>
-        <Text numberOfLines={1} style={{ fontFamily: family.bold, fontSize: 16, color: c.text }}>{post.title}</Text>
-        <Text numberOfLines={2} style={{ fontFamily: family.regular, fontSize: 14, lineHeight: 20, color: c.sub, marginTop: 2 }}>{post.body}</Text>
-        <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.accent, marginTop: space.xs }}>공지 보기</Text>
+        <Text numberOfLines={1} style={{ ...family.bold, fontSize: 16, color: c.text }}>{post.title}</Text>
+        <Text numberOfLines={2} style={{ ...family.regular, fontSize: 14, lineHeight: 20, color: c.sub, marginTop: 2 }}>{post.body}</Text>
+        <Text style={{ ...family.semibold, fontSize: 13, color: c.accent, marginTop: space.xs }}>공지 보기</Text>
       </Pressable>
     </View>
   );

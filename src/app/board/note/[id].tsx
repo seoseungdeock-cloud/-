@@ -36,15 +36,15 @@ export default function NoteScreen() {
 
   return (
     <Screen title={`${nameIn(post, other, s.users)}${real ? ` (${real})` : ''}`} back>
-      {post ? <Text numberOfLines={1} style={{ fontFamily: family.regular, fontSize: 13, color: c.faint, marginBottom: space.md }}>{post.title}</Text> : null}
+      {post ? <Text numberOfLines={1} style={{ ...family.regular, fontSize: 13, color: c.faint, marginBottom: space.md }}>{post.title}</Text> : null}
       {note.messages.map((m) => {
         const mine = m.senderId === user.id;
         return (
           <View key={m.id} style={{ alignItems: mine ? 'flex-end' : 'flex-start', marginBottom: space.sm }}>
             <View style={{ maxWidth: '80%', backgroundColor: mine ? c.bubbleMine : c.bubbleOther, borderRadius: radius.md, paddingHorizontal: space.md, paddingVertical: space.sm }}>
-              <Text style={{ fontFamily: family.regular, fontSize: 15, lineHeight: 22, color: mine ? c.bubbleMineText : c.text }}>{m.text}</Text>
+              <Text style={{ ...family.regular, fontSize: 15, lineHeight: 22, color: mine ? c.bubbleMineText : c.text }}>{m.text}</Text>
             </View>
-            <Text style={{ fontFamily: family.regular, fontSize: 11, color: c.faint, marginTop: 2 }}>{timeAgo(m.at)}</Text>
+            <Text style={{ ...family.regular, fontSize: 11, color: c.faint, marginTop: 2 }}>{timeAgo(m.at)}</Text>
           </View>
         );
       })}

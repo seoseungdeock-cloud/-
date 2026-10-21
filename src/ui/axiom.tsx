@@ -97,12 +97,12 @@ function Inline({ text, color, size = 'body' }: { text: string; color?: string; 
         fontSize: font[size],
         lineHeight: font[size] * 1.5,
         color: color ?? c.text,
-        fontFamily: family.regular,
+        ...family.regular,
       }}
     >
       {parts.map((p, i) =>
         p.startsWith('**') ? (
-          <Text key={i} style={{ fontFamily: family.bold }}>
+          <Text key={i} style={{ ...family.bold }}>
             {p.slice(2, -2)}
           </Text>
         ) : p.startsWith('`') ? (
@@ -373,7 +373,7 @@ export function RunList({ runs }: { runs: R[] }) {
         >
           <View style={{ flex: 1 }}>
             <T size="small" bold>
-              {r.agent_name || r.agent_slug} <Text style={{ color: c.sub, fontFamily: family.regular }}>{r.mode}</Text>
+              {r.agent_name || r.agent_slug} <Text style={{ color: c.sub, ...family.regular }}>{r.mode}</Text>
             </T>
             <Text style={{ fontSize: font.tiny, color: c.sub }}>
               {when(r.started_at)} · {r.provider || ''} {r.model || ''}

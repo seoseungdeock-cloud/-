@@ -1,8 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path, Rect } from 'react-native-svg';
 
 import { actions, me } from '@/core/store';
 import { serverEnabled } from '@/core/supabase';
@@ -31,16 +30,13 @@ function saveId(id: string | null) {
   }
 }
 
-/** 붉은 말풍선 로고 */
-export function AppMark({ size = 72 }: { size?: number }) {
+const MARK = require('../../assets/images/logo-mark.png');
+const WORDMARK = require('../../assets/images/logo-text.png');
+
+/** 대륜 상징 (로고 파일에서 오려 낸 것) */
+export function AppMark({ width = 88 }: { width?: number }) {
   const c = useColors();
-  return (
-    <Svg width={size} height={size} viewBox="0 0 72 72">
-      <Rect x={0} y={0} width={72} height={72} rx={20} fill={c.accent} />
-      <Path d="M18 22c0-3.3 2.7-6 6-6h24c3.3 0 6 2.7 6 6v18c0 3.3-2.7 6-6 6H32l-9 8v-8h-1c-2.2 0-4-1.8-4-4z" fill="#FFFFFF" />
-      <Path d="M27 31h18M27 37h11" stroke={c.accent} strokeWidth={3.2} strokeLinecap="round" />
-    </Svg>
-  );
+  return <Image source={MARK} accessibilityLabel="대륜 로고" style={{ width, height: width * (406 / 640), tintColor: c.accent }} resizeMode="contain" />;
 }
 
 function Field({ icon, right, ...props }: React.ComponentProps<typeof TextInput> & { icon: IconName; right?: React.ReactNode }) {
@@ -68,7 +64,7 @@ function Field({ icon, right, ...props }: React.ComponentProps<typeof TextInput>
         onFocus={() => setFocus(true)}
         onBlur={() => setFocus(false)}
         {...props}
-        style={{ flex: 1, minWidth: 0, height: '100%', color: c.text, fontSize: font.body, fontFamily: family.regular, outlineStyle: 'none' } as object}
+        style={{ flex: 1, minWidth: 0, height: '100%', color: c.text, fontSize: font.body, ...family.regular, outlineStyle: 'none' } as object}
       />
       {right}
     </View>
@@ -101,8 +97,8 @@ export default function LoginScreen() {
         <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: space.xl, width: '100%', maxWidth: 420, alignSelf: 'center' }}>
           <View style={{ alignItems: 'center', marginBottom: space.xxl + space.sm }}>
             <AppMark />
-            <Text style={{ marginTop: space.lg, fontSize: 32, fontFamily: family.heavy, color: c.text, letterSpacing: -0.5 }}>{APP_NAME}</Text>
-            <Text style={{ marginTop: space.xs, fontSize: font.small, fontFamily: family.semibold, color: c.accent, letterSpacing: 2 }}>법무법인 대륜</Text>
+            <Text style={{ marginTop: space.lg, fontSize: 30, ...family.bold, color: c.text, letterSpacing: -0.5 }}>{APP_NAME}</Text>
+            <Image source={WORDMARK} accessibilityLabel="법무법인(유한) 대륜" style={{ marginTop: space.md, width: 150, height: 150 * (175 / 900), tintColor: c.sub }} resizeMode="contain" />
           </View>
 
           <Field icon="me" placeholder="아이디" autoCapitalize="none" autoCorrect={false} autoComplete="username" value={loginId} onChangeText={setLoginId} returnKeyType="next" />
@@ -117,7 +113,7 @@ export default function LoginScreen() {
             returnKeyType="go"
             right={
               <Pressable accessibilityLabel={show ? '비밀번호 가리기' : '비밀번호 보기'} hitSlop={10} onPress={() => setShow((v) => !v)}>
-                <Text style={{ color: c.sub, fontSize: font.small, fontFamily: family.semibold }}>{show ? '숨김' : '보기'}</Text>
+                <Text style={{ color: c.sub, fontSize: font.small, ...family.semibold }}>{show ? '숨김' : '보기'}</Text>
               </Pressable>
             }
           />
@@ -127,7 +123,7 @@ export default function LoginScreen() {
               <View style={{ width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: remember ? c.accent : c.line, backgroundColor: remember ? c.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
                 {remember ? <Icon name="check" color="#FFFFFF" size={14} /> : null}
               </View>
-              <Text style={{ color: c.sub, fontSize: font.small, fontFamily: family.regular }}>아이디 저장</Text>
+              <Text style={{ color: c.sub, fontSize: font.small, ...family.regular }}>아이디 저장</Text>
             </Pressable>
           ) : null}
 
@@ -138,7 +134,7 @@ export default function LoginScreen() {
             disabled={!ready}
             onPress={submit}
             style={({ pressed }) => ({ marginTop: space.md, height: 54, borderRadius: radius.md, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', opacity: !ready ? 0.4 : pressed ? 0.8 : 1 })}>
-            <Text style={{ color: '#FFFFFF', fontSize: font.body + 1, fontFamily: family.bold }}>{busy ? '로그인 중…' : '로그인'}</Text>
+            <Text style={{ color: '#FFFFFF', fontSize: font.body + 1, ...family.bold }}>{busy ? '로그인 중…' : '로그인'}</Text>
           </Pressable>
 
           {__DEV__ && !serverEnabled ? (
@@ -147,7 +143,7 @@ export default function LoginScreen() {
             </View>
           ) : null}
         </View>
-        <Text style={{ textAlign: 'center', color: c.faint, fontSize: font.tiny, fontFamily: family.regular, paddingBottom: space.lg }}>© 법무법인 대륜</Text>
+        <Text style={{ textAlign: 'center', color: c.faint, fontSize: font.tiny, ...family.regular, paddingBottom: space.lg }}>© 법무법인(유한) 대륜</Text>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

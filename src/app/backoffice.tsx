@@ -122,7 +122,7 @@ export default function BackofficeScreen() {
             style={{ marginLeft: 'auto' }}
             hitSlop={8}
             onPress={() => setPicked(picked.length === staffUsers.length ? [] : staffUsers.map((u) => u.id))}>
-            <Text style={{ fontFamily: family.semibold, fontSize: 14, color: c.accent }}>{picked.length === staffUsers.length ? '선택 해제' : '전체 선택'}</Text>
+            <Text style={{ ...family.semibold, fontSize: 14, color: c.accent }}>{picked.length === staffUsers.length ? '선택 해제' : '전체 선택'}</Text>
           </Pressable>
         </View>
         {staffUsers.map((u) => {
@@ -137,8 +137,8 @@ export default function BackofficeScreen() {
                 {on ? <Icon name="check" color="#FFFFFF" size={14} /> : null}
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: family.semibold, fontSize: 15, color: c.text }}>{u.nickname}</Text>
-                <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.sub }}>{[u.title ?? '직책 없음', u.dept, u.branch].filter(Boolean).join(' · ')}</Text>
+                <Text style={{ ...family.semibold, fontSize: 15, color: c.text }}>{u.nickname}</Text>
+                <Text style={{ ...family.regular, fontSize: 12, color: c.sub }}>{[u.title ?? '직책 없음', u.dept, u.branch].filter(Boolean).join(' · ')}</Text>
               </View>
             </Pressable>
           );

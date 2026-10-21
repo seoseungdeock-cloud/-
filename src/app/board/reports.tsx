@@ -38,15 +38,15 @@ export default function ReportsScreen() {
           <Badge label={t?.kind ?? '삭제됨'} tone="plain" />
           {boardFor(r.postId) && boardFor(r.postId) !== 'anon' ? <Badge label={BOARD_LABEL[boardFor(r.postId)!]} tone="plain" /> : null}
           <Badge label={r.reason} tone="warn" />
-          <Text style={{ fontFamily: family.regular, fontSize: 12, color: c.faint }}>{timeAgo(r.at)} · 신고자 {name(r.reporterId)}</Text>
+          <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{timeAgo(r.at)} · 신고자 {name(r.reporterId)}</Text>
         </View>
         {t ? (
           <>
-            <Text numberOfLines={3} style={{ fontFamily: family.regular, fontSize: 15, lineHeight: 22, color: c.text }}>{t.text}</Text>
-            <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.sub, marginTop: space.xs }}>작성자 {name(t.authorId)}</Text>
+            <Text numberOfLines={3} style={{ ...family.regular, fontSize: 15, lineHeight: 22, color: c.text }}>{t.text}</Text>
+            <Text style={{ ...family.semibold, fontSize: 13, color: c.sub, marginTop: space.xs }}>작성자 {name(t.authorId)}</Text>
           </>
         ) : (
-          <Text style={{ fontFamily: family.regular, fontSize: 14, color: c.faint }}>대상이 이미 삭제되었습니다.</Text>
+          <Text style={{ ...family.regular, fontSize: 14, color: c.faint }}>대상이 이미 삭제되었습니다.</Text>
         )}
         {r.status === 'open' && t ? (
           <View style={{ marginTop: space.sm, gap: space.sm }}>
@@ -68,7 +68,7 @@ export default function ReportsScreen() {
             </Chips>
           </View>
         ) : r.resolution ? (
-          <Text style={{ fontFamily: family.semibold, fontSize: 13, color: c.accent, marginTop: space.xs }}>처리: {r.resolution}</Text>
+          <Text style={{ ...family.semibold, fontSize: 13, color: c.accent, marginTop: space.xs }}>처리: {r.resolution}</Text>
         ) : null}
       </Card>
     );
