@@ -7,7 +7,7 @@ import { useColors } from './theme';
 
 export type FrameSize = 'phone' | 'wide' | 'full';
 export const FRAME_SIZES: { key: FrameSize; label: string; width: number }[] = [
-  { key: 'phone', label: '폰 크기', width: 440 },
+  { key: 'phone', label: '폰 크기', width: 504 },
   { key: 'wide', label: '넓게', width: 760 },
   { key: 'full', label: '전체 화면', width: Infinity },
 ];
@@ -60,7 +60,7 @@ function fitInstalledWindow() {
     const w = globalThis as unknown as Window;
     if (!w.matchMedia?.('(display-mode: standalone)').matches || w.localStorage.getItem(`${KEY}.fitted`)) return;
     w.localStorage.setItem(`${KEY}.fitted`, '1');
-    if (current === 'phone' && w.outerWidth > 600) w.resizeTo(460, Math.min(920, w.screen.availHeight));
+    if (current === 'phone' && w.outerWidth > 600) w.resizeTo(524, Math.min(920, w.screen.availHeight));
   } catch {
     // 브라우저가 창 크기 바꾸기를 막으면 그대로
   }

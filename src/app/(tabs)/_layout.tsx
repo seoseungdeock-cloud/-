@@ -4,8 +4,10 @@ import { Platform } from 'react-native';
 import { canSeeWorkTab } from '@/core/rooms';
 import { Icon, type IconName } from '@/ui/icons';
 import { family, useColors } from '@/ui/theme';
+import { SideRail } from '@/ui/side-rail';
 import { useMe } from '@/ui/use-app';
 
+// PC 웹은 왼쪽 붉은 세로 메뉴(아이콘만), 폰 앱은 하단 탭.
 // 하단 탭: 의뢰인은 홈 / 대화 / 게시판 / 사건 / 찾기 / 나, 변호사는 대화 / 게시판 / 사건 / 나, 직원은 찾기 포함, 어드민은 찾기·업무 포함
 export default function TabLayout() {
   const c = useColors();
@@ -13,7 +15,9 @@ export default function TabLayout() {
   const icon = (name: IconName) => ({ focused }: { focused: boolean }) => <Icon name={name} color={focused ? c.text : c.faint} />;
   return (
     <Tabs
+      tabBar={Platform.OS === 'web' ? (props) => <SideRail {...props} /> : undefined}
       screenOptions={{
+        tabBarPosition: Platform.OS === 'web' ? 'left' : 'bottom',
         headerShown: false,
         tabBarActiveTintColor: c.text,
         tabBarInactiveTintColor: c.faint,
