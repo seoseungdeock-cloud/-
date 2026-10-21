@@ -5,6 +5,7 @@ import { Image, Linking, Platform, Pressable, Text, View } from 'react-native';
 import { REPORT_REASONS, score, type AuthorView } from '@/core/board';
 import type { Attachment, Votes } from '@/core/types';
 import { Icon, type IconName } from '@/ui/icons';
+import { openViewer } from '@/ui/image-viewer';
 import { Avatar, Badge, Button, Chip, Chips } from '@/ui/kit';
 import { family, radius, space, useColors } from '@/ui/theme';
 
@@ -85,7 +86,8 @@ export function fileSize(n?: number): string {
 
 // 첨부: 사진은 크게, 파일은 이름·크기 한 줄. onRemove가 있으면 글쓰기 화면의 빼기 버튼.
 // 서버에 올라간 첨부는 임시 주소로 열어 크게 보거나 내려받습니다
-export const canOpen = (a: Attachment) => /^https?:/.test(a.uri);
+export const isVideo = (a: Attachment) => !!a.mime?.startsWith('video/');
+export const canOpen = (a: Attachment) => /^https?:/.test(a.uri) || (Platform.OS === 'web' && /^(blob|data):/.test(a.uri));
 export const openFile = (a: Attachment) => {
   if (canOpen(a)) void WebBrowser.openBrowserAsync(a.uri);
 };
@@ -103,20 +105,20 @@ export const downloadFile = (a: Attachment) => {
   } else void Linking.openURL(url);
 };
 
-/** 올린 파일 아래 작은 회색 글씨: 열기 · 다운로드 */
-export function FileActions({ a, color }: { a: Attachment; color?: string }) {
+/** 올린 파일 아래 작은 회색 글씨: 열기 | 저장 */
+export function FileActions({ a, color, onOpen }: { a: Attachment; color?: string; onOpen?: () => void }) {
   const c = useColors();
   if (!canOpen(a)) return null;
   const tone = color ?? c.faint;
   const style = { ...family.regular, fontSize: 12, color: tone };
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${a.name} 열기`} hitSlop={6} onPress={() => openFile(a)}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${a.name} 열기`} hitSlop={6} onPress={onOpen ?? (() => openFile(a))}>
         <Text style={style}>열기</Text>
       </Pressable>
-      <Text style={style}>·</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${a.name} 다운로드`} hitSlop={6} onPress={() => downloadFile(a)}>
-        <Text style={style}>다운로드</Text>
+      <Text style={[style, { opacity: 0.6 }]}>|</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${a.name} 저장`} hitSlop={6} onPress={() => downloadFile(a)}>
+        <Text style={style}>저장</Text>
       </Pressable>
     </View>
   );
@@ -149,10 +151,15 @@ export function Attachments({ items, onRemove, compact }: { items: Attachment[];
           ))}
         </View>
       ) : (
-        images.map((a) => (
-          <Pressable key={a.id} accessibilityLabel={`사진 ${a.name}`} disabled={!canOpen(a)} onPress={() => openFile(a)}>
-            <Image source={a.uri ? { uri: a.uri } : undefined} resizeMode="cover" style={{ width: '100%', aspectRatio: 4 / 3, borderRadius: radius.md, backgroundColor: c.surface }} />
-          </Pressable>
+        images.map((a, i) => (
+          <View key={a.id}>
+            <Pressable accessibilityLabel={`사진 ${a.name}`} disabled={!a.uri} onPress={() => openViewer(images, i)}>
+              <Image source={a.uri ? { uri: a.uri } : undefined} resizeMode="cover" style={{ width: '100%', aspectRatio: 4 / 3, borderRadius: radius.md, backgroundColor: c.surface }} />
+            </Pressable>
+            <View style={{ alignItems: 'flex-end' }}>
+              <FileActions a={a} onOpen={() => openViewer(images, i)} />
+            </View>
+          </View>
         ))
       )}
       {files.map((a) => (

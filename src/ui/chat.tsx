@@ -1,15 +1,15 @@
 // 대화방 화면 조각 (웍스 대화방 구성: 읽음 수, 답장 인용, 전달, 회수, 공감, 멘션, 공지, 방 메뉴)
 import { router } from 'expo-router';
-import { useState, type ReactNode } from 'react';
-import * as WebBrowser from 'expo-web-browser';
-import { Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { createElement, useState, type ReactNode } from 'react';
+import { Image, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
 import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Attachment, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
 import { Icon, type IconName } from './icons';
 import { HearingCard } from './hearing';
-import { FileActions, fileSize } from './board';
+import { FileActions, fileSize, isVideo, openFile } from './board';
+import { openViewer } from './image-viewer';
 import { Avatar } from './kit';
 import { chatTime, clockTime, roomTitle } from './room-row';
 import { family, radius, space, useColors } from './theme';
@@ -69,7 +69,8 @@ export function Bubble({
   users: User[];
   reads: Reads;
   messages: Message[];
-  onLongPress: () => void;
+  /** 길게 누르기, PC는 마우스 오른쪽 버튼 (누른 자리) */
+  onLongPress: (at?: { x: number; y: number }) => void;
   highlight?: boolean;
   onReads?: () => void;
   onReactions?: () => void;
@@ -122,6 +123,8 @@ export function Bubble({
   );
 
   const card = !!(contact || m.forwardOf || m.bundle || m.hearingAlertId);
+  // 사진·동영상·파일만 보낸 메시지는 말풍선 테두리 없이 (파일은 자기 말풍선)
+  const bare = !card && !quoted && !m.text && !!m.attachments?.length;
   const row = (
     <View style={{ flex: 1, flexDirection: 'row', justifyContent: mine ? 'flex-end' : 'flex-start', gap: space.sm, marginVertical: space.xs, backgroundColor: highlight ? c.accentSoft : 'transparent', borderRadius: radius.sm }}>
       {!mine ? <Avatar name={isAi || isBot ? 'AI' : sender?.nickname ?? '?'} size={36} tone={isAi ? c.aiSoft : undefined} uri={isAi || isBot ? undefined : sender?.photo} /> : null}
@@ -135,17 +138,25 @@ export function Bubble({
           <Pressable
             accessibilityLabel="메시지"
             onPress={picking ? onPick : undefined}
-            onLongPress={picking ? undefined : onLongPress}
+            onLongPress={picking ? undefined : () => onLongPress()}
             delayLongPress={350}
+            {...(Platform.OS === 'web' && !picking
+              ? {
+                  onContextMenu: (e: { preventDefault: () => void; nativeEvent: { clientX: number; clientY: number } }) => {
+                    e.preventDefault();
+                    onLongPress({ x: e.nativeEvent.clientX, y: e.nativeEvent.clientY });
+                  },
+                }
+              : null)}
             style={{
               flexShrink: 1,
               width: m.bundle ? 250 : undefined,
-              backgroundColor: card ? c.bg : mine ? c.bubbleMine : isAi ? c.aiSoft : isBot ? c.accentSoft : c.bubbleOther,
+              backgroundColor: bare ? 'transparent' : card ? c.bg : mine ? c.bubbleMine : isAi ? c.aiSoft : isBot ? c.accentSoft : c.bubbleOther,
               borderWidth: current ? 2 : card ? 1 : 0,
               borderColor: current ? c.mark : c.line,
               borderRadius: radius.lg,
-              paddingHorizontal: space.md,
-              paddingVertical: space.sm + 2,
+              paddingHorizontal: bare ? 0 : space.md,
+              paddingVertical: bare ? 0 : space.sm + 2,
               gap: space.xs,
             }}>
             {quoted ? (
@@ -176,7 +187,7 @@ export function Bubble({
               </Pressable>
             ) : (
               <>
-                {m.attachments?.length ? <MessageFiles items={m.attachments} mine={mine} /> : null}
+                {m.attachments?.length ? <MessageFiles items={m.attachments} mine={mine} title={room.title} boxed={bare} /> : null}
                 {m.text ? <Body text={m.text} names={names} color={fg} mention={mine ? c.bubbleMineText : c.accent} mark={mark} /> : null}
               </>
             )}
@@ -371,10 +382,13 @@ export function MessageMenu({
   onReply,
   onForward,
   onNotice,
+  at,
 }: {
   m?: Message;
   mine: boolean;
   myId: string;
+  /** PC에서 마우스 오른쪽 버튼을 누른 자리: 그 옆에 작은 메뉴로 띄웁니다 */
+  at?: { x: number; y: number };
   /** 의뢰인 화면: 복사·답장·삭제·회수만 */
   simple?: boolean;
   onClose: () => void;
@@ -388,6 +402,44 @@ export function MessageMenu({
     fn();
     onClose();
   };
+  if (m && at) {
+    const items: { icon: IconName; label: string; onPress: () => void; danger?: boolean; line?: boolean }[] = [
+      ...(m.kind !== 'contact' ? [{ icon: 'copy' as const, label: '복사', onPress: onCopy }] : []),
+      { icon: 'reply', label: '답장', onPress: onReply },
+      ...(m.kind !== 'contact' && !simple ? [{ icon: 'notice' as const, label: '공지', onPress: onNotice }] : []),
+      ...(simple ? [] : [{ icon: 'forward' as const, label: '전달', onPress: onForward, line: true }]),
+      { icon: 'trash', label: '삭제', onPress: () => actions.deleteForMe(m.id), line: simple },
+      ...(mine ? [{ icon: 'recall' as const, label: '회수', onPress: () => void actions.recall(m.id), danger: true }] : []),
+    ];
+    const w = typeof window === 'undefined' ? { innerWidth: 1000, innerHeight: 800 } : window;
+    const height = 44 + items.length * 38 + 12;
+    return (
+      <Modal visible transparent onRequestClose={onClose}>
+        <Pressable accessibilityLabel="메뉴 닫기" onPress={onClose} style={{ flex: 1 }}>
+          <Pressable
+            onPress={() => undefined}
+            style={{ position: 'absolute', left: Math.max(8, Math.min(at.x, w.innerWidth - 196)), top: Math.max(8, Math.min(at.y, w.innerHeight - height - 8)), width: 188, backgroundColor: c.bg, borderRadius: 10, borderWidth: 1, borderColor: c.line, paddingVertical: 6, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 4, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: c.line }}>
+              {REACTIONS.map((e) => (
+                <Pressable key={e} accessibilityLabel={`공감 ${e}`} onPress={run(() => actions.react(m.id, e))} style={{ padding: 3, borderRadius: radius.pill, backgroundColor: m.reactions?.[myId] === e ? c.surface : 'transparent' }}>
+                  <Text style={{ fontSize: 18 }}>{e}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {items.map((it) => (
+              <View key={it.label}>
+                {it.line ? <View style={{ height: 1, backgroundColor: c.line, marginVertical: 4 }} /> : null}
+                <Pressable onPress={run(it.onPress)} style={(st) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm, height: 34, paddingHorizontal: space.md, backgroundColor: (st as { hovered?: boolean }).hovered ? c.surface : 'transparent' })}>
+                  <Icon name={it.icon} color={it.danger ? c.accent : c.sub} size={17} />
+                  <Text style={{ ...family.regular, fontSize: 14, color: it.danger ? c.accent : c.text }}>{it.label}</Text>
+                </Pressable>
+              </View>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  }
   return (
     <Sheet open={!!m} onClose={onClose}>
       {m ? (
@@ -824,35 +876,57 @@ function SmallAction({ label, onPress, danger }: { label: string; onPress: () =>
 }
 
 /** 말풍선 안의 사진·파일. 누르면 크게 보거나 내려받습니다. 올리는 중에는 기기 안 사진을 그대로 보여 줍니다. */
-function MessageFiles({ items, mine }: { items: Attachment[]; mine: boolean }) {
+function MessageFiles({ items, mine, title, boxed }: { items: Attachment[]; mine: boolean; title: string; boxed: boolean }) {
   const c = useColors();
-  const open = (a: Attachment) => {
-    if (/^https?:/.test(a.uri)) void WebBrowser.openBrowserAsync(a.uri);
-  };
   const images = items.filter((a) => a.kind === 'image');
-  const files = items.filter((a) => a.kind === 'file');
+  const videos = items.filter((a) => a.kind === 'file' && isVideo(a));
+  const files = items.filter((a) => a.kind === 'file' && !isVideo(a));
   const fg = mine ? c.bubbleMineText : c.text;
+  const one = images.length === 1;
   return (
-    <View style={{ gap: space.xs }}>
+    <View style={{ gap: space.xs, alignItems: mine ? 'flex-end' : 'flex-start' }}>
       {images.length ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, maxWidth: 236 }}>
-          {images.map((a) => (
-            <Pressable key={a.id} accessibilityLabel={`사진 ${a.name}`} onPress={() => open(a)}>
-              <Image source={a.uri ? { uri: a.uri } : undefined} style={{ width: images.length === 1 ? 220 : 116, height: images.length === 1 ? 220 : 116, borderRadius: radius.md, backgroundColor: c.surface }} />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, maxWidth: 236, justifyContent: mine ? 'flex-end' : 'flex-start' }}>
+          {images.map((a, i) => (
+            <Pressable key={a.id} accessibilityLabel={`사진 ${a.name}`} onPress={() => openViewer(images, i, title)}>
+              <Image source={a.uri ? { uri: a.uri } : undefined} resizeMode="cover" style={{ width: one ? 220 : 116, height: one ? 220 : 116, borderRadius: radius.md, backgroundColor: c.surface }} />
             </Pressable>
           ))}
         </View>
       ) : null}
+      {images.length === 1 ? <FileActions a={images[0]} color={mine && !boxed ? 'rgba(255,255,255,0.75)' : undefined} onOpen={() => openViewer(images, 0, title)} /> : null}
+      {videos.map((a) => (
+        <View key={a.id} style={{ gap: 2, alignItems: mine ? 'flex-end' : 'flex-start' }}>
+          <VideoPlayer a={a} />
+          <FileActions a={a} color={mine && !boxed ? 'rgba(255,255,255,0.75)' : undefined} />
+        </View>
+      ))}
       {files.map((a) => (
-        <Pressable key={a.id} accessibilityLabel={`파일 ${a.name}`} onPress={() => open(a)} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minWidth: 200, maxWidth: 236 }}>
-          <Icon name="file" color={fg} size={22} />
-          <View style={{ flex: 1 }}>
-            <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 14, color: fg }}>{a.name}</Text>
-            {a.size ? <Text style={{ ...family.regular, fontSize: 12, color: mine ? c.bubbleMineText : c.sub }}>{fileSize(a.size)}</Text> : null}
-            <FileActions a={a} color={mine ? 'rgba(255,255,255,0.75)' : undefined} />
-          </View>
-        </Pressable>
+        <View key={a.id} style={boxed ? { backgroundColor: mine ? c.bubbleMine : c.bubbleOther, borderRadius: radius.lg, paddingHorizontal: space.md, paddingVertical: space.sm + 2 } : undefined}>
+          <Pressable accessibilityLabel={`파일 ${a.name}`} onPress={() => openFile(a)} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minWidth: 200, maxWidth: 236 }}>
+            <Icon name="file" color={fg} size={22} />
+            <View style={{ flex: 1 }}>
+              <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 14, color: fg }}>{a.name}</Text>
+              {a.size ? <Text style={{ ...family.regular, fontSize: 12, color: mine ? c.bubbleMineText : c.sub }}>{fileSize(a.size)}</Text> : null}
+            </View>
+          </Pressable>
+          <FileActions a={a} color={mine ? 'rgba(255,255,255,0.75)' : undefined} />
+        </View>
       ))}
     </View>
+  );
+}
+
+/** 동영상: 웹은 바로 재생, 폰 앱은 눌러서 엽니다 */
+function VideoPlayer({ a }: { a: Attachment }) {
+  const c = useColors();
+  if (Platform.OS === 'web' && a.uri) {
+    return createElement('video', { src: a.uri, controls: true, preload: 'metadata', style: { width: 236, maxHeight: 320, borderRadius: radius.md, backgroundColor: '#000' } });
+  }
+  return (
+    <Pressable accessibilityLabel={`동영상 ${a.name}`} onPress={() => openFile(a)} style={{ width: 220, height: 140, borderRadius: radius.md, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+      <Text style={{ color: '#FFFFFF', fontSize: 30 }}>▶</Text>
+      <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.faint, maxWidth: 200 }}>{a.name}</Text>
+    </Pressable>
   );
 }

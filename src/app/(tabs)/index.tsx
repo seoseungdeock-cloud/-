@@ -249,7 +249,7 @@ function RoomsPanel({ query, onSelecting, scope }: { query: string; onSelecting:
         <View style={{ flexDirection: 'row', gap: space.lg, paddingHorizontal: space.lg, paddingVertical: space.md }}>
           {FILTERS.map(([k, label]) => (
             <Pressable key={k} onPress={() => setFilter(k)} style={{ flexDirection: 'row' }}>
-              <Text style={{ ...(filter === k ? family.bold : family.regular), fontSize: font.small + 1, color: filter === k ? c.text : c.faint }}>{label}</Text>
+              <Text style={{ ...(filter === k ? family.bold : family.regular), fontSize: 13, color: filter === k ? c.text : c.faint }}>{label}</Text>
               {dots[k] ? <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: c.accent, marginLeft: 2 }} /> : null}
             </Pressable>
           ))}
@@ -380,11 +380,11 @@ function SelfChatRow() {
   const room = s.rooms.find((r) => isSelfRoom(r, user.id));
   if (room && !isHidden(room, user.id, s.messages)) return null;
   return (
-    <Pressable onPress={() => router.push({ pathname: '/room/[id]', params: { id: actions.openSelfChat() } })} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md, opacity: pressed ? 0.7 : 1 })}>
-      <Avatar name={user.nickname} uri={user.photo} />
+    <Pressable onPress={() => router.push({ pathname: '/room/[id]', params: { id: actions.openSelfChat() } })} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm + 2, opacity: pressed ? 0.7 : 1 })}>
+      <Avatar name={user.nickname} uri={user.photo} size={42} />
       <View style={{ flex: 1 }}>
-        <Text style={{ ...family.bold, fontSize: 16, color: c.text }}>{SELF_ROOM_TITLE}</Text>
-        <Text numberOfLines={1} style={{ ...family.regular, fontSize: 14, color: c.sub, marginTop: 2 }}>메모나 파일을 나에게 보내 두세요</Text>
+        <Text style={{ ...family.bold, fontSize: 14, color: c.text }}>{SELF_ROOM_TITLE}</Text>
+        <Text numberOfLines={1} style={{ ...family.regular, fontSize: 13, color: c.sub, marginTop: 2 }}>메모나 파일을 나에게 보내 두세요</Text>
       </View>
     </Pressable>
   );

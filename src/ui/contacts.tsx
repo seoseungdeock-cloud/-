@@ -100,8 +100,8 @@ export function UnderlineTabs<K extends string>({ tabs, value, onChange, dots, s
   const row = (
     <View style={{ flexDirection: 'row', borderBottomWidth: scroll ? 0 : 1, borderBottomColor: c.line }}>
       {tabs.map(([k, label]) => (
-        <Pressable key={k} onPress={() => onChange(k)} style={{ paddingVertical: space.sm + 2, marginRight: space.xl, borderBottomWidth: 2.5, borderBottomColor: value === k ? c.accent : 'transparent', marginBottom: -1, flexDirection: 'row' }}>
-          <Text style={{ ...(value === k ? family.bold : family.regular), fontSize: 15, color: value === k ? c.accent : c.sub }}>{label}</Text>
+        <Pressable key={k} onPress={() => onChange(k)} style={{ paddingVertical: space.sm, marginRight: space.lg + 2, borderBottomWidth: 2.5, borderBottomColor: value === k ? c.accent : 'transparent', marginBottom: -1, flexDirection: 'row' }}>
+          <Text style={{ ...(value === k ? family.bold : family.regular), fontSize: 14, color: value === k ? c.accent : c.sub }}>{label}</Text>
           {dots?.[k] ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.accent, marginLeft: 2, marginTop: 2 }} /> : null}
         </Pressable>
       ))}

@@ -8,6 +8,7 @@ import { usePush } from '@/core/push';
 import { resumeWebPush } from '@/core/web-push';
 import { loggedIn, startServer } from '@/core/store';
 import { HearingAlertModal } from '@/ui/hearing';
+import { ImageViewerHost } from '@/ui/image-viewer';
 import { SyncNotice } from '@/ui/sync-notice';
 import { useApp } from '@/ui/use-app';
 import { WebFrame } from '@/ui/web-frame';
@@ -91,6 +92,7 @@ export default function RootLayout() {
       </WebFrame>
       {/* 기일 알람: 의뢰인·변호사 모두 확인할 때까지 어느 화면에서든 뜹니다 */}
       {signedIn ? <HearingAlertModal /> : null}
+      {signedIn ? <ImageViewerHost /> : null}
       <SyncNotice />
     </ThemeProvider>
   );

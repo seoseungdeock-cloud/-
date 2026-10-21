@@ -41,37 +41,37 @@ export function RoomRow({ room, selecting, selected, onToggle }: { room: Room; s
     <Pressable
       onPress={() => (selecting ? onToggle?.() : router.push({ pathname: '/room/[id]', params: { id: room.id } }))}
       onLongPress={onToggle}
-      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md, opacity: pressed ? 0.6 : 1 })}>
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm + 2, opacity: pressed ? 0.6 : 1 })}>
       {selecting ? (
         <View style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: selected ? c.accent : c.faint, backgroundColor: selected ? c.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
           {selected ? <Icon name="check" color="#FFFFFF" size={14} /> : null}
         </View>
       ) : null}
       <View>
-        <Avatar name={room.title} size={52} group={group} uri={room.kind === 'direct' ? s.users.find((u) => u.id !== user.id && room.memberIds.includes(u.id))?.photo : undefined} />
+        <Avatar name={room.title} size={42} group={group} uri={room.kind === 'direct' ? s.users.find((u) => u.id !== user.id && room.memberIds.includes(u.id))?.photo : undefined} />
         {pinned ? (
           <View style={{ position: 'absolute', left: -4, top: -4, width: 20, height: 20, borderRadius: 10, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="pin" color={c.accent} size={13} />
           </View>
         ) : null}
       </View>
-      <View style={{ flex: 1, gap: 3 }}>
+      <View style={{ flex: 1, gap: 2 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
-          <Text numberOfLines={1} style={{ flexShrink: 1, ...family.bold, fontSize: 16, color: c.text }}>{roomTitle(room)}</Text>
+          <Text numberOfLines={1} style={{ flexShrink: 1, ...family.bold, fontSize: 14, color: c.text }}>{roomTitle(room)}</Text>
           {muted ? <Icon name="mute" color={c.faint} size={15} /> : null}
           <View style={{ marginLeft: 'auto', paddingLeft: space.sm }}>
-            <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{last ? chatTime(last.at) : ''}</Text>
+            <Text style={{ ...family.regular, fontSize: 11, color: c.faint }}>{last ? chatTime(last.at) : ''}</Text>
           </View>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
           <View style={{ flex: 1 }}>
-            <Text numberOfLines={mentioned ? 1 : 2} style={{ ...family.regular, fontSize: 14, lineHeight: 20, color: c.sub }}>{previewText(last, s.users)}</Text>
-            {mentioned ? <Text style={{ ...family.semibold, fontSize: 13, color: c.accent }}>멘션되었습니다.</Text> : null}
+            <Text numberOfLines={mentioned ? 1 : 2} style={{ ...family.regular, fontSize: 13, lineHeight: 18, color: c.sub }}>{previewText(last, s.users)}</Text>
+            {mentioned ? <Text style={{ ...family.semibold, fontSize: 12, color: c.accent }}>멘션되었습니다.</Text> : null}
           </View>
           {room.mode === 'ai' || room.kind === 'case' ? <ModeBadge mode={room.mode} /> : null}
           {unread ? (
-            <View style={{ minWidth: 22, height: 22, borderRadius: 11, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}>
-              <Text style={{ color: '#FFFFFF', ...family.bold, fontSize: 12 }}>{unread > 99 ? '99+' : unread}</Text>
+            <View style={{ minWidth: 18, height: 18, borderRadius: 9, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
+              <Text style={{ color: '#FFFFFF', ...family.bold, fontSize: 11 }}>{unread > 99 ? '99+' : unread}</Text>
             </View>
           ) : null}
         </View>

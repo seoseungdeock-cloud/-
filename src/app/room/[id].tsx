@@ -50,6 +50,7 @@ export default function RoomScreen() {
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState<Message>();
   const [menuFor, setMenuFor] = useState<Message>();
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number }>();
   const [forwardIds, setForwardIds] = useState<string[]>();
   const [picking, setPicking] = useState<string[]>();
   const [readsFor, setReadsFor] = useState<Message>();
@@ -112,6 +113,39 @@ export default function RoomScreen() {
 
   // 의뢰인 계정: 자기 상담·사건방만, 대화와 검색만 (전달·공지·방 메뉴·첨부 없음)
   const simple = user.role === 'client';
+  // PC: 파일을 대화방에 끌어다 놓으면 바로 보냅니다
+  const [dragging, setDragging] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !isMember) return;
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+    const over = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      setDragging(true);
+    };
+    const leave = (e: DragEvent) => {
+      if (!e.relatedTarget) setDragging(false);
+    };
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      setDragging(false);
+      const list = [...(e.dataTransfer?.files ?? [])];
+      if (!list.length) return;
+      const files: Attachment[] = list.map((f) => ({ id: newId('f'), kind: f.type.startsWith('image/') ? 'image' : 'file', name: f.name, uri: URL.createObjectURL(f), size: f.size, mime: f.type || undefined }));
+      const res = actions.sendFiles(id, files);
+      if (!res.ok) setToast(res.reason);
+    };
+    window.addEventListener('dragover', over);
+    window.addEventListener('dragleave', leave);
+    window.addEventListener('drop', drop);
+    return () => {
+      window.removeEventListener('dragover', over);
+      window.removeEventListener('dragleave', leave);
+      window.removeEventListener('drop', drop);
+    };
+  }, [isMember, id]);
+
   if (!room || (simple && !clientCanSee(room, user))) return <Screen title="대화" back><Empty text="방을 찾을 수 없습니다." /></Screen>;
   const members = room.memberIds.map((mid) => s.users.find((u) => u.id === mid)).filter((u): u is User => !!u);
   const muted = notifyLevel(room, user.id) !== 'all';
@@ -139,9 +173,16 @@ export default function RoomScreen() {
     else setReplyTo(undefined);
   };
   const pickPhotos = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: 10, quality: 0.8 });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], allowsMultipleSelection: true, selectionLimit: 10, quality: 0.8 });
     if (res.canceled) return;
-    sendFiles(res.assets.map((a) => ({ id: newId('f'), kind: 'image', name: a.fileName ?? '사진.jpg', uri: a.uri, size: a.fileSize, mime: a.mimeType ?? 'image/jpeg' })));
+    // 동영상은 파일로 보내고 대화에서 바로 재생합니다
+    sendFiles(
+      res.assets.map((a) =>
+        a.type === 'video'
+          ? { id: newId('f'), kind: 'file', name: a.fileName ?? '동영상.mp4', uri: a.uri, size: a.fileSize, mime: a.mimeType ?? 'video/mp4' }
+          : { id: newId('f'), kind: 'image', name: a.fileName ?? '사진.jpg', uri: a.uri, size: a.fileSize, mime: a.mimeType ?? 'image/jpeg' },
+      ),
+    );
   };
   const pickFiles = async () => {
     const res = await DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true });
@@ -227,6 +268,11 @@ export default function RoomScreen() {
   return (
     <Screen title={roomTitle(room)} back scroll={false} right={right}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={80}>
+        {dragging ? (
+          <View pointerEvents="none" style={{ position: 'absolute', zIndex: 10, top: 0, left: 0, right: 0, bottom: 0, margin: space.sm, borderRadius: radius.lg, borderWidth: 2, borderStyle: 'dashed', borderColor: c.accent, backgroundColor: 'rgba(255,255,255,0.85)', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ ...family.bold, fontSize: 16, color: c.accent }}>여기에 놓으면 바로 보냅니다</Text>
+          </View>
+        ) : null}
         {search !== undefined ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm, backgroundColor: c.surface, borderRadius: radius.lg, paddingHorizontal: space.md }}>
             <Icon name="search" color={c.faint} size={18} />
@@ -274,7 +320,11 @@ export default function RoomScreen() {
                   picking={!!picking && !item.recalled && item.senderId !== SYSTEM_SENDER}
                   picked={picking?.includes(item.id)}
                   onPick={() => togglePick(item.id)}
-                  onLongPress={() => (isMember && item.senderId !== AI_SENDER && item.senderId !== BOT_SENDER ? setMenuFor(item) : undefined)}
+                  onLongPress={(at) => {
+                    if (!isMember || item.senderId === AI_SENDER || item.senderId === BOT_SENDER) return;
+                    setMenuAt(at);
+                    setMenuFor(item);
+                  }}
                 />
             )
           }
@@ -378,6 +428,7 @@ export default function RoomScreen() {
         mine={menuFor?.senderId === user.id}
         myId={user.id}
         simple={simple}
+        at={menuAt}
         onClose={() => setMenuFor(undefined)}
         onCopy={() => {
           if (!menuFor) return;
