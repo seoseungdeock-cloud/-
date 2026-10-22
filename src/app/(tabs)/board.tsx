@@ -93,18 +93,18 @@ export default function BoardScreen() {
       ) : null}
       {posts.length ? (
         posts.map((p) => {
-          const liked = score(p.votes) > 0;
+          const votes = score(p.votes);
           const who = authorView(user, p, p.authorId, s.users);
           return (
-            // DC인사이드 목록처럼: 제목만, 댓글 수는 색을 달리, 추천받은 글은 앞에 별. 추천은 글 안에서만.
+            // DC인사이드 목록처럼: 제목만, 댓글 수는 색을 달리, 추천 10개 이상은 빨간 테두리 별, 20개 이상은 꽉 찬 별. 추천은 글 안에서만.
             <Pressable key={p.id} onPress={() => router.push({ pathname: '/board/[id]', params: { id: p.id } })} style={({ pressed }) => ({ paddingVertical: space.sm + 2, borderBottomWidth: 1, borderBottomColor: c.line, gap: 3, opacity: pressed ? 0.6 : 1 })}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                {p.notice ? <Badge label="공지" /> : liked ? <Icon name="star" color={c.accent} size={16} /> : <Icon name="board" color={c.faint} size={16} />}
+                {p.notice ? <Badge label="공지" /> : <Icon name={votes >= 20 ? 'starFill' : votes >= 10 ? 'star' : 'board'} color={votes >= 10 ? c.accent : c.faint} size={16} />}
                 <Text numberOfLines={1} style={{ flexShrink: 1, ...family.semibold, fontSize: 15, color: c.text }}>{p.title}</Text>
                 {p.comments.length ? <Text style={{ ...family.bold, fontSize: 13, color: c.accent }}>[{p.comments.length}]</Text> : null}
               </View>
               <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.faint, paddingLeft: 22 }}>
-                {[who.real ? `${who.alias} (${who.real})` : who.alias, timeAgo(p.at), p.field, `추천 ${score(p.votes)}`, sort !== 'best' && isBestPost(p) ? '베스트' : ''].filter(Boolean).join(' · ')}
+                {[who.real ? `${who.alias} (${who.real})` : who.alias, timeAgo(p.at), p.field, `추천 ${votes}`, sort !== 'best' && isBestPost(p) ? '베스트' : ''].filter(Boolean).join(' · ')}
               </Text>
             </Pressable>
           );
