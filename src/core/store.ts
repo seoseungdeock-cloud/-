@@ -1012,15 +1012,9 @@ export const actions = {
     };
     set((s) => ({ rooms: [room, ...s.rooms] }));
     mirror((r) => r.createRoom(room));
-    if (isSelfRoom(room, creator.id)) return { ok: true, roomId: room.id };
-    pushMessage(
-      room.id,
-      SYSTEM_SENDER,
-      'system',
-      room.mode === 'private'
-        ? '사건수행방이 만들어졌습니다. 참여자끼리만 대화하고 AI는 참여하지 않습니다.'
-        : 'AI 참여방이 만들어졌습니다. AI가 대화를 읽고 @AI 로 부르면 답합니다.',
-    );
+    // AI 참여 여부는 따로 알리지 않습니다 (의뢰인이 있는 방만 AI 미참여)
+    if (isSelfRoom(room, creator.id) || aiAnswerLevel(room, [creator, ...members]) !== 'none') return { ok: true, roomId: room.id };
+    pushMessage(room.id, SYSTEM_SENDER, 'system', '사건수행방이 만들어졌습니다. 참여자끼리만 대화하고 AI는 참여하지 않습니다.');
     return { ok: true, roomId: room.id };
   },
 
@@ -1067,7 +1061,7 @@ export const actions = {
         'system',
         room.kind === 'case' || room.kind === 'consult'
           ? "사건수행방에서는 AI가 대화에 참여하지 않습니다. '@AI 진행 상황', '@AI 배당 정보'로 사건 정보만 받을 수 있습니다."
-          : "이 방은 AI가 참여하지 않는 방입니다. @AI는 'AI 참여방'이나 '나와의 메시지'에서 불러 주세요.",
+          : '의뢰인이 함께 있는 방에서는 AI가 대화에 참여하지 않습니다.',
       );
       return;
     }
@@ -1305,20 +1299,6 @@ export const actions = {
     if (t === room.title) return { ok: true };
     updateRoom(roomId, (r) => ({ ...r, title: t }));
     mirror((r) => r.renameRoom(roomId, t));
-    return { ok: true };
-  },
-
-  /** AI 참여 켜기·끄기: 어드민만. 사건방·상담방은 켤 수 없고, 바꾸면 방에 안내를 남깁니다. */
-  setRoomAi(roomId: string, on: boolean): RoomCheck {
-    const room = state.rooms.find((r) => r.id === roomId);
-    const u = me();
-    if (u.role !== 'admin') return { ok: false, reason: '어드민만 AI 참여를 바꿀 수 있습니다.' };
-    if (!room || !room.memberIds.includes(u.id)) return { ok: false, reason: '참여 중인 방이 아닙니다.' };
-    if (on && (room.kind === 'case' || room.kind === 'consult')) return { ok: false, reason: '사건방·상담방은 AI 참여를 켤 수 없습니다.' };
-    if ((room.mode === 'ai') === on) return { ok: true };
-    updateRoom(roomId, (r) => ({ ...r, mode: on ? 'ai' : 'private' }));
-    mirror((r) => r.setRoomAi(roomId, on));
-    pushMessage(roomId, SYSTEM_SENDER, 'system', on ? `어드민(${u.nickname})이 이 방의 AI 참여를 켰습니다. 이제 @AI로 부르면 AI가 최근 대화를 읽고 답합니다.` : `어드민(${u.nickname})이 이 방의 AI 참여를 껐습니다. AI는 이 방의 대화를 읽지 않습니다.`);
     return { ok: true };
   },
 

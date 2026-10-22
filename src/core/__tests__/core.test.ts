@@ -52,11 +52,11 @@ describe('방 규칙', () => {
     expect(canUseAgents(user({ role: 'client', agentAccess: true }))).toBe(false);
   });
 
-  it('AI 답변 수준: 암호화방 불가, 변호사 없는 방은 일반 정보만', () => {
-    const room = (mode: Room['mode']): Room => ({ id: 'r', kind: 'consult', mode, title: '', memberIds: [], createdBy: '', createdAt: '' });
-    expect(aiAnswerLevel(room('private'), [])).toBe('none');
-    expect(aiAnswerLevel(room('ai'), [user({})])).toBe('general-info');
-    expect(aiAnswerLevel(room('ai'), [user({ role: 'lawyer' })])).toBe('lawyer-assist');
+  it('AI 답변 수준: 의뢰인이 있는 방은 불가, 로펌 구성원끼리는 방 방식과 관계없이 가능', () => {
+    const room = (mode: Room['mode']): Room => ({ id: 'r', kind: 'group', mode, title: '', memberIds: [], createdBy: '', createdAt: '' });
+    expect(aiAnswerLevel(room('ai'), [user({}), user({ role: 'lawyer' })])).toBe('none');
+    expect(aiAnswerLevel(room('private'), [user({ role: 'lawyer' })])).toBe('lawyer-assist');
+    expect(aiAnswerLevel(room('private'), [user({ role: 'staff' })])).toBe('work');
   });
 });
 
@@ -75,10 +75,11 @@ describe('메신저 흐름', () => {
   });
 
   it('사건수행방에서 @AI 를 부르면 안내만 나온다', async () => {
-    await actions.sendMessage('r_direct', '@AI 요약해줘');
+    as('lawyer');
+    await actions.sendMessage('r_case1', '@AI 요약해줘');
     const last = getState().messages.at(-1)!;
     expect(last.kind).toBe('system');
-    expect(last.text).toContain('AI가 참여하지 않는 방입니다');
+    expect(last.text).toContain('AI가 대화에 참여하지 않습니다');
   });
 
   it('AI 참여방에서는 AI가 답한다(미연결 표시)', async () => {
@@ -88,19 +89,9 @@ describe('메신저 흐름', () => {
     expect(last.text).toContain('AI 미연결');
   });
 
-  it('어드민만 AI 참여를 켜고 끄며, 사건방은 켤 수 없다', async () => {
-    as('admin');
-    expect(actions.setRoomAi('r_direct', true).ok).toBe(true);
-    expect(getState().rooms.find((r) => r.id === 'r_direct')!.mode).toBe('ai');
-    expect(getState().messages.at(-1)!.text).toContain('AI 참여를 켰습니다');
+  it('의뢰인이 없는 방은 AI 참여방이 아니어도 @AI가 답한다', async () => {
     await actions.sendMessage('r_direct', '@AI 준비서면 목차');
     expect(getState().messages.at(-1)!.kind).toBe('ai');
-    expect(actions.setRoomAi('r_direct', false).ok).toBe(true);
-    expect(getState().messages.at(-1)!.text).toContain('AI 참여를 껐습니다');
-    as('staff');
-    expect(actions.setRoomAi('r_direct', true).ok).toBe(false);
-    as('lawyer');
-    expect(actions.setRoomAi('r_case1', true).ok).toBe(false);
   });
 
   it('상담 신청 → 사건방 전환', () => {

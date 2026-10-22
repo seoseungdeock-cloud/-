@@ -48,7 +48,7 @@ export default function CasesScreen() {
               <Card key={r.id} style={tight} onPress={() => open(r.id)}>
                 <View style={{ flexDirection: 'row', gap: space.sm, marginBottom: space.xs }}>
                   <Badge label={ci.stage} />
-                  <ModeBadge mode={r.mode} />
+                  <ModeBadge mode="private" />
                   {next ? <Badge fixed label={dDayLabel(dDay(next.date))} tone={dDay(next.date) <= 7 ? 'accent' : 'plain'} /> : null}
                 </View>
                 <T bold>{ci.title}</T>
@@ -66,7 +66,7 @@ export default function CasesScreen() {
             <Card key={r.id} style={tight} onPress={() => open(r.id)}>
               <View style={{ flexDirection: 'row', gap: space.sm, marginBottom: space.xs }}>
                 <Badge label="상담" tone="plain" />
-                <ModeBadge mode={r.mode} />
+                <ModeBadge mode="private" />
               </View>
               <T bold>{r.title}</T>
             </Card>

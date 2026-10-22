@@ -5,7 +5,7 @@
 //   1) 앱(어드민 계정): { op, args } — 로그인 토큰으로 계정을 확인하고 AXIOM 권한으로 바꿔 처리
 //   2) 이 함수 자신: { job } — 오래 걸리는 일(위원회 한 단계, 작업지시 수행)을 새 실행 시간으로 넘김
 //   3) 예약 작업(5분마다): { tick: true } — 예정 시각이 지난 정기 보고
-//   4) 대화방 @AI(모든 계정): { op: 'room.ask', args: { roomId, text } } — AI 참여방 참여자만, 사건 수행 질문만
+//   4) 대화방 @AI(모든 계정): { op: 'room.ask', args: { roomId, text } } — 의뢰인 없는 방의 참여자만, 사건 수행 질문만
 // 2·3 은 x-axiom-job 머리글에 푸시 함수와 같은 비밀값(PUSH_CRON_SECRET)이 있어야 합니다.
 // AI 키(ANTHROPIC_API_KEY · OPENAI_API_KEY · GEMINI_API_KEY)는 Supabase 함수 비밀값에만 둡니다. 없으면 모의 응답.
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
@@ -14,7 +14,7 @@ import { handle, runJob, scheduler } from '../../../src/core/axiom/api';
 import type { Db, FindOpts, Row, Table, Where } from '../../../src/core/axiom/db';
 import { INSTANCE } from '../../../src/core/axiom/instance';
 import { complete, resolve } from '../../../src/core/axiom/llm';
-import { finishRoomAi, levelOf, roomAiInput, roomAiSystem, selfRoomLike, type RoomDoc } from '../../../src/core/room-ai';
+import { finishRoomAi, levelOf, roomAiInput, roomAiSystem, type RoomDoc } from '../../../src/core/room-ai';
 import { extractText, getDocumentProxy } from 'npm:unpdf@1.8.1';
 import type { AxUser, Ctx, Job } from '../../../src/core/axiom/types';
 
@@ -127,9 +127,8 @@ async function roomAsk(sb: SupabaseClient, ctx: Ctx, uid: string, args: Record<s
   const list = (members ?? []) as unknown as { user_id: string; profiles: { role: string; active: boolean } | null }[];
   const me = list.find((m) => m.user_id === uid);
   if (!room || !me?.profiles?.active) return { reply: null, reason: '참여 중인 방이 아닙니다.' };
-  const self = selfRoomLike(room.kind, list.length, room.title) ? { firm: me.profiles.role !== 'client' } : undefined;
-  const level = levelOf(room.mode, room.kind, list.some((m) => m.profiles?.role === 'lawyer'), self);
-  if (level === 'none') return { reply: null, reason: '이 방은 AI가 참여하지 않는 방입니다.' };
+  const level = levelOf(room.kind, list.some((m) => m.profiles?.role === 'lawyer'), list.some((m) => m.profiles?.role === 'client'));
+  if (level === 'none') return { reply: null, reason: '의뢰인이 함께 있는 방에서는 AI가 대화에 참여하지 않습니다.' };
   const pick = resolve(INSTANCE, ctx.env, 'tier:balanced');
   if (pick.provider === 'mock') return { reply: null, reason: 'AI 키가 아직 연결되지 않았습니다.' };
   const { data: rows } = await sb.from('messages').select('sender_id, sender_kind, text, kind, recalled, attachments').eq('room_id', roomId).order('created_at', { ascending: false }).limit(20);

@@ -17,14 +17,13 @@ import { chatTime, roomTitle, RoomRow } from '@/ui/room-row';
 import { family, font, MAX_WIDTH, radius, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 
-type RoomFilter = 'all' | 'one' | 'many' | 'case' | 'ai';
-const FILTERS: [RoomFilter, string][] = [['all', '전체'], ['one', '1:1'], ['many', '여러 명'], ['case', '사건수행'], ['ai', 'AI']];
+type RoomFilter = 'all' | 'one' | 'many' | 'case';
+const FILTERS: [RoomFilter, string][] = [['all', '전체'], ['one', '1:1'], ['many', '여러 명'], ['case', '사건수행']];
 const TEST: Record<RoomFilter, (r: Room) => boolean> = {
   all: () => true,
   one: (r) => r.memberIds.length <= 2 && r.kind !== 'meeting' && r.kind !== 'marketing',
   many: (r) => r.memberIds.length > 2,
-  case: (r) => r.mode === 'private' && (r.kind === 'case' || r.kind === 'consult'),
-  ai: (r) => r.mode === 'ai',
+  case: (r) => r.kind === 'case' || r.kind === 'consult',
 };
 
 type Tab = 'contacts' | 'rooms' | 'open' | 'clients';

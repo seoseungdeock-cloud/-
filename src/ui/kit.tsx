@@ -167,13 +167,15 @@ export function Badge({ label, tone = 'accent', fixed }: { label: string; tone?:
   );
 }
 
-/** 방의 방식 표시. 만들 때부터 운영 중까지 같은 모양으로 보입니다. */
+/** 사건수행방(의뢰인이 있는 방) 표시. AI 참여는 따로 표시하지 않습니다 (승덕 2026-10-22). */
 export function ModeBadge({ mode }: { mode: RoomMode }) {
-  return <Badge label={mode === 'private' ? '사건수행' : '✦ AI 참여 중'} tone={mode === 'private' ? 'secure' : 'ai'} />;
+  if (mode !== 'private') return null;
+  return <Badge label="사건수행" tone="secure" />;
 }
 
 export function ModeBanner({ mode }: { mode: RoomMode }) {
   const c = useColors();
+  if (mode !== 'private') return null;
   const info = ROOM_MODE_INFO[mode];
   const [bg, fg] = mode === 'private' ? [c.secureSoft, c.secure] : [c.aiSoft, c.ai];
   return (

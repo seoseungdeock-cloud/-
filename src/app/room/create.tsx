@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 
-import { allowedModes, defaultMode, ROOM_KIND_LABEL, ROOM_MODE_INFO } from '@/core/rooms';
+import { defaultMode, ROOM_KIND_LABEL } from '@/core/rooms';
 import { actions } from '@/core/store';
 import type { RoomKind, RoomMode } from '@/core/types';
 import { Button, Chip, Chips, Input, Notice, Screen, Section } from '@/ui/kit';
@@ -18,7 +18,6 @@ export default function CreateRoomScreen() {
   const [members, setMembers] = useState<string[]>([]);
   const [error, setError] = useState<string>();
   const others = s.users.filter((u) => u.id !== user.id);
-  const modes = allowedModes(kind);
 
   const pickKind = (k: RoomKind) => {
     setKind(k);
@@ -39,13 +38,6 @@ export default function CreateRoomScreen() {
         <Chips>
           {KINDS.map((k) => (
             <Chip key={k} label={ROOM_KIND_LABEL[k]} active={kind === k} onPress={() => pickKind(k)} />
-          ))}
-        </Chips>
-      </Section>
-      <Section title="방 방식">
-        <Chips>
-          {(['private', 'ai'] as RoomMode[]).map((m) => (
-            <Chip key={m} label={ROOM_MODE_INFO[m].label + (modes.includes(m) ? '' : ' (불가)')} active={mode === m} onPress={() => modes.includes(m) && setMode(m)} />
           ))}
         </Chips>
       </Section>

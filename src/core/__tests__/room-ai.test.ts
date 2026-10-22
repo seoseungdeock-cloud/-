@@ -1,11 +1,12 @@
 import { finishRoomAi, levelOf, ROOM_AI_REFUSAL, roomAiInput, roomAiSystem } from '../room-ai';
 
 describe('대화방 @AI', () => {
-  it('사건수행방은 AI가 참여하지 않는다', () => {
-    expect(levelOf('private', 'case', true)).toBe('none');
-    expect(levelOf('ai', 'case', true)).toBe('lawyer-assist');
-    expect(levelOf('ai', 'group', false)).toBe('general-info');
-    expect(levelOf('ai', 'office', false)).toBe('work');
+  it('의뢰인이 있는 방만 AI가 참여하지 않는다', () => {
+    expect(levelOf('case', true, true)).toBe('none');
+    expect(levelOf('group', false, true)).toBe('none');
+    expect(levelOf('direct', true, false)).toBe('lawyer-assist');
+    expect(levelOf('group', false, false)).toBe('work');
+    expect(levelOf('office', true, false)).toBe('work');
   });
 
   it('범위 밖 질문은 정해진 문장으로 거절한다', () => {
@@ -34,10 +35,9 @@ describe('대화방 @AI', () => {
 });
 
 describe('나와의 메시지 @AI', () => {
-  it('나만 있는 방은 AI를 부를 수 있다', () => {
-    expect(levelOf('private', 'group', false, { firm: true })).toBe('lawyer-assist');
-    expect(levelOf('private', 'group', false, { firm: false })).toBe('general-info');
-    expect(levelOf('private', 'group', false)).toBe('none');
+  it('로펌 구성원의 나와의 메시지는 AI를 부를 수 있고, 의뢰인은 안 된다', () => {
+    expect(levelOf('group', true, false)).toBe('lawyer-assist');
+    expect(levelOf('group', false, true)).toBe('none');
   });
 });
 

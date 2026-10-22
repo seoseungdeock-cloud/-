@@ -7,7 +7,7 @@ import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, V
 
 import { clientCanSee, dayKey, displayName, firstOfDay, lastReadAt, mentionQuery, messageDays, notifyLevel, searchMessages, visibleMessages } from '@/core/messenger';
 import { isSelfRoom } from '@/core/calendar';
-import { aiCanJoin, ROOM_KIND_LABEL } from '@/core/rooms';
+import { aiAnswerLevel, ROOM_KIND_LABEL } from '@/core/rooms';
 import { contactsFor } from '@/core/contacts';
 import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Attachment, type Message, type User } from '@/core/types';
@@ -213,6 +213,8 @@ export default function RoomScreen() {
   const myRooms = s.rooms.filter((r) => r.memberIds.includes(user.id) && r.id !== room.id);
   const shareable = contactsFor(user, s);
 
+  // 의뢰인이 있는 방만 '사건수행' (AI 미참여) 표시
+  const caseMode = room.memberIds.some((id) => s.users.find((u) => u.id === id)?.role === 'client') ? 'private' : 'ai';
   const header = (
     <View style={{ gap: space.sm, marginBottom: space.md }}>
       {isSelfRoom(room, user.id) ? (
@@ -220,10 +222,10 @@ export default function RoomScreen() {
       ) : (
         <>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-            <ModeBadge mode={room.mode} />
+            <ModeBadge mode={caseMode} />
             <Sub>{ROOM_KIND_LABEL[room.kind]}</Sub>
           </View>
-          <ModeBanner mode={room.mode} />
+          <ModeBanner mode={caseMode} />
         </>
       )}
       {room.kind === 'case' ? <CasePanel room={room} canEdit={user.role !== 'client'} /> : null}
@@ -276,12 +278,15 @@ export default function RoomScreen() {
         {search !== undefined ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm, backgroundColor: c.surface, borderRadius: radius.lg, paddingHorizontal: space.md }}>
             <Icon name="search" color={c.faint} size={18} />
-            <TextInput autoFocus value={search} onChangeText={setSearch} placeholder="대화내용 검색" placeholderTextColor={c.faint} style={{ flex: 1, paddingVertical: space.sm + 2, color: c.text, fontSize: font.body, ...family.regular }} />
+            <TextInput autoFocus value={search} onChangeText={setSearch} placeholder="대화내용 검색" placeholderTextColor={c.faint} style={{ flex: 1, minWidth: 0, paddingVertical: space.sm + 2, color: c.text, fontSize: font.body, ...family.regular, outlineStyle: 'none' } as object} />
             {search ? (
               <Pressable accessibilityLabel="검색어 지우기" hitSlop={8} onPress={() => setSearch('')}>
                 <Icon name="close" color={c.faint} size={16} />
               </Pressable>
             ) : null}
+            <Pressable accessibilityLabel="날짜로 찾기" hitSlop={8} onPress={() => setCalendar(true)} style={{ paddingVertical: space.sm, paddingLeft: space.xs }}>
+              <Icon name="calendar" color={c.sub} size={20} />
+            </Pressable>
           </View>
         ) : (
           <NoticeBar room={room} me={user} users={s.users} onJump={jump} />
@@ -337,9 +342,7 @@ export default function RoomScreen() {
         ) : null}
         {search !== undefined ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm, borderTopWidth: 1, borderTopColor: c.line }}>
-            <Pressable accessibilityLabel="날짜로 찾기" hitSlop={8} onPress={() => setCalendar(true)} style={{ padding: space.sm }}>
-              <Icon name="calendar" color={c.text} size={24} />
-            </Pressable>
+            <View style={{ width: 40 }} />
             <Text style={{ flex: 1, textAlign: 'center', ...family.bold, fontSize: 16, color: c.text }}>
               {query ? (hits.length ? `${hits.length - cursor}/${hits.length}` : '결과 없음') : ''}
             </Text>
@@ -407,7 +410,7 @@ export default function RoomScreen() {
               <TextInput
                 value={text}
                 onChangeText={setText}
-                placeholder={aiCanJoin(room) ? '메시지 입력 · @AI 도움말' : '메시지 입력'}
+                placeholder={aiAnswerLevel(room, room.memberIds.map((id) => s.users.find((u) => u.id === id)).filter((u): u is User => !!u)) !== 'none' ? '메시지 입력 · @AI 도움말' : '메시지 입력'}
                 placeholderTextColor={c.faint}
                 multiline
                 onSubmitEditing={send}

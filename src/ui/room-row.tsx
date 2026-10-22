@@ -68,7 +68,7 @@ export function RoomRow({ room, selecting, selected, onToggle }: { room: Room; s
             <Text numberOfLines={mentioned ? 1 : 2} style={{ ...family.regular, fontSize: 13, lineHeight: 18, color: c.sub }}>{previewText(last, s.users)}</Text>
             {mentioned ? <Text style={{ ...family.semibold, fontSize: 12, color: c.accent }}>멘션되었습니다.</Text> : null}
           </View>
-          {room.mode === 'ai' || room.kind === 'case' ? <ModeBadge mode={room.mode} /> : null}
+          {room.kind === 'case' ? <ModeBadge mode="private" /> : null}
           {unread ? (
             <View style={{ minWidth: 18, height: 18, borderRadius: 9, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
               <Text style={{ color: '#FFFFFF', ...family.bold, fontSize: 11 }}>{unread > 99 ? '99+' : unread}</Text>

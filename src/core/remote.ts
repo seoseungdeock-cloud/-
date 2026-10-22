@@ -455,7 +455,6 @@ export function remoteOps(sb: SupabaseClient) {
     setMaster: (roomId: string, u: string, on: boolean) => rpc(sb, 'set_master', { p_room: roomId, p_user: u, p_on: on }),
     leaveRoom: (roomId: string) => rpc(sb, 'leave_room', { p_room: roomId }),
     renameRoom: (roomId: string, title: string) => rpc(sb, 'rename_room', { p_room: roomId, p_title: title }),
-    setRoomAi: (roomId: string, on: boolean) => rpc(sb, 'set_room_ai', { p_room: roomId, p_on: on }),
     markRead: (roomId: string) => rpc(sb, 'mark_read', { p_room: roomId }),
     setPinned: (roomId: string, on: boolean) => memberRow(roomId, { pinned: on }),
     setNotify: (roomId: string, level: string) => memberRow(roomId, { notify: level }),

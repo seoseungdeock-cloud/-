@@ -15,14 +15,13 @@ export function selfRoomLike(kind: string, memberCount: number, title: string): 
 }
 
 /**
- * 방의 AI 답변 수준: 사건수행방은 참여 안 함, 변호사 없는 방은 일반 정보만.
- * 나와의 메시지는 다른 사람이 없으니 AI를 부를 수 있습니다 (로펌 구성원은 업무 보조, 의뢰인은 일반 정보).
+ * 방의 AI 답변 수준 (승덕 2026-10-22): 의뢰인이 들어 있는 방은 AI가 참여하지 않고,
+ * 그 밖의 방(로펌 구성원끼리, 나와의 메시지 포함)은 모두 자동으로 @AI를 부를 수 있습니다.
  */
-export function levelOf(mode: string, kind: string, hasLawyer: boolean, self?: { firm: boolean }): AiLevel {
-  if (self) return self.firm ? 'lawyer-assist' : 'general-info';
-  if (mode !== 'ai') return 'none';
+export function levelOf(kind: string, hasLawyer: boolean, hasClient: boolean): AiLevel {
+  if (hasClient) return 'none';
   if (kind === 'meeting' || kind === 'marketing' || kind === 'office') return 'work';
-  return hasLawyer ? 'lawyer-assist' : 'general-info';
+  return hasLawyer ? 'lawyer-assist' : 'work';
 }
 
 export function roomAiSystem(level: AiLevel): string {

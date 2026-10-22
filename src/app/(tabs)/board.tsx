@@ -2,10 +2,9 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
-import { authorView, BEST_MIN, BOARD_LABEL, BOARD_TAB, boardOf, boardsFor, canSeeBoard, canWriteBoard, needsField, pinNotices, unseenNotices, isBest as isBestPost, BOARD_SORT_LABEL, formatUntil, notesFor, restrictedUntil, searchPosts, sortPosts, timeAgo, unreadIn, type BoardSort } from '@/core/board';
+import { authorView, BEST_MIN, BOARD_LABEL, BOARD_TAB, boardOf, boardsFor, canSeeBoard, canWriteBoard, needsField, pinNotices, unseenNotices, isBest as isBestPost, BOARD_SORT_LABEL, formatUntil, notesFor, restrictedUntil, score, searchPosts, sortPosts, timeAgo, unreadIn, type BoardSort } from '@/core/board';
 import { actions } from '@/core/store';
 import home from '@/data/home.json';
-import { BoardAuthor, VoteBar } from '@/ui/board';
 import type { BoardKind, BoardPost } from '@/core/types';
 import { UnderlineTabs } from '@/ui/contacts';
 import { Icon } from '@/ui/icons';
@@ -93,22 +92,23 @@ export default function BoardScreen() {
       </ScrollView>
       ) : null}
       {posts.length ? (
-        posts.map((p) => (
-          <View key={p.id} style={{ flexDirection: 'row', gap: space.md, paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: c.line }}>
-            <VoteBar vertical votes={p.votes} userId={user.id} onVote={(v) => { actions.votePost(p.id, v); }} />
-            <Pressable style={{ flex: 1, gap: 4 }} onPress={() => router.push({ pathname: '/board/[id]', params: { id: p.id } })}>
-              <BoardAuthor v={authorView(user, p, p.authorId, s.users)} time={timeAgo(p.at)} />
-              <Text numberOfLines={2} style={{ ...family.bold, fontSize: 16, lineHeight: 22, color: c.text }}>{p.title}</Text>
-              <View style={{ flexDirection: 'row', gap: space.xs }}>
-                {p.notice ? <Badge label="공지" /> : null}
-                {sort !== 'best' && isBestPost(p) ? <Badge label="베스트" tone="warn" /> : null}
-                {p.field ? <Badge label={p.field} tone="plain" /> : null}
+        posts.map((p) => {
+          const liked = score(p.votes) > 0;
+          const who = authorView(user, p, p.authorId, s.users);
+          return (
+            // DC인사이드 목록처럼: 제목만, 댓글 수는 색을 달리, 추천받은 글은 앞에 별. 추천은 글 안에서만.
+            <Pressable key={p.id} onPress={() => router.push({ pathname: '/board/[id]', params: { id: p.id } })} style={({ pressed }) => ({ paddingVertical: space.sm + 2, borderBottomWidth: 1, borderBottomColor: c.line, gap: 3, opacity: pressed ? 0.6 : 1 })}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {p.notice ? <Badge label="공지" /> : liked ? <Icon name="star" color={c.accent} size={16} /> : <Icon name="board" color={c.faint} size={16} />}
+                <Text numberOfLines={1} style={{ flexShrink: 1, ...family.semibold, fontSize: 15, color: c.text }}>{p.title}</Text>
+                {p.comments.length ? <Text style={{ ...family.bold, fontSize: 13, color: c.accent }}>[{p.comments.length}]</Text> : null}
               </View>
-              <Text numberOfLines={2} style={{ ...family.regular, fontSize: 14, lineHeight: 20, color: c.sub }}>{p.body}</Text>
-              <Text style={{ ...family.semibold, fontSize: 13, color: c.faint }}>댓글 {p.comments.length}</Text>
+              <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.faint, paddingLeft: 22 }}>
+                {[who.real ? `${who.alias} (${who.real})` : who.alias, timeAgo(p.at), p.field, `추천 ${score(p.votes)}`, sort !== 'best' && isBestPost(p) ? '베스트' : ''].filter(Boolean).join(' · ')}
+              </Text>
             </Pressable>
-          </View>
-        ))
+          );
+        })
       ) : (
         <Empty text={q ? '검색 결과가 없습니다.' : sort === 'best' ? `추천 ${BEST_MIN}개 이상인 글이 아직 없습니다.` : '아직 글이 없습니다.'} />
       )}
