@@ -19,7 +19,8 @@ export function selfRoomLike(kind: string, memberCount: number, title: string): 
  * 그 밖의 방(로펌 구성원끼리, 나와의 메시지 포함)은 모두 자동으로 @AI를 부를 수 있습니다.
  */
 export function levelOf(kind: string, hasLawyer: boolean, hasClient: boolean): AiLevel {
-  if (hasClient) return 'none';
+  // 사건방·상담방은 의뢰인이 들어오는 방이라, 의뢰인이 아직 없어도 AI가 참여하지 않습니다
+  if (hasClient || kind === 'case' || kind === 'consult') return 'none';
   if (kind === 'meeting' || kind === 'marketing' || kind === 'office') return 'work';
   return hasLawyer ? 'lawyer-assist' : 'work';
 }

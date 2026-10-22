@@ -3,6 +3,7 @@ import { finishRoomAi, levelOf, ROOM_AI_REFUSAL, roomAiInput, roomAiSystem } fro
 describe('대화방 @AI', () => {
   it('의뢰인이 있는 방만 AI가 참여하지 않는다', () => {
     expect(levelOf('case', true, true)).toBe('none');
+    expect(levelOf('case', true, false)).toBe('none');
     expect(levelOf('group', false, true)).toBe('none');
     expect(levelOf('direct', true, false)).toBe('lawyer-assist');
     expect(levelOf('group', false, false)).toBe('work');
