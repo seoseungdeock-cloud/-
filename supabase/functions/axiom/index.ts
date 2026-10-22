@@ -199,7 +199,7 @@ type Att = { id?: string; name?: string; mime?: string; path?: string; size?: nu
 /** 이 방의 (회수되지 않은) 메시지에 붙은 파일인지 확인하고 그 첨부 정보를 돌려줍니다 */
 async function roomFile(sb: SupabaseClient, roomId: string, path: string): Promise<Att | null> {
   if (!path.startsWith(`${roomId}/`) || path.length > 300) return null;
-  const { data } = await sb.from('messages').select('attachments').eq('room_id', roomId).eq('recalled', false).contains('attachments', [{ path }]).limit(1);
+  const { data } = await sb.from('messages').select('attachments').eq('room_id', roomId).eq('recalled', false).contains('attachments', JSON.stringify([{ path }])).limit(1);
   const row = (data?.[0] as { attachments: Att[] } | undefined) ?? null;
   return row?.attachments.find((a) => a.path === path) ?? null;
 }
