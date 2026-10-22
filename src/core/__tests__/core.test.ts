@@ -1221,17 +1221,21 @@ describe('대화방 이름 바꾸기', () => {
     expect(actions.renameRoom(room.id, '가'.repeat(31)).ok).toBe(false);
   });
 
-  it('배당 안내: 어드민만 사건방에 봇 카드로 올림', async () => {
+  it('배당 안내: 어드민만 사건방에 봇 카드로 올리고 의뢰인에게는 보이지 않음', async () => {
+    const draft = { reassign: false, fields: [{ label: '부장변호사 겸 주수행 변호사', value: '김부장' }] };
     as('lawyer');
-    expect((await actions.postAssignNotices([{ roomId: 'r_case1', entry: { row: 1, section: '', reassign: false, client: '', caseName: '사기', lawyers: ['김부장'], removed: [], added: [] } }])).ok).toBe(0);
+    expect((await actions.postAssignNotices([{ roomId: 'r_case1', draft }])).ok).toBe(0);
     as('admin');
     const refs = await actions.assignRooms();
     expect(refs.some((r) => r.id === 'r_case1' && r.clients.length > 0)).toBe(true);
-    const r = await actions.postAssignNotices([{ roomId: 'r_case1', entry: { row: 1, section: '', reassign: false, client: '', caseName: '사기', lawyers: ['김부장'], removed: [], added: [] } }]);
+    const r = await actions.postAssignNotices([{ roomId: 'r_case1', draft }]);
     expect(r).toEqual({ ok: 1, failed: [] });
     const m = getState().messages.filter((x) => x.roomId === 'r_case1').pop()!;
     expect(m.kind).toBe('bot');
-    expect(m.text).toBe('[배당 안내] 사기\n담당 변호사: 김부장');
+    expect(m.text.startsWith('[배당 안내]\n\n* 부장변호사 겸 주수행 변호사 : 김부장\n')).toBe(true);
+    const clients = getState().users.filter((u) => u.role === 'client' && getState().rooms.find((x) => x.id === 'r_case1')!.memberIds.includes(u.id));
+    expect(clients.length).toBeGreaterThan(0);
+    expect(clients.every((u) => m.deletedFor?.includes(u.id))).toBe(true);
   });
 
   it('방 사진도 마스터만 바꾸고 지울 수 있음', () => {

@@ -17,9 +17,17 @@ export type AssignEntry = {
   court?: string;
   /** 담당 변호사 (부장·평·추가 순) */
   lawyers: string[];
+  /** 부장변호사 (담당변호사 첫 칸) */
+  chief: string;
+  /** 평변호사 (둘째·셋째 칸, 빠진 사람 제외) */
+  associates: string[];
+  /** 전문인력 칸 */
+  staff?: string;
   /** 재배당에서 빠진·들어온 변호사 ('OOO 삭제', 'OOO 추가') */
   removed: string[];
   added: string[];
+  /** 바뀐 자리 (부장 칸이 바뀌었으면 'chief') */
+  changed?: 'chief' | 'associate';
 };
 
 const clean = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim();
@@ -36,6 +44,7 @@ export function parseAssignSheet(table: unknown[][]): { entries: AssignEntry[]; 
   const iCase = at('사건명');
   const iCourt = at('관할');
   const iLawyer = at('담당변호사');
+  const iStaff = at('전문인력');
   // 담당변호사 칸은 부장·평변호사 두 칸 + 추가 한 칸 (제목은 첫 칸에만)
   const lawyerCols = iLawyer >= 0 ? [iLawyer, iLawyer + 1, iLawyer + 2].filter((i) => i < rows[head].length && (i === iLawyer || !rows[head][i])) : [];
   const entries: AssignEntry[] = [];
@@ -53,17 +62,28 @@ export function parseAssignSheet(table: unknown[][]): { entries: AssignEntry[]; 
     const lawyers: string[] = [];
     const removed: string[] = [];
     const added: string[] = [];
-    for (const i of lawyerCols) {
+    let chief = '';
+    const associates: string[] = [];
+    let changed: AssignEntry['changed'];
+    lawyerCols.forEach((i, n) => {
       const v = r[i] ?? '';
-      if (blank(v)) continue;
+      if (blank(v)) return;
       const m = v.match(/^(.+?)\s*(삭제|추가)$/);
-      if (m) (m[2] === '삭제' ? removed : added).push(m[1].trim());
-      else lawyers.push(v);
-    }
+      const name = m ? m[1].trim() : v;
+      if (m) {
+        (m[2] === '삭제' ? removed : added).push(name);
+        changed = changed === 'chief' || n === 0 ? 'chief' : 'associate';
+        if (m[2] === '삭제') return;
+      } else lawyers.push(v);
+      if (n === 0) chief = name;
+      else if (!associates.includes(name)) associates.push(name);
+    });
+    const staff = iStaff >= 0 && !blank(r[iStaff] ?? '') ? r[iStaff] : '';
     entries.push({
       row: head + 2 + k, section, reassign: /재배당/.test(section) || removed.length > 0 || added.length > 0, client, caseName,
       ...(iCourt >= 0 && !blank(r[iCourt] ?? '') ? { court: r[iCourt] } : {}),
-      lawyers: [...lawyers, ...added.filter((a) => !lawyers.includes(a))], removed, added,
+      lawyers: [...lawyers, ...added.filter((a) => !lawyers.includes(a))], chief, associates, ...(staff ? { staff } : {}), removed, added,
+      ...(changed ? { changed } : {}),
     });
   });
   if (!entries.length) return { entries, error: '배당 줄을 찾지 못했습니다.' };
@@ -90,26 +110,86 @@ export function matchAssignments(entries: AssignEntry[], rooms: CaseRoomRef[]): 
   });
 }
 
+// ── 안내 글 (승덕님 양식 2026-10-22) ──
+// 사건방에는 의뢰인도 있지만 이 안내는 변호사·직원에게만 보입니다(서버에서 의뢰인에게는 내려가지 않음).
+
 export const ASSIGN_HEAD = '[배당 안내]';
-export const REASSIGN_HEAD = '[재배당 안내]';
+const HEAD_RE = /^\[(?:(\d{1,2}월 \d{1,2}일) )?(재)?배당 안내\]$/;
 
-/** 방에 올라가는 글 (푸시·목록 미리보기에도 이 글이 보입니다). 카드는 이 글을 읽어 그립니다. */
-export function assignText(e: AssignEntry): string {
-  const L = [`${e.reassign ? REASSIGN_HEAD : ASSIGN_HEAD} ${e.caseName}`];
-  if (e.court) L.push(`관할: ${e.court}`);
-  if (e.lawyers.length) L.push(`담당 변호사: ${e.lawyers.join(', ')}`);
-  if (e.removed.length || e.added.length) L.push(`변경: ${[...e.removed.map((x) => `${x} 제외`), ...e.added.map((x) => `${x} 추가`)].join(', ')}`);
-  return L.join('\n');
+/** 백오피스에서 올리기 전에 고칠 수 있는 칸 (빈 칸도 양식대로 남김) */
+export type AssignDraft = { reassign: boolean; date?: string; fields: { label: string; value: string }[] };
+
+export const ASSIGN_LABELS = ['부장변호사 겸 주수행 변호사', '평변호사', '재판변호사', '총괄변호사', '상담 변호사', '상담실장'] as const;
+export const REASSIGN_LABELS = ['재배당 포지션', '재배당 사유', '부장변호사', '평변호사', '전문인력/실장'] as const;
+
+const ASSIGN_BODY = [
+  '주수행 변호사(부장변호사)는 사건처리의 모든 책임과 권한을 가집니다. 주수행 변호사(부장변호사)는 사건을 직접 수행하거나 수행변호사에게 업무를 위임하여 진행할 수 있습니다.',
+  '주수행 변호사님께서는 의뢰인께 배당인사 진행 부탁드리며, 담당 사무원님께서는 체크리스트 작성하시어 업로드 부탁드립니다.',
+];
+const REASSIGN_BODY = [
+  '1. 재배당 인수인계 관련 안내\n재배당 전 담당변호사님께서는 즉시 퇴장하지 마시고, 재배당 받은 변호사님께 사건 관련 주의사항 및 특이사항 등을 충분히 안내하신 후, 인계가 완료된 시점에 퇴장하여 주시기 바랍니다.',
+  '2. 의뢰인 안내 및 소통\n재배당 받은 부장변호사님께서는 의뢰인에게 담당변호사 변경 사실을 직접 안내하여 주시기 바라며, 부장변호사님 담당 법률사무원께서는 의뢰인에게 부장변호사님의 직통 연락처(휴대폰 번호)를 안내하여 주시기 바랍니다.',
+  '3. 재배당 체크리스트 등록 (필수)\n재배당 받은 부장변호사님께서는 재배당일 기준 3영업일 이내, 대륜탑 해당 사건의 사건진행종합에 ‘재배당 체크리스트’를 반드시 등록하여 주시기 바랍니다.\n(경로: 대륜탑 → 사건 → 사건진행종합)',
+  '※ 본 사항은 본사 필수 지침으로, 미이행 시 관리 대상이 될 수 있으니 반드시 기한 내 등록 부탁드립니다.',
+  '감사합니다.',
+];
+
+/** 이름 뒤에 '변호사'를 붙임 (이미 붙어 있거나 X·빈 칸이면 그대로) */
+export const lawyerName = (s: string) => (!s || s === 'X' || /변호사/.test(s) ? s : `${s} 변호사`);
+
+/** 날짜 줄 '9.1 재배당' → '9월 1일' (없으면 오늘) */
+export function assignDate(section: string, now = new Date()): string {
+  const m = section.match(/(\d{1,2})\s*[./]\s*(\d{1,2})/);
+  return m ? `${Number(m[1])}월 ${Number(m[2])}일` : `${now.getMonth() + 1}월 ${now.getDate()}일`;
 }
 
-export type AssignNotice = { reassign: boolean; caseName: string; fields: { label: string; value: string }[] };
+/** 배당표 한 줄 → 양식 칸 (배당표에 없는 칸은 비워 둠) */
+export function assignDraft(e: AssignEntry, now = new Date()): AssignDraft {
+  const assoc = e.associates.join(', ');
+  if (!e.reassign) {
+    const v = [e.chief, assoc, '', '', '', ''];
+    return { reassign: false, fields: ASSIGN_LABELS.map((label, i) => ({ label, value: v[i] })) };
+  }
+  const pos = e.changed === 'chief' ? '부장 변호사' : '평 변호사';
+  const op = e.added.length && e.removed.length ? '변경' : e.added.length ? '추가' : e.removed.length ? '제외' : '변경';
+  const v = [pos, `${pos} ${op}`, lawyerName(e.chief), e.associates.map(lawyerName).join(', '), e.staff ?? 'X'];
+  return { reassign: true, date: assignDate(e.section, now), fields: REASSIGN_LABELS.map((label, i) => ({ label, value: v[i] })) };
+}
 
-/** 방의 봇 메시지가 배당 안내면 카드 내용으로 */
+/** 방에 올라가는 전체 글 (자세히 보기·푸시·검색에 쓰임). 말풍선은 이 글을 읽어 간략히 그립니다. */
+export function assignText(d: AssignDraft): string {
+  const val = (l: string) => d.fields.find((f) => f.label === l)?.value.trim() ?? '';
+  if (!d.reassign) {
+    const L = ['[배당 안내]', ''];
+    for (const l of ASSIGN_LABELS.slice(0, 4)) L.push(`* ${l} : ${val(l)}`);
+    if (val('상담 변호사') || val('상담실장')) L.push('', `(상담 변호사 : ${val('상담 변호사')} 상담실장 : ${val('상담실장')})`);
+    return [...L, '', ASSIGN_BODY.join('\n\n')].join('\n');
+  }
+  const L = [`[${d.date ? `${d.date} ` : ''}재배당 안내]`, ''];
+  for (const l of REASSIGN_LABELS) L.push(`- ${l} : ${val(l)}`);
+  return [...L, '', REASSIGN_BODY.join('\n\n')].join('\n');
+}
+
+export type AssignNotice = {
+  reassign: boolean;
+  /** 말풍선 둘째 줄 ('[배당 안내]', '[6월 18일 재배당 안내]') */
+  head: string;
+  chief: string;
+  associate: string;
+  fields: { label: string; value: string }[];
+  full: string;
+};
+
+/** 방의 봇 메시지가 배당 안내면 말풍선 내용으로 */
 export function parseAssignText(text: string): AssignNotice | null {
-  const [first, ...rest] = text.split('\n');
-  const reassign = first.startsWith(REASSIGN_HEAD);
-  if (!reassign && !first.startsWith(ASSIGN_HEAD)) return null;
-  const caseName = first.slice((reassign ? REASSIGN_HEAD : ASSIGN_HEAD).length).trim();
-  const fields = rest.map((l) => l.match(/^([^:]+):\s*(.*)$/)).filter((m): m is RegExpMatchArray => !!m).map((m) => ({ label: m[1].trim(), value: m[2].trim() }));
-  return { reassign, caseName, fields };
+  const lines = text.split('\n');
+  const m = lines[0].trim().match(HEAD_RE);
+  if (!m) return null;
+  const fields = lines
+    .map((l) => l.match(/^[*-]\s*(.+?)\s*:\s*(.*)$/))
+    .filter((x): x is RegExpMatchArray => !!x)
+    .map((x) => ({ label: x[1].trim(), value: x[2].trim() }));
+  const find = (re: RegExp) => fields.find((f) => re.test(f.label.replace(/\s/g, '')))?.value ?? '';
+  return { reassign: !!m[2], head: lines[0].trim(), chief: find(/^부장변호사/), associate: find(/^평변호사$/), fields, full: text };
 }
+

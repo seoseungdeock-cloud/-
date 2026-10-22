@@ -6,7 +6,7 @@ import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, Text, 
 import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
 import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Attachment, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
-import { parseAssignText, type AssignNotice } from '@/core/assign';
+import { lawyerName, parseAssignText, type AssignNotice } from '@/core/assign';
 import { aiAnswerLevel } from '@/core/rooms';
 import { Icon, type IconName } from './icons';
 import { HearingCard } from './hearing';
@@ -185,9 +185,9 @@ export function Bubble({
             style={{
               flexShrink: 1,
               width: m.bundle ? 250 : undefined,
-              backgroundColor: bare ? 'transparent' : card ? c.bg : mine ? c.bubbleMine : isAi ? c.aiSoft : isBot ? c.accentSoft : c.bubbleOther,
-              borderWidth: current ? 2 : card ? 1 : 0,
-              borderColor: current ? c.mark : c.line,
+              backgroundColor: bare ? 'transparent' : assign ? c.surface : card ? c.bg : mine ? c.bubbleMine : isAi ? c.aiSoft : isBot ? c.accentSoft : c.bubbleOther,
+              borderWidth: current || assign ? 2 : card ? 1 : 0,
+              borderColor: current ? c.mark : assign ? c.accent : c.line,
               borderRadius: radius.lg,
               paddingHorizontal: bare ? 0 : space.md,
               paddingVertical: bare ? 0 : space.sm + 2,
@@ -1007,27 +1007,38 @@ function RoomCouncils({ room, me, members, onOpen }: { room: Room; me: User; mem
   );
 }
 
-/** 배당·재배당 안내: 일반 대화와 다른 공문 모양 카드 */
+/** 배당·재배당 안내: 일반 대화와 다른 간략 말풍선 + '자세히 보기'로 전체 글 */
 function AssignCard({ notice }: { notice: AssignNotice }) {
   const c = useColors();
+  const [open, setOpen] = useState(false);
+  const who = [notice.chief && `부장 및 주수행 : ${lawyerName(notice.chief)}`, notice.associate && `평 변호사 : ${lawyerName(notice.associate)}`].filter(Boolean).join(' / ');
   return (
     <View style={{ width: 250, gap: 6 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.accent, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 }}>
-          <Icon name="case" color="#FFFFFF" size={12} />
-          <Text style={{ ...family.bold, fontSize: 11, color: '#FFFFFF' }}>{notice.reassign ? '재배당 안내' : '배당 안내'}</Text>
-        </View>
-      </View>
-      <Text style={{ ...family.bold, fontSize: 15, color: c.text }}>{notice.caseName}</Text>
-      <View style={{ borderTopWidth: 1, borderTopColor: c.line, paddingTop: 6, gap: 4 }}>
-        {notice.fields.map((f) => (
-          <View key={f.label} style={{ flexDirection: 'row', gap: space.sm }}>
-            <Text style={{ width: 70, ...family.regular, fontSize: 12, color: c.sub }}>{f.label}</Text>
-            <Text style={{ flex: 1, ...family.semibold, fontSize: 13, color: f.label === '변경' ? c.accent : c.text }}>{f.value}</Text>
-          </View>
-        ))}
-      </View>
-      <Text style={{ ...family.regular, fontSize: 11, color: c.faint }}>법무법인(유한) 대륜</Text>
+      <Text style={{ ...family.semibold, fontSize: 12, color: c.sub }}>{notice.reassign ? '재배당 안내' : '배당 안내'}</Text>
+      {who ? <Text style={{ ...family.bold, fontSize: 15, lineHeight: 21, color: c.text }}>{who}</Text> : null}
+      <Text style={{ ...family.regular, fontSize: 13, color: c.sub }}>{notice.head}</Text>
+      <Pressable
+        accessibilityLabel="배당 안내 자세히 보기"
+        onPress={() => setOpen(true)}
+        style={({ pressed }) => ({ alignItems: 'center', marginTop: 4, paddingVertical: space.sm, borderRadius: radius.sm, backgroundColor: c.bg, opacity: pressed ? 0.6 : 1 })}>
+        <Text style={{ ...family.semibold, fontSize: 14, color: c.accent }}>자세히 보기</Text>
+      </Pressable>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable accessibilityLabel="닫기" onPress={() => setOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: space.lg }}>
+          <Pressable onPress={() => undefined} style={{ backgroundColor: c.bg, borderRadius: radius.lg, width: '100%', maxWidth: 520, maxHeight: '85%', alignSelf: 'center', overflow: 'hidden' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: c.line }}>
+              <Text style={{ flex: 1, ...family.bold, fontSize: 16, color: c.text }}>{notice.reassign ? '재배당 안내' : '배당 안내'}</Text>
+              <Pressable accessibilityLabel="닫기" onPress={() => setOpen(false)} hitSlop={8}>
+                <Icon name="close" color={c.sub} size={20} />
+              </Pressable>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: space.lg }}>
+              <Text selectable style={{ ...family.regular, fontSize: 14, lineHeight: 22, color: c.text }}>{notice.full}</Text>
+              <Text style={{ ...family.regular, fontSize: 11, color: c.faint, marginTop: space.md }}>법무법인(유한) 대륜 · 의뢰인에게는 보이지 않는 안내입니다.</Text>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
