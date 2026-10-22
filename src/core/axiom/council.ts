@@ -112,6 +112,8 @@ export async function list(ctx: Ctx, user: AxUser) {
   }));
 }
 
+const NO_OBJECTIVE = '(따로 적지 않음: 회의록 내용으로 판단)';
+
 async function launch(ctx: Ctx, id: string, step: string) {
   const token = newId('t_');
   await ctx.db.update('councils', { eq: { id } }, { status: 'running', step, run_token: token, error: null, updated_at: now() });
@@ -122,8 +124,8 @@ export async function start(ctx: Ctx, user: AxUser, body: Row) {
   if (!['admin', 'lead'].includes(user.role)) throw new AxError(403, '경영위원회는 관리자·팀장이 열 수 있습니다.');
   const title = String(body.title || '').trim();
   if (!title) throw new AxError(400, '제목을 입력하세요.');
+  // 회사 상태·목적·방향성은 선택 (승덕 2026-10-22): 비우면 회의록만으로 판단합니다
   const objective = String(body.objective || '').trim();
-  if (objective.length < 10) throw new AxError(400, '회사의 상태·목적·방향성을 10자 이상 적어 주세요.');
   const vis = acl.normalize(body.visibility || ctx.inst.council?.default_visibility || 'org', ctx.inst);
   if (!acl.canSee(user, vis)) throw new AxError(403, '내가 볼 수 없는 공개 등급으로는 위원회를 열 수 없습니다. 공개 등급을 바꾸세요.');
 
@@ -189,6 +191,7 @@ export async function runStep(ctx: Ctx, id: string, step: string, token: string)
     }
   }
   const human_instructions = (c.interventions || []).map((i: Row) => i.text);
+  c.objective = c.objective || NO_OBJECTIVE;
   const limit = limiter(ctx.inst.models?.concurrency || 4);
   const mine = async () => {
     const s = await ctx.db.one('councils', { eq: { id } });
@@ -323,7 +326,7 @@ export async function runStep(ctx: Ctx, id: string, step: string, token: string)
 const won = (v: unknown) => (v == null ? '자료 부족' : Number(v).toLocaleString('ko-KR'));
 export function toMarkdown(ctx: Ctx, c: Row, res: Row, warnings: string[], chosen: Row | undefined): string {
   const L: string[] = [];
-  L.push(`# 경영위원회: ${c.title}`, '', `- 공개 등급: ${acl.label(c.visibility, ctx.inst)}`, `- 시작: ${String(c.created_at).slice(0, 16).replace('T', ' ')} (UTC)`, '', '## 회사의 상태·목적·방향성', c.objective, '');
+  L.push(`# 경영위원회: ${c.title}`, '', `- 공개 등급: ${acl.label(c.visibility, ctx.inst)}`, `- 시작: ${String(c.created_at).slice(0, 16).replace('T', ' ')} (UTC)`, '', '## 회사의 상태·목적·방향성', c.objective || NO_OBJECTIVE, '');
   if (c.interventions?.length) {
     L.push('## 사람의 지시');
     for (const i of c.interventions) L.push(`- ${i.user_name || ''}: ${i.text}`);

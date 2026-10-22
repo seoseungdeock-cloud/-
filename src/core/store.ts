@@ -1399,7 +1399,8 @@ export const actions = {
     if (patch.photo !== undefined) next.photo = patch.photo ?? undefined;
     if (patch.presence !== undefined) next.presence = patch.presence;
     set((s) => ({ users: s.users.map((x) => (x.id === u.id ? next : x)) }));
-    // 사진은 파일 저장소(4단계)가 붙으면 함께 올립니다.
+    // 사진은 서버 저장소에 올려 두고, 다시 불러올 때 임시 주소로 받습니다
+    if (patch.photo !== undefined && (patch.photo ?? undefined) !== u.photo) mirror((r) => r.setProfilePhoto(patch.photo ?? null));
     const keys = ['nickname', 'status', 'presence', 'phone', 'email', 'birthday'] as const;
     const patchRow = Object.fromEntries(keys.filter((k) => patch[k] !== undefined).map((k) => [k, next[k] ?? null]));
     if (Object.keys(patchRow).length) mirror((r) => r.updateProfile(patchRow));

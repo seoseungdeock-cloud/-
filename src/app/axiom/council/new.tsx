@@ -58,7 +58,7 @@ function Form({ inst }: { inst: R }) {
         ) : null}
         {!meetingId ? <Input multiline value={meetingText} onChangeText={setMeetingText} placeholder={'이름: 발언\n이름: 발언'} /> : null}
       </Section>
-      <Section title="회사 상태" right={inst.state_template ? <Button label="양식 넣기" kind="ghost" small onPress={() => setStateText(inst.state_template)} /> : null}>
+      <Section title="회사 상태 (선택)" right={inst.state_template ? <Button label="양식 넣기" kind="ghost" small onPress={() => setStateText(inst.state_template)} /> : null}>
         <Input multiline value={stateText} onChangeText={setStateText} placeholder={'항목,값,단위\n월 매출,12억,원'} />
         {preview?.metrics?.length ? (
           <View style={{ marginBottom: space.md }}>
@@ -70,7 +70,7 @@ function Form({ inst }: { inst: R }) {
           </View>
         ) : null}
       </Section>
-      <Section title="상태·목적·방향성">
+      <Section title="목적·방향성 (선택)">
         <Input multiline value={objective} onChangeText={setObjective} />
       </Section>
       <VisibilityPicker value={vis} onChange={setVis} teams={inst.teams} />

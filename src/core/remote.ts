@@ -100,6 +100,7 @@ export type Snapshot = {
 /** 로그인한 사람이 볼 수 있는 모든 데이터를 받아 앱 상태 모양으로 바꿉니다. */
 export const ROOM_FILES = 'room-files';
 export const BOARD_FILES = 'board-files';
+export const PROFILE_PHOTOS = 'profile-photos';
 const signed = new Map<string, { url: string; until: number }>();
 
 /** 저장소 파일의 임시 주소 (6시간짜리를 받아 두고, 1시간 남으면 새로 받음) */
@@ -214,11 +215,12 @@ export async function loadAll(sb: SupabaseClient, meId: string, withMessages = t
   ]);
 
   // ---- 사람 ----
+  const photos = await signPaths(sb, PROFILE_PHOTOS, profiles.map((p) => p.photo_path).filter(Boolean));
   const users: User[] = profiles.map((p) => ({
     id: p.id, nickname: p.nickname, role: p.role, agentAccess: p.agent_access, membership: p.membership,
     officeId: opt(p.office_id), firm: opt(p.firm), title: opt(p.title), dept: opt(p.dept), branch: opt(p.branch),
     phone: opt(p.phone), email: opt(p.email), birthday: opt(p.birthday), joinedAt: opt(p.joined_at),
-    status: opt(p.status), presence: p.presence, ...(p.super_admin ? { superAdmin: true } : {}), ...(p.is_executive ? { executive: true } : {}),
+    status: opt(p.status), presence: p.presence, ...(p.photo_path && photos.get(p.photo_path) ? { photo: photos.get(p.photo_path) } : {}), ...(p.super_admin ? { superAdmin: true } : {}), ...(p.is_executive ? { executive: true } : {}),
   }));
   const accounts: Account[] = profiles.map((p) => ({
     userId: p.id, loginId: p.login_id, password: '', active: p.active, createdAt: p.created_at, lastLoginAt: opt(p.last_login_at),
@@ -419,6 +421,22 @@ export function remoteOps(sb: SupabaseClient) {
     setTitles: (ids: string[], title: string) => rpc(sb, 'admin_set_titles', { p_users: ids, p_title: title }),
     setSuperAdmin: (u: string, on: boolean) => rpc(sb, 'admin_set_super_admin', { p_user: u, p_on: on }),
     updateProfile: async (patch: Row) => check(sb.from('profiles').update(patch).eq('id', await me())),
+    /** 프로필 사진: '내 id/새 id.확장자'로 올리고 예전 사진은 지웁니다. uri가 없으면 사진 삭제. */
+    setProfilePhoto: async (uri: string | null) => {
+      const uid = await me();
+      const { data: old } = await sb.storage.from(PROFILE_PHOTOS).list(uid);
+      let path: string | null = null;
+      if (uri) {
+        const blob = await (await fetch(uri)).blob();
+        const type = /^image\/(jpeg|png|webp|gif)$/.test(blob.type) ? blob.type : 'image/jpeg';
+        path = `${uid}/${Date.now().toString(36)}.${type === 'image/jpeg' ? 'jpg' : type.slice(6)}`;
+        const { error } = await sb.storage.from(PROFILE_PHOTOS).upload(path, await blob.arrayBuffer(), { contentType: type });
+        if (error) throw new Error(/exceeded|too large|size/i.test(error.message) ? '프로필 사진은 5MB까지 올릴 수 있습니다.' : '프로필 사진을 올리지 못했습니다.');
+      }
+      await check(sb.from('profiles').update({ photo_path: path }).eq('id', uid));
+      const stale = (old ?? []).map((f) => `${uid}/${f.name}`).filter((p) => p !== path);
+      if (stale.length) await sb.storage.from(PROFILE_PHOTOS).remove(stale);
+    },
     toggleFavorite: async (target: string, on: boolean) => {
       const uid = await me();
       if (on) await check(sb.from('favorites').insert({ user_id: uid, target_id: target }));
