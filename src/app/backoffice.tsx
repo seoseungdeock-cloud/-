@@ -10,6 +10,7 @@ import type { Role } from '@/core/types';
 import { Badge, Button, Card, Chip, Chips, Empty, Input, Notice, Screen, Section, Sub, T } from '@/ui/kit';
 import { Icon } from '@/ui/icons';
 import { family, space, useColors } from '@/ui/theme';
+import { AssignSection } from '@/ui/assign-panel';
 import { DaeryuntopSection } from '@/ui/daeryuntop-panel';
 import { LimitTestSection } from '@/ui/limit-test-panel';
 import { useFrameWidth } from '@/ui/web-frame';
@@ -30,6 +31,7 @@ const MENU: { key: string; label: string; sub: (s: AppState) => string; superOnl
   { key: 'titles', label: '직책 일괄 지정', sub: () => '여러 명의 직책을 한 번에' },
   { key: 'limits', label: '불변기간 알림', sub: () => '사건별 알림 켜기·끄기' },
   { key: 'limitTest', label: '불변기간 알림 시험', sub: () => '가짜 사건으로 알림 미리 받아 보기', superOnly: true },
+  { key: 'assign', label: '배당 안내', sub: () => '배당표 엑셀 → 사건방에 배당·재배당 안내' },
   { key: 'daeryuntop', label: '대륜탑 연동', sub: () => '사건번호 연결, 사건 목록 엑셀 올리기' },
 ];
 
@@ -188,6 +190,7 @@ export default function BackofficeScreen() {
         </>
       ) : null}
 
+      {sec === 'assign' ? <AssignSection report={report} /> : null}
       {sec === 'daeryuntop' ? <DaeryuntopSection report={report} /> : null}
       {sec === 'limitTest' ? <LimitTestSection report={report} /> : null}
 

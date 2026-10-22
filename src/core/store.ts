@@ -9,6 +9,7 @@ import { similarity } from './text';
 import type { DecisionRecord } from './knowledge';
 import { opinionFor } from './knowledge';
 import { titleFrom, type ProgramRequest } from './builder';
+import { assignText, caseRoomRefs, type AssignEntry, type CaseRoomRef } from './assign';
 import { newId, nowIso, useServerIds } from './ids';
 import { loadAll, loadMessagesSince, messagesFromRows, remoteOps, type Remote } from './remote';
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
@@ -1862,6 +1863,37 @@ export const actions = {
   },
 
   /** 관리자어드민: 대륜탑 기일 여러 줄 받기 (엑셀 올리기). 서버가 있으면 서버가 처리하고 다시 불러옵니다. */
+  /** 배당표와 맞춰 볼 사건방 (어드민) */
+  async assignRooms(): Promise<CaseRoomRef[]> {
+    if (me().role !== 'admin') return [];
+    if (remote) return remote.assignCaseRooms();
+    return caseRoomRefs(state.rooms, state.users);
+  },
+
+  /** 배당·재배당 안내를 고른 사건방에 올립니다 (어드민). 방마다 결과를 돌려줍니다. */
+  async postAssignNotices(items: { roomId: string; entry: AssignEntry }[]): Promise<{ ok: number; failed: { roomId: string; reason: string }[] }> {
+    if (me().role !== 'admin') return { ok: 0, failed: items.map((i) => ({ roomId: i.roomId, reason: '어드민만 올릴 수 있습니다.' })) };
+    let ok = 0;
+    const failed: { roomId: string; reason: string }[] = [];
+    for (const { roomId, entry } of items) {
+      const text = assignText(entry);
+      if (remote) {
+        try {
+          await remote.postAssignNotice(newId('m'), roomId, text);
+          ok += 1;
+        } catch (e) {
+          failed.push({ roomId, reason: reasonOf(e as { message?: string }, '올리지 못했습니다.') });
+        }
+      } else if (state.rooms.some((r) => r.id === roomId && r.kind === 'case')) {
+        const msg: Message = { id: newId('m'), roomId, senderId: BOT_SENDER, kind: 'bot', text, at: nowIso() };
+        set((s) => ({ messages: [...s.messages, msg] }));
+        ok += 1;
+      } else failed.push({ roomId, reason: '사건방을 찾지 못했습니다.' });
+    }
+    if (remote && ok) await refresh();
+    return { ok, failed };
+  },
+
   async importDaeryuntop(rows: DtHearing[]): Promise<{ ok: true; results: DtResult[] } | { ok: false; reason: string }> {
     if (!canManageOpen(me())) return { ok: false, reason: '관리자어드민만 올릴 수 있습니다.' };
     if (!rows.length) return { ok: false, reason: '올릴 기일이 없습니다.' };

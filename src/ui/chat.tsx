@@ -6,6 +6,7 @@ import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, Text, 
 import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
 import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Attachment, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
+import { parseAssignText, type AssignNotice } from '@/core/assign';
 import { aiAnswerLevel } from '@/core/rooms';
 import { Icon, type IconName } from './icons';
 import { HearingCard } from './hearing';
@@ -154,16 +155,17 @@ export function Bubble({
     </View>
   );
 
-  const card = !!(contact || m.forwardOf || m.bundle || m.hearingAlertId);
+  const assign = isBot ? parseAssignText(m.text) : null;
+  const card = !!(contact || m.forwardOf || m.bundle || m.hearingAlertId || assign);
   // 사진·동영상·파일만 보낸 메시지는 말풍선 테두리 없이 (파일은 자기 말풍선)
   const bare = !card && !quoted && !m.text && !!m.attachments?.length;
   const row = (
     <View style={{ flex: 1, flexDirection: 'row', justifyContent: mine ? 'flex-end' : 'flex-start', gap: space.sm, marginVertical: space.xs, backgroundColor: highlight ? c.accentSoft : 'transparent', borderRadius: radius.sm }}>
-      {!mine ? <Avatar name={isAi || isBot ? 'AI' : sender?.nickname ?? '?'} size={36} tone={isAi ? c.aiSoft : undefined} uri={isAi || isBot ? undefined : sender?.photo} /> : null}
+      {!mine ? <Avatar name={assign ? '배당' : isAi || isBot ? 'AI' : sender?.nickname ?? '?'} size={36} tone={isAi ? c.aiSoft : undefined} uri={isAi || isBot ? undefined : sender?.photo} /> : null}
       <View style={{ maxWidth: '78%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
         {!mine ? (
           <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 13, color: isAi ? c.ai : isBot ? c.accent : c.sub, marginBottom: 2 }}>
-            {isAi || isBot ? nameOf(users, m.senderId) : sender ? displayName(sender) : ''}
+            {assign ? '대륜 사건 배당' : isAi || isBot ? nameOf(users, m.senderId) : sender ? displayName(sender) : ''}
           </Text>
         ) : null}
         <View style={{ flexDirection: mine ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 2 }}>
@@ -201,6 +203,8 @@ export function Bubble({
             ) : null}
             {m.hearingAlertId ? (
               <HearingCard alertId={m.hearingAlertId} />
+            ) : assign ? (
+              <AssignCard notice={assign} />
             ) : m.bundle ? (
               <BundleCard m={m} users={users} mark={mark} />
             ) : m.forwardOf ? (
@@ -1000,5 +1004,30 @@ function RoomCouncils({ room, me, members, onOpen }: { room: Room; me: User; mem
         </Pressable>
       ))}
     </>
+  );
+}
+
+/** 배당·재배당 안내: 일반 대화와 다른 공문 모양 카드 */
+function AssignCard({ notice }: { notice: AssignNotice }) {
+  const c = useColors();
+  return (
+    <View style={{ width: 250, gap: 6 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.accent, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 }}>
+          <Icon name="case" color="#FFFFFF" size={12} />
+          <Text style={{ ...family.bold, fontSize: 11, color: '#FFFFFF' }}>{notice.reassign ? '재배당 안내' : '배당 안내'}</Text>
+        </View>
+      </View>
+      <Text style={{ ...family.bold, fontSize: 15, color: c.text }}>{notice.caseName}</Text>
+      <View style={{ borderTopWidth: 1, borderTopColor: c.line, paddingTop: 6, gap: 4 }}>
+        {notice.fields.map((f) => (
+          <View key={f.label} style={{ flexDirection: 'row', gap: space.sm }}>
+            <Text style={{ width: 70, ...family.regular, fontSize: 12, color: c.sub }}>{f.label}</Text>
+            <Text style={{ flex: 1, ...family.semibold, fontSize: 13, color: f.label === '변경' ? c.accent : c.text }}>{f.value}</Text>
+          </View>
+        ))}
+      </View>
+      <Text style={{ ...family.regular, fontSize: 11, color: c.faint }}>법무법인(유한) 대륜</Text>
+    </View>
   );
 }

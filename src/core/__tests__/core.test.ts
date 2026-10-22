@@ -1221,6 +1221,19 @@ describe('대화방 이름 바꾸기', () => {
     expect(actions.renameRoom(room.id, '가'.repeat(31)).ok).toBe(false);
   });
 
+  it('배당 안내: 어드민만 사건방에 봇 카드로 올림', async () => {
+    as('lawyer');
+    expect((await actions.postAssignNotices([{ roomId: 'r_case1', entry: { row: 1, section: '', reassign: false, client: '', caseName: '사기', lawyers: ['김부장'], removed: [], added: [] } }])).ok).toBe(0);
+    as('admin');
+    const refs = await actions.assignRooms();
+    expect(refs.some((r) => r.id === 'r_case1' && r.clients.length > 0)).toBe(true);
+    const r = await actions.postAssignNotices([{ roomId: 'r_case1', entry: { row: 1, section: '', reassign: false, client: '', caseName: '사기', lawyers: ['김부장'], removed: [], added: [] } }]);
+    expect(r).toEqual({ ok: 1, failed: [] });
+    const m = getState().messages.filter((x) => x.roomId === 'r_case1').pop()!;
+    expect(m.kind).toBe('bot');
+    expect(m.text).toBe('[배당 안내] 사기\n담당 변호사: 김부장');
+  });
+
   it('방 사진도 마스터만 바꾸고 지울 수 있음', () => {
     const id = 'r_case1';
     as('lawyer');
