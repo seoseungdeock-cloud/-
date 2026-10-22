@@ -8,7 +8,7 @@ import { actions } from '@/core/store';
 import { enableWebPush, webPushState } from '@/core/web-push';
 import { HonorsCard } from '@/ui/honors';
 import { Icon } from '@/ui/icons';
-import { usePresenceColor } from '@/ui/presence';
+import { usePresenceBadge } from '@/ui/presence';
 import { Avatar, Badge, Button, Card, Chip, Chips, Screen, Section, Sub, T } from '@/ui/kit';
 import { family, setThemeMode, space, THEME_MODES, useColors, useThemeMode } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
@@ -20,14 +20,14 @@ export default function MeScreen() {
   const s = useApp();
   const user = useMe();
   const c = useColors();
-  const dot = usePresenceColor();
+  const dot = usePresenceBadge();
   const account = s.accounts.find((a) => a.userId === user.id);
   const open = s.suggestions.filter((x) => x.status === 'open').length;
   return (
     <Screen title="MY">
       <Card onPress={() => router.push('/profile')}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-          <Avatar name={user.nickname} uri={user.photo} dot={user.role === 'client' ? undefined : dot(user)} />
+          <Avatar name={user.nickname} uri={user.photo} badge={user.role === 'client' ? undefined : dot(user)} />
           <View style={{ flex: 1 }}>
             <T size="h2" bold>{user.nickname}</T>
             <T size="small">{[user.role === 'client' ? '' : presenceOf(user).label, user.status].filter(Boolean).join(' · ')}</T>

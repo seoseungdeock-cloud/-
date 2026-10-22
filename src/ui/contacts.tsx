@@ -7,7 +7,7 @@ import { actions } from '@/core/store';
 import type { User } from '@/core/types';
 import { Icon } from './icons';
 import { Avatar, Empty } from './kit';
-import { usePresenceColor } from './presence';
+import { usePresenceBadge } from './presence';
 import { family, space, useColors } from './theme';
 import { useApp, useMe } from './use-app';
 
@@ -18,14 +18,14 @@ export function ContactRow({ u, left, onPress, me }: { u: User; left?: ReactNode
   const s = useApp();
   const user = useMe();
   const fav = (s.favorites[user.id] ?? []).includes(u.id);
-  const dot = usePresenceColor();
+  const dot = usePresenceBadge();
   const presence = presenceOf(u);
   return (
     <Pressable
       onPress={onPress ?? (() => router.push({ pathname: '/contact/[id]', params: { id: u.id } }))}
       style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm + 4, paddingVertical: 7, opacity: pressed ? 0.6 : 1 })}>
       {left}
-      <Avatar name={u.nickname} size={38} uri={u.photo} dot={u.role === 'client' ? undefined : dot(u)} />
+      <Avatar name={u.nickname} size={38} uri={u.photo} badge={u.role === 'client' ? undefined : dot(u)} />
       <View style={{ flex: 1 }}>
         <Text numberOfLines={1} style={{ ...family.bold, fontSize: 14, color: c.text }}>{displayName(u)}</Text>
         <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.sub, marginTop: 1 }}>

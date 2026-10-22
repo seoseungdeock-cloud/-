@@ -221,7 +221,7 @@ export function Empty({ text }: { text: string }) {
   );
 }
 
-export function Avatar({ name, tone, size = 44, group, uri, dot }: { name: string; tone?: string; size?: number; group?: boolean; uri?: string; dot?: string }) {
+export function Avatar({ name, tone, size = 44, group, uri, dot, badge }: { name: string; tone?: string; size?: number; group?: boolean; uri?: string; dot?: string; badge?: string }) {
   const c = useColors();
   return (
     <View style={{ width: size, height: size }}>
@@ -239,6 +239,11 @@ export function Avatar({ name, tone, size = 44, group, uri, dot }: { name: strin
       ) : null}
       {dot && !group ? (
         <View style={{ position: 'absolute', right: 0, bottom: 0, width: Math.max(10, size * 0.26), height: Math.max(10, size * 0.26), borderRadius: size, backgroundColor: dot, borderWidth: 2, borderColor: c.bg }} />
+      ) : null}
+      {badge && !group ? (
+        <View style={{ position: 'absolute', right: -2, bottom: -2, width: Math.max(18, Math.round(size * 0.46)), height: Math.max(18, Math.round(size * 0.46)), borderRadius: size, backgroundColor: c.bg, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: Math.max(11, Math.round(size * 0.28)), lineHeight: Math.max(14, Math.round(size * 0.34)) }}>{badge}</Text>
+        </View>
       ) : null}
     </View>
   );

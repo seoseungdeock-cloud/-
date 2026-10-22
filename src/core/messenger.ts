@@ -35,15 +35,15 @@ export function mentionedUnread(room: Room, userId: string, messages: Message[],
 }
 
 /** 상태 목록: 화면 색은 tone (on=대화 가능, busy=용무 중, off=자리 비움, dnd=방해 금지) */
-export const PRESENCE: { key: Presence; label: string; tone: 'on' | 'busy' | 'off' | 'dnd' }[] = [
+export const PRESENCE: { key: Presence; label: string; tone: 'on' | 'busy' | 'off' | 'dnd'; emoji?: string }[] = [
   { key: 'available', label: '대화 가능', tone: 'on' },
-  { key: 'busy', label: '다른 용무 중', tone: 'busy' },
-  { key: 'meeting', label: '회의 중', tone: 'busy' },
-  { key: 'court', label: '재판 중', tone: 'busy' },
-  { key: 'outside', label: '외근 중', tone: 'off' },
-  { key: 'trip', label: '출장 중', tone: 'off' },
-  { key: 'vacation', label: '휴가 중', tone: 'off' },
-  { key: 'dnd', label: '방해 금지', tone: 'dnd' },
+  { key: 'busy', label: '다른 용무 중', tone: 'busy', emoji: '⏳' },
+  { key: 'meeting', label: '회의 중', tone: 'busy', emoji: '👥' },
+  { key: 'court', label: '재판 중', tone: 'busy', emoji: '⚖️' },
+  { key: 'outside', label: '외근 중', tone: 'off', emoji: '💼' },
+  { key: 'trip', label: '출장 중', tone: 'off', emoji: '✈️' },
+  { key: 'vacation', label: '휴가 중', tone: 'off', emoji: '🌴' },
+  { key: 'dnd', label: '방해 금지', tone: 'dnd', emoji: '⛔' },
 ];
 
 export function presenceOf(u: User) {
