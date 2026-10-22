@@ -11,7 +11,7 @@ import { opinionFor } from './knowledge';
 import { titleFrom, type ProgramRequest } from './builder';
 import { assignText, caseRoomRefs, type AssignDraft, type CaseRoomRef } from './assign';
 import { newId, nowIso, useServerIds } from './ids';
-import { loadAll, loadMessagesSince, messagesFromRows, remoteOps, type Remote } from './remote';
+import { loadAll, loadMessagesSince, messagesFromRows, remoteOps, type PhoneResult, type Remote } from './remote';
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import { loginEmail, reasonOf, supabase } from './supabase';
 import {
@@ -1895,6 +1895,22 @@ export const actions = {
     }
     if (remote && ok) await refresh();
     return { ok, failed };
+  },
+
+  /** 의뢰인 전화번호 넣기 (어드민): 같은 이름의 의뢰인 계정이 하나일 때만 */
+  async setClientPhones(items: { name: string; phone: string }[]): Promise<{ name: string; result: PhoneResult }[]> {
+    if (me().role !== 'admin') return items.map((i) => ({ name: i.name, result: 'bad' as const }));
+    if (remote) {
+      const r = await remote.setClientPhones(items);
+      await refresh();
+      return r;
+    }
+    return items.map(({ name, phone }) => {
+      const hits = state.users.filter((u) => u.role === 'client' && u.nickname === name);
+      if (hits.length !== 1) return { name, result: hits.length ? 'many' : 'none' };
+      set((s) => ({ users: s.users.map((u) => (u.id === hits[0].id ? { ...u, phone } : u)) }));
+      return { name, result: 'ok' };
+    });
   },
 
   async importDaeryuntop(rows: DtHearing[]): Promise<{ ok: true; results: DtResult[] } | { ok: false; reason: string }> {

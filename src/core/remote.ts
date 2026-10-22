@@ -116,6 +116,8 @@ async function signPaths(sb: SupabaseClient, bucket: string, paths: string[]): P
 }
 
 /** 저장소 경로에는 영문·숫자만 쓸 수 있어 '첨부 id + 확장자'로 둡니다 (화면의 파일 이름은 따로 저장). */
+export type PhoneResult = 'ok' | 'none' | 'many' | 'bad';
+
 export function storageName(id: string, name: string): string {
   const ext = /\.[A-Za-z0-9]{1,8}$/.exec(name)?.[0].toLowerCase() ?? '';
   return `${id.replace(/[^\w-]/g, '').slice(0, 40) || 'file'}${ext}`;
@@ -478,6 +480,7 @@ export function remoteOps(sb: SupabaseClient) {
     /** 배당표와 맞춰 볼 사건방 (어드민 전용, 들어가 있지 않은 방 포함) */
     assignCaseRooms: async () => (await rpc<Row[]>(sb, 'assign_case_rooms')).map((r) => ({ id: r.id as string, title: (r.title as string) ?? '', clients: (r.clients as string[]) ?? [] })),
     postAssignNotice: (id: string, roomId: string, text: string) => rpc(sb, 'post_assign_notice', { p_id: id, p_room: roomId, p_text: text }),
+    setClientPhones: async (items: { name: string; phone: string }[]) => (await rpc<Row[]>(sb, 'set_client_phones', { p_items: items })).map((r) => ({ name: r.name as string, result: r.result as PhoneResult })),
     /** 방 사진: '방 id/_photo/시각.확장자'로 올리고 방에 연결 (마스터만). uri가 없으면 사진 삭제 */
     setRoomPhoto: async (roomId: string, uri: string | null) => {
       let path: string | null = null;

@@ -1,11 +1,13 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 
 import { presenceOf } from '@/core/messenger';
 import { canJoinMembership, canSeeSuggestions } from '@/core/rooms';
 import { actions } from '@/core/store';
 import { enableWebPush, webPushState } from '@/core/web-push';
+import { callerEntries } from '@/core/caller-names';
+import { callerNamesOn, callerSyncSupported, clearCallerNames, syncCallerNames } from '@/ui/caller-sync';
 import { HonorsCard } from '@/ui/honors';
 import { Icon } from '@/ui/icons';
 import { usePresenceBadge } from '@/ui/presence';
@@ -59,6 +61,7 @@ export default function MeScreen() {
         </Section>
       ) : null}
       <WebPushCard />
+      <CallerNamesCard />
       <ThemeModeCard />
       <FrameSizeCard />
       <Section title="라잇나우 건의사항">
@@ -97,6 +100,38 @@ function WebPushCard() {
       <Card onPress={state === 'default' ? () => void enableWebPush().then(setState) : undefined}>
         <T bold>{state === 'granted' ? '알림 받는 중' : state === 'denied' ? '알림이 차단됨' : '알림 받기'}</T>
         {state === 'denied' ? <Sub>브라우저 주소창 왼쪽 자물쇠 아이콘에서 알림을 허용해 주세요.</Sub> : null}
+      </Card>
+    </Section>
+  );
+}
+
+/** 앱에서만 (의뢰인 계정 제외): 사건방 의뢰인 번호를 폰 연락처에 넣어 전화 올 때 이름이 뜨게 */
+function CallerNamesCard() {
+  const s = useApp();
+  const user = useMe();
+  const [on, setOn] = useState<boolean | null>(null);
+  const [note, setNote] = useState('');
+  useEffect(() => {
+    void callerNamesOn().then(setOn);
+  }, []);
+  if (!callerSyncSupported || user.role === 'client') return null;
+  const entries = callerEntries(s.rooms, s.users, user.id);
+  const toggle = async () => {
+    if (on) {
+      await clearCallerNames();
+      setOn(false);
+      setNote('넣어 둔 의뢰인 연락처를 지웠습니다.');
+      return;
+    }
+    const r = await syncCallerNames(entries);
+    setOn(r.ok);
+    setNote(r.ok ? `의뢰인 ${r.count}명을 연락처에 넣었습니다.` : r.reason ?? '');
+  };
+  return (
+    <Section title="전화 올 때 의뢰인 이름">
+      <Card onPress={on === null ? undefined : () => void toggle()}>
+        <T bold>{on ? '켜짐 · 누르면 끄기' : '꺼짐 · 누르면 켜기'}</T>
+        <Sub>{note || `내 사건방 의뢰인 ${entries.length}명의 번호를 폰 연락처에 '의뢰인 이름 · 사건'으로 넣어 둡니다. 끄면 모두 지웁니다.`}</Sub>
       </Card>
     </Section>
   );

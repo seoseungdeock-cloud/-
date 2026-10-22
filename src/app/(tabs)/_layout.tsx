@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 
 import { canSeeWorkTab } from '@/core/rooms';
+import { useCallerNamesAutoSync } from '@/ui/caller-sync';
 import { Icon, type IconName } from '@/ui/icons';
 import { family, useColors } from '@/ui/theme';
 import { SideRail } from '@/ui/side-rail';
@@ -12,6 +13,7 @@ import { useMe } from '@/ui/use-app';
 export default function TabLayout() {
   const c = useColors();
   const user = useMe();
+  useCallerNamesAutoSync();
   const icon = (name: IconName) => ({ focused }: { focused: boolean }) => <Icon name={name} color={focused ? c.text : c.faint} />;
   return (
     <Tabs
