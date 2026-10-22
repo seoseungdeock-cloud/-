@@ -6,6 +6,7 @@
 //   2) 이 함수 자신: { job } — 오래 걸리는 일(위원회 한 단계, 작업지시 수행)을 새 실행 시간으로 넘김
 //   3) 예약 작업(5분마다): { tick: true } — 예정 시각이 지난 정기 보고
 //   4) 대화방 @AI(모든 계정): { op: 'room.ask', args: { roomId, text } } — 의뢰인 없는 방의 참여자만, 사건 수행 질문만
+//   5) 대화방 '@AI 띠지': { op: 'room.stamp', args: { roomId } } — 방의 최근 PDF에 대륜 띠지를 입혀 새 PDF로 올림 (AI는 쓰지 않음)
 // 2·3 은 x-axiom-job 머리글에 푸시 함수와 같은 비밀값(PUSH_CRON_SECRET)이 있어야 합니다.
 // AI 키(ANTHROPIC_API_KEY · OPENAI_API_KEY · GEMINI_API_KEY)는 Supabase 함수 비밀값에만 둡니다. 없으면 모의 응답.
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
@@ -17,6 +18,11 @@ import { INSTANCE } from '../../../src/core/axiom/instance';
 import { complete, resolve } from '../../../src/core/axiom/llm';
 import { finishRoomAi, levelOf, roomAiInput, roomAiSystem, type RoomDoc } from '../../../src/core/room-ai';
 import { extractText, getDocumentProxy } from 'npm:unpdf@1.8.1';
+import { inflateSync, unzipSync } from 'npm:fflate@0.8.2';
+import { PDFDocument } from 'npm:pdf-lib@1.17.1';
+
+import { hwpText, hwpxText } from '../../../src/core/hwp-text';
+import { TTIJI_PNG_BASE64 } from './ttiji';
 import type { AxUser, Ctx, Job } from '../../../src/core/axiom/types';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
@@ -155,12 +161,12 @@ async function roomAsk(sb: SupabaseClient, ctx: Ctx, uid: string, args: Record<s
     const files = (m.attachments ?? []).map((a) => `[첨부: ${a.name ?? '파일'}]`).join(' ');
     return { senderId: m.sender_id, senderKind: m.sender_kind, text: [m.text, files].filter(Boolean).join(' ') };
   });
-  // 최근 대화에 올린 PDF (가장 최근 3개, 20MB 이하)의 글을 읽어 함께 보냅니다
-  const pdfs = kept.flatMap((m) => m.attachments ?? []).filter((a) => a.path && (a.mime === 'application/pdf' || /\.pdf$/i.test(a.name ?? '')) && (a.size ?? 0) <= 20 * 1024 * 1024).slice(-3);
+  // 최근 대화에 올린 PDF·한글(HWP·HWPX) 파일 (가장 최근 3개, 20MB 이하)의 글을 읽어 함께 보냅니다
+  const files = kept.flatMap((m) => m.attachments ?? []).filter((a) => a.path && docKind(a) && (a.size ?? 0) <= 20 * 1024 * 1024).slice(-3);
   const docs: RoomDoc[] = [];
-  for (const a of pdfs) {
+  for (const a of files) {
     if (!String(a.path).startsWith(`${roomId}/`)) continue;
-    docs.push({ name: a.name ?? 'PDF', text: await pdfText(sb, a.path!).catch(() => '') });
+    docs.push({ name: a.name ?? '문서', text: await docText(sb, a.path!, docKind(a)!).catch((e) => `(이 파일은 읽지 못했습니다: ${/[가-힣]/.test((e as Error).message) ? (e as Error).message : '형식 오류'})`) });
   }
   // 방금 보낸 질문이 이미 저장됐으면 기록에서 빼고 '요청'으로만 넣습니다
   if (recent.length && recent[recent.length - 1].senderId === uid && recent[recent.length - 1].text.trim() === text.trim()) recent.pop();
@@ -175,12 +181,72 @@ async function roomAsk(sb: SupabaseClient, ctx: Ctx, uid: string, args: Record<s
   return { ...finishRoomAi(out.text), level, model: out.model, docs: docs.map((d) => ({ name: d.name, chars: d.text.length })) };
 }
 
-async function pdfText(sb: SupabaseClient, path: string): Promise<string> {
+type DocKind = 'pdf' | 'hwp' | 'hwpx';
+function docKind(a: { name?: string; mime?: string }): DocKind | null {
+  const n = (a.name ?? '').toLowerCase();
+  if (a.mime === 'application/pdf' || n.endsWith('.pdf')) return 'pdf';
+  if (n.endsWith('.hwpx')) return 'hwpx';
+  if (n.endsWith('.hwp')) return 'hwp';
+  return null;
+}
+
+async function docText(sb: SupabaseClient, path: string, kind: DocKind): Promise<string> {
   const { data, error } = await sb.storage.from('room-files').download(path);
   if (error || !data) return '';
-  const pdf = await getDocumentProxy(new Uint8Array(await data.arrayBuffer()));
+  const bytes = new Uint8Array(await data.arrayBuffer());
+  if (kind === 'hwp') return hwpText(bytes, (d) => inflateSync(d));
+  if (kind === 'hwpx') return hwpxText(bytes, (d) => unzipSync(d));
+  const pdf = await getDocumentProxy(bytes);
   const { text } = await extractText(pdf, { mergePages: true });
   return Array.isArray(text) ? text.join('\n') : text;
+}
+
+/** '@AI 띠지': 방의 최근 PDF에 대륜 서면 띠지를 모든 쪽에 입혀 새 PDF로 방에 올립니다. AI로 내용을 보내지 않으므로 사건방에서도 됩니다. */
+async function roomStamp(sb: SupabaseClient, uid: string, args: Record<string, unknown>) {
+  const roomId = String(args.roomId ?? '');
+  if (!/^[0-9a-f-]{36}$/.test(roomId)) throw Object.assign(new Error('bad request'), { status: 400 });
+  const { data: me } = await sb.from('room_members').select('user_id, profiles(role, active)').eq('room_id', roomId).eq('user_id', uid).maybeSingle();
+  const prof = (me as unknown as { profiles: { role: string; active: boolean } | null } | null)?.profiles;
+  if (!prof?.active) return { ok: false, reason: '참여 중인 방이 아닙니다.' };
+  if (prof.role === 'client') return { ok: false, reason: '띠지 붙이기는 변호사·직원만 쓸 수 있습니다.' };
+  const { data: rows } = await sb.from('messages').select('attachments, recalled').eq('room_id', roomId).order('created_at', { ascending: false }).limit(30);
+  type Att = { name?: string; mime?: string; path?: string; size?: number };
+  const pdf = ((rows ?? []) as { attachments: Att[] | null; recalled: boolean }[])
+    .filter((m) => !m.recalled)
+    .flatMap((m) => [...(m.attachments ?? [])].reverse())
+    .find((a) => a.path && docKind(a) === 'pdf' && !/_띠지\.pdf$/i.test(a.name ?? '') && String(a.path).startsWith(`${roomId}/`));
+  if (!pdf) return { ok: false, reason: '띠지를 붙일 PDF를 먼저 방에 올려 주세요. (한글 파일은 PDF로 저장해서 올려 주세요)' };
+  if ((pdf.size ?? 0) > 30 * 1024 * 1024) return { ok: false, reason: '30MB가 넘는 PDF는 띠지를 붙이지 못합니다.' };
+  const { data: file, error } = await sb.storage.from('room-files').download(pdf.path!);
+  if (error || !file) return { ok: false, reason: 'PDF를 받지 못했습니다.' };
+  let doc: PDFDocument;
+  try {
+    doc = await PDFDocument.load(new Uint8Array(await file.arrayBuffer()));
+  } catch {
+    return { ok: false, reason: '암호가 걸렸거나 열 수 없는 PDF입니다.' };
+  }
+  const png = await doc.embedPng(Uint8Array.from(atob(TTIJI_PNG_BASE64), (ch) => ch.charCodeAt(0)));
+  for (const page of doc.getPages()) {
+    const box = page.getCropBox();
+    page.drawImage(png, { x: box.x, y: box.y, width: box.width, height: box.height });
+  }
+  const out = await doc.save();
+  const msgId = crypto.randomUUID();
+  const attId = crypto.randomUUID();
+  const name = `${(pdf.name ?? '서면').replace(/\.pdf$/i, '')}_띠지.pdf`;
+  const path = `${roomId}/${msgId}/${attId}.pdf`;
+  const up = await sb.storage.from('room-files').upload(path, out, { contentType: 'application/pdf' });
+  if (up.error) return { ok: false, reason: '띠지 PDF를 올리지 못했습니다.' };
+  const { error: insErr } = await sb.from('messages').insert({
+    id: msgId, room_id: roomId, sender_kind: 'ai', kind: 'ai', origin_id: uid,
+    text: `'${pdf.name ?? '서면'}'에 대륜 띠지를 붙였습니다. (모든 쪽, 오른쪽 세로 띠와 아래 로고·연락처)`,
+    attachments: [{ id: attId, kind: 'file', name, path, size: out.length, mime: 'application/pdf' }],
+  });
+  if (insErr) {
+    await sb.storage.from('room-files').remove([path]);
+    return { ok: false, reason: '방에 올리지 못했습니다.' };
+  }
+  return { ok: true, name, pages: doc.getPageCount() };
 }
 
 Deno.serve(async (req) => {
@@ -215,6 +281,14 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.error('[room.ask]', (e as Error).message);
       return reply(200, { ok: false, status: 500, reason: 'AI가 답하지 못했습니다. 잠시 후 다시 시도해 주세요.' });
+    }
+  }
+  if (body.op === 'room.stamp') {
+    try {
+      return reply(200, { ok: true, data: await roomStamp(sb, who.user.id, body.args ?? {}) });
+    } catch (e) {
+      console.error('[room.stamp]', (e as Error).message);
+      return reply(200, { ok: false, status: 500, reason: '띠지를 붙이지 못했습니다. 잠시 후 다시 시도해 주세요.' });
     }
   }
   let user = await ctx.userById(who.user.id);

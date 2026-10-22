@@ -1063,6 +1063,21 @@ export const actions = {
       }
     }
     if (!/@ai\b/i.test(text)) return;
+    // '@AI 띠지': 방의 최근 PDF에 대륜 띠지를 입혀 새 PDF로 올림. AI로 내용을 보내지 않아 사건방에서도 됩니다.
+    if (/띠지/.test(text) && supabase) {
+      if (me().role === 'client') return;
+      const thinking = (on: boolean) => set((s) => ({ aiThinking: { ...s.aiThinking, [roomId]: on } }));
+      thinking(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('axiom', { body: { op: 'room.stamp', args: { roomId } } });
+        const res = data as { ok: boolean; reason?: string; data?: { ok: boolean; reason?: string } } | null;
+        if (error || !res?.ok || !res.data?.ok) pushMessage(roomId, SYSTEM_SENDER, 'system', res?.data?.reason ?? res?.reason ?? '띠지를 붙이지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        else await refresh();
+      } finally {
+        thinking(false);
+      }
+      return;
+    }
     const level = aiAnswerLevel(room, members);
     if (level === 'none') {
       // 사건수행방: AI는 대화에 참여하지 않고 사건 기록에서 진행·배당 정보만 알려 줍니다.
