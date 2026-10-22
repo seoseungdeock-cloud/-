@@ -1,9 +1,10 @@
 // 업무 탭 AXIOM 이 부르는 곳. 서버가 있으면 서버 함수 'axiom'(실제 AI 키는 서버 비밀값에만)으로,
 // 없으면(미리보기·체험) 기기 안에서 같은 엔진을 모의 응답으로 돌립니다.
-import { getState } from '../store';
+import { getState, postAiToRoom } from '../store';
 import { reasonOf, serverEnabled, supabase } from '../supabase';
 import type { User } from '../types';
 import { handle, runJob } from './api';
+import { GUEST_OPS } from './council';
 import { MemoryDb } from './db';
 import { INSTANCE } from './instance';
 import type { AxUser, Ctx } from './types';
@@ -37,6 +38,15 @@ function localCtx(): Ctx {
       const u = getState().users.find((x) => x.role === 'admin' && x.superAdmin);
       return u ? axUser(u) : null;
     },
+    async room(roomId) {
+      const { rooms, users } = getState();
+      const r = rooms.find((x) => x.id === roomId);
+      if (!r) return null;
+      return { kind: r.kind, title: r.title, members: r.memberIds.map((id) => ({ id, role: users.find((u) => u.id === id)?.role ?? '' })) };
+    },
+    async postToRoom(roomId, text) {
+      postAiToRoom(roomId, text);
+    },
     spawn(job) {
       setTimeout(() => void runJob(ctx, job).catch(() => undefined), 30);
     },
@@ -50,7 +60,7 @@ export function resetLocalAxiom() {
 }
 
 export async function axiom<T = any>(user: User, op: string, args: Record<string, unknown> = {}): Promise<AxResult<T>> {
-  const ax = axUser(user);
+  const ax = axUser(user) ?? (GUEST_OPS.has(op) && user.role !== 'client' ? { id: user.id, name: user.nickname, role: 'member' as const, teams: [] } : null);
   if (!ax) return { ok: false, reason: '어드민 계정만 쓸 수 있습니다.', status: 403 };
   if (serverEnabled && supabase) {
     const { data, error } = await supabase.functions.invoke('axiom', { body: { op, args } });

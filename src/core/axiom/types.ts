@@ -56,6 +56,8 @@ export type Job =
   | { type: 'report'; scheduleId: string; force: boolean }
   | { type: 'work'; workOrderId: string; userId: string; feedback: string | null };
 
+export type RoomInfo = { kind: string; title: string; members: { id: string; role: string }[] };
+
 export type Ctx = {
   db: Db;
   inst: Instance;
@@ -67,6 +69,10 @@ export type Ctx = {
   /** 첫 관리자어드민 (정기 보고 작성자) */
   owner(): Promise<AxUser | null>;
   spawn(job: Job): void;
+  /** 대화방 정보 (경영위원회를 방에 연결할 때). 없는 방이면 null */
+  room?(roomId: string): Promise<RoomInfo | null>;
+  /** 대화방에 AI 메시지 올리기 (by = 올린 것으로 기록할 사람) */
+  postToRoom?(roomId: string, text: string, by: string): Promise<void>;
   /** 시험에서 AI 호출을 가로챌 때 */
   fetch?: typeof fetch;
 };

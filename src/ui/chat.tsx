@@ -6,10 +6,12 @@ import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, Text, 
 import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
 import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Attachment, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
+import { aiAnswerLevel } from '@/core/rooms';
 import { Icon, type IconName } from './icons';
 import { HearingCard } from './hearing';
 import { FileActions, fileSize, isVideo, openFile } from './board';
 import { openViewer } from './image-viewer';
+import { useAx } from './axiom';
 import { pickSquarePhoto } from './pick-photo';
 import { Avatar } from './kit';
 import { chatTime, clockTime, roomTitle } from './room-row';
@@ -693,6 +695,8 @@ export function RoomDrawer({
               )
             ) : null}
 
+            <RoomCouncils room={room} me={me} members={members} onOpen={(id) => go(() => router.push({ pathname: '/axiom/council/[id]', params: { id } }))()} />
+
             <DrawerHead title="알림" />
             <View style={{ flexDirection: 'row', gap: space.sm }}>
               {NOTIFY.map(([k, label]) => (
@@ -976,5 +980,25 @@ function VideoPlayer({ a }: { a: Attachment }) {
       <Text style={{ color: '#FFFFFF', fontSize: 30 }}>▶</Text>
       <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.faint, maxWidth: 200 }}>{a.name}</Text>
     </Pressable>
+  );
+}
+
+/** 이 방에 연결된 경영위원회 (의뢰인이 없는 방에서만) */
+function RoomCouncils({ room, me, members, onOpen }: { room: Room; me: User; members: User[]; onOpen: (id: string) => void }) {
+  const c = useColors();
+  const eligible = me.role !== 'client' && aiAnswerLevel(room, members) !== 'none';
+  const { data } = useAx<{ id: string; title: string; status_label: string; round: number }[]>('councils.forRoom', { room_id: room.id }, { skip: !eligible });
+  if (!eligible || !data?.length) return null;
+  return (
+    <>
+      <DrawerHead title="경영위원회" />
+      {data.map((x) => (
+        <Pressable key={x.id} accessibilityLabel={`경영위원회 ${x.title}`} onPress={() => onOpen(x.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 6 }}>
+          <Icon name="work" color={c.accent} size={18} />
+          <Text numberOfLines={1} style={{ flex: 1, ...family.semibold, fontSize: 14, color: c.text }}>{x.title}</Text>
+          <Text style={{ ...family.regular, fontSize: 12, color: c.sub }}>{x.round > 1 ? `${x.round}차 · ` : ''}{x.status_label}</Text>
+        </Pressable>
+      ))}
+    </>
   );
 }

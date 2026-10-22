@@ -680,6 +680,11 @@ function userById(id: string) {
   return state.users.find((u) => u.id === id);
 }
 
+/** 기기 안 AXIOM(미리보기)이 대화방에 AI 메시지를 올릴 때 */
+export function postAiToRoom(roomId: string, text: string) {
+  if (state.rooms.some((r) => r.id === roomId)) pushMessage(roomId, AI_SENDER, 'ai', text);
+}
+
 function pushMessage(roomId: string, senderId: string, kind: Message['kind'], text: string, extra: Partial<Message> = {}) {
   const msg: Message = { id: newId('m'), roomId, senderId, kind, text, at: nowIso(), ...extra };
   set((s) => ({ messages: [...s.messages, msg] }));

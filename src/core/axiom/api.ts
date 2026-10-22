@@ -100,6 +100,12 @@ export async function handle(ctx: Ctx, user: AxUser, op: string, a: Args = {}): 
       return council.get(ctx, user, a.id);
     case 'councils.intervene':
       return council.intervene(ctx, user, a.id, a.text);
+    case 'councils.link':
+      return council.link(ctx, user, a.id, a.room_id);
+    case 'councils.forRoom':
+      return council.forRoom(ctx, user, a.room_id);
+    case 'councils.addMeeting':
+      return council.addMeeting(ctx, user, a.id, a);
     case 'councils.supply':
       return council.supply(ctx, user, a.id, a.gap, a.text);
     case 'councils.rerun':

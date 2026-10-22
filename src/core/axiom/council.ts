@@ -10,7 +10,7 @@ import { scan, type Flag } from './guardrails';
 import * as ledger from './ledger';
 import { listRuns, runAgent } from './runner';
 import * as store from './store';
-import type { AxUser, Ctx } from './types';
+import type { AxUser, Ctx, RoomInfo } from './types';
 import { AxError, arr, clip, koNum, limiter, newId, now, num } from './util';
 import { planFromCouncil } from './workorders';
 
@@ -84,9 +84,34 @@ async function load(ctx: Ctx, id: string): Promise<Row> {
   return { ...c, result: c.result ?? {}, interventions: c.interventions ?? [], warnings: c.warnings ?? [] };
 }
 
+// ---- 대화방 연결 (승덕 2026-10-22) ----
+// 어드민이 위원회를 자기가 들어가 있는 대화방에 연결하면, 그 방 참여자 모두가 위원회의 모든 기능을 씁니다.
+// 의뢰인이 있는 방·사건방·상담방, 사건·기밀 등급 위원회는 연결하지 않습니다 (경영 자료와 의뢰인 정보를 섞지 않음).
+
+/** 어드민이 아니어도 부를 수 있는 기능 (연결된 방 참여 여부는 각 기능에서 확인) */
+export const GUEST_OPS = new Set(['councils.forRoom', 'councils.get', 'councils.intervene', 'councils.supply', 'councils.addMeeting', 'councils.rerun', 'councils.cancel']);
+
+const roomOk = (r: RoomInfo | null): r is RoomInfo => !!r && r.kind !== 'case' && r.kind !== 'consult' && !r.members.some((m) => m.role === 'client');
+
+/** 연결된 방의 참여자로 들어온 사람 */
+async function roomGuest(ctx: Ctx, user: AxUser, c: Row): Promise<boolean> {
+  if (!c.room_id || !ctx.room) return false;
+  const r = await ctx.room(c.room_id);
+  return roomOk(r) && r.members.some((m) => m.id === user.id);
+}
+
+async function canView(ctx: Ctx, user: AxUser, c: Row) {
+  return acl.canSee(user, c.visibility) || (await roomGuest(ctx, user, c));
+}
+
+/** 지시·자료 넣기·회의록 추가: 관리자·팀장, 또는 연결된 방 참여자 */
+async function canAct(ctx: Ctx, user: AxUser, c: Row) {
+  return (['admin', 'lead'].includes(user.role) && acl.canSee(user, c.visibility)) || (await roomGuest(ctx, user, c));
+}
+
 export async function get(ctx: Ctx, user: AxUser, id: string): Promise<Row> {
   const c = await load(ctx, id);
-  acl.assertSee(user, c.visibility);
+  if (!(await canView(ctx, user, c))) throw new AxError(403, '열람 권한이 없는 자료입니다.');
   const runs = await listRuns(ctx, user, { council_id: id, limit: 200 });
   const pending = await ctx.db.one('approvals', { eq: { ref_type: 'council', ref_id: id, status: 'pending' } });
   const [named] = await store.withNames(ctx, [c], 'created_by', 'created_by_name');
@@ -96,18 +121,104 @@ export async function get(ctx: Ctx, user: AxUser, id: string): Promise<Row> {
     ...named, steps: STEPS, status_label: STATUS[c.status], visibility_label: acl.label(c.visibility, ctx.inst), runs, pending_approval_id: pending?.id || null,
     record_md: toMarkdown(ctx, c, res, c.warnings || [], chosen),
     data_gaps: openGaps(c),
+    round: arr(c.rounds).length + 1,
+    rounds: arr(c.rounds),
+    room_title: c.room_id && ctx.room ? (await ctx.room(c.room_id))?.title ?? null : null,
+    can_act: await canAct(ctx, user, c),
+    can_rerun: user.role === 'admin' || (await roomGuest(ctx, user, c)),
   };
+}
+
+/** 위원회를 대화방에 연결·해제 (관리자·팀장, 그 방 참여자일 때) */
+export async function link(ctx: Ctx, user: AxUser, id: string, roomId: unknown) {
+  if (!['admin', 'lead'].includes(user.role)) throw new AxError(403, '대화방 연결은 어드민만 할 수 있습니다.');
+  const c = await load(ctx, id);
+  acl.assertSee(user, c.visibility);
+  const rid = roomId ? String(roomId) : null;
+  if (rid) {
+    if (!ctx.room) throw new AxError(400, '이 환경에서는 대화방을 연결할 수 없습니다.');
+    const r = await ctx.room(rid);
+    if (!r || !r.members.some((m) => m.id === user.id)) throw new AxError(403, '내가 들어가 있는 대화방만 연결할 수 있습니다.');
+    if (!roomOk(r)) throw new AxError(400, '의뢰인이 있는 방, 사건방·상담방에는 경영위원회를 연결할 수 없습니다.');
+    if (!['org', 'team'].includes(acl.parse(c.visibility).level)) throw new AxError(400, '사건·기밀 등급 위원회는 대화방에 연결할 수 없습니다.');
+  }
+  await ctx.db.update('councils', { eq: { id } }, { room_id: rid, updated_at: now() });
+  await store.audit(ctx, user, 'council.link', id, rid ?? '해제');
+  if (rid && rid !== c.room_id) {
+    await ctx.postToRoom?.(rid, `이 방이 경영위원회 「${c.title}」에 연결되었습니다. 방 참여자 모두 위원회에서 회의록과 부족한 자료를 넣고 결과를 볼 수 있으며, 분석이 끝나면 이 방에 결과를 올립니다.`, user.id).catch(() => undefined);
+  }
+  return get(ctx, user, id);
+}
+
+/** 이 대화방에 연결된 위원회 목록 */
+export async function forRoom(ctx: Ctx, user: AxUser, roomId: unknown) {
+  const rid = String(roomId || '');
+  const r = rid && ctx.room ? await ctx.room(rid) : null;
+  if (!roomOk(r) || !r.members.some((m) => m.id === user.id)) return [];
+  const rows = await ctx.db.find('councils', { eq: { room_id: rid } }, { order: [['updated_at', 'desc']], limit: 20, cols: ['id', 'title', 'status', 'step', 'rounds', 'updated_at'] });
+  return rows.map((c) => ({ id: c.id, title: c.title, status: c.status, status_label: STATUS[c.status], round: arr(c.rounds).length + 1, updated_at: c.updated_at }));
+}
+
+/**
+ * 카테고리 위원회에 새 회의록 넣기: 지금까지의 분석을 '이전 분석'으로 남기고,
+ * 새 회의록 + 이전 분석 + 넣어 둔 자료로 1단계부터 새 종합분석을 냅니다.
+ */
+export async function addMeeting(ctx: Ctx, user: AxUser, id: string, body: Row) {
+  const c = await load(ctx, id);
+  if (!(await canAct(ctx, user, c))) throw new AxError(403, '이 위원회에 회의록을 넣을 권한이 없습니다.');
+  if (c.status === 'running') throw new AxError(409, '분석이 끝난 뒤 새 회의록을 넣어 주세요.');
+  const text = String(body.meeting_text || '').trim();
+  if (!body.meeting_doc_id && text.length < 20) throw new AxError(400, '회의록을 20자 이상 붙여 넣으세요.');
+  const res: Row = c.result || {};
+  const rounds = arr<Row>(c.rounds);
+  if (res.final) {
+    const strategies = res.revision?.strategies || res.proposal?.strategies || [];
+    const chosen = strategies.find((s: Row) => s.name === res.final.recommended);
+    rounds.push({
+      round: rounds.length + 1, at: c.updated_at, meeting_doc_id: c.meeting_doc_id, meeting_summary: clip(res.minutes?.summary || '', 1500),
+      overall_direction: clip(res.direction?.overall_direction || '', 1500), recommended: res.final.recommended || '', final_summary: clip(res.final.summary || '', 1500),
+      strategy: chosen ? { name: chosen.name, summary: chosen.summary, revenue: chosen.revenue, cost: chosen.cost?.total ?? null } : null,
+      conditions: arr(res.final.conditions).slice(0, 8), status: c.status,
+    });
+  }
+  const author = (await ctx.userById(c.created_by)) ?? user;
+  const meeting = body.meeting_doc_id
+    ? await store.getDoc(ctx, user, body.meeting_doc_id)
+    : await store.createDoc(ctx, author, { kind: 'meeting', title: `${c.title} — 회의록 ${rounds.length + 1}차`, body: text, visibility: c.visibility, author_id: user.id });
+  await approvals.supersede(ctx, 'council', id);
+  await ctx.db.update('councils', { eq: { id } }, { meeting_doc_id: meeting.id, rounds: rounds.slice(-10), result: {}, warnings: [], error: null, updated_at: now() });
+  await store.audit(ctx, user, 'council.add_meeting', id, `${rounds.length + 1}차`);
+  await launch(ctx, id, 'agenda');
+  return get(ctx, user, id);
+}
+
+/** 대화방에 올릴 결과: 대화하듯 짧게 */
+export function roomSummary(c: Row, res: Row, chosen: Row | undefined, gaps: string[]): string {
+  const n = arr(c.rounds).length + 1;
+  const L = [`경영위원회 「${c.title}」 ${n > 1 ? `${n}차 종합분석` : '분석'}이 나왔습니다.${n > 1 ? ' 이전 회의 분석까지 함께 보고 정리했습니다.' : ''}`];
+  if (res.direction?.overall_direction) L.push('', `전체 방향은 이렇습니다. ${clip(res.direction.overall_direction, 400)}`);
+  if (chosen) {
+    L.push('', `추천 전략은 「${chosen.name}」입니다. ${clip(res.final?.summary || chosen.summary || '', 400)}`);
+    const r = chosen.revenue || {};
+    if (r.base != null) L.push(`예상 ${r.metric || '매출'}(${r.horizon || '기간 미정'}): 보수 ${won(r.conservative)} · 기준 ${won(r.base)} · 낙관 ${won(r.optimistic)} ${r.unit || '원'}`);
+  }
+  const asks = arr<Row>(res.final?.decisions_needed).slice(0, 3);
+  if (asks.length) L.push('', '정해 주셔야 할 것:', ...asks.map((q) => `· ${q.question}`));
+  if (gaps.length) L.push('', `자료가 부족합니다: ${gaps.slice(0, 5).join(', ')}. 위원회 화면의 '부족한 자료'에 넣어 주시면 바로 다시 계산합니다.`);
+  L.push('', '자세한 내용은 방 메뉴 → 경영위원회에서 볼 수 있습니다.');
+  return L.join('\n');
 }
 
 export async function list(ctx: Ctx, user: AxUser) {
   const rows = await ctx.db.find('councils', acl.filter(user), {
-    order: [['created_at', 'desc']],
+    order: [['updated_at', 'desc']],
     limit: 100,
-    cols: ['id', 'title', 'status', 'step', 'visibility', 'created_at', 'updated_at', 'created_by'],
+    cols: ['id', 'title', 'status', 'step', 'visibility', 'created_at', 'updated_at', 'created_by', 'rounds', 'room_id'],
   });
   return (await store.withNames(ctx, rows, 'created_by', 'created_by_name')).map((c) => ({
     ...c,
     status_label: STATUS[c.status],
+    round: arr(c.rounds).length + 1,
     step_label: STEPS.find((s) => s.key === c.step)?.label || '',
     visibility_label: acl.label(c.visibility, ctx.inst),
   }));
@@ -196,6 +307,10 @@ export async function runStep(ctx: Ctx, id: string, step: string, token: string)
   if (supplied.length) company_state = { ...company_state, supplied_data: supplied.map((i: Row) => ({ item: i.gap, value: i.text })) };
   const human_instructions = (c.interventions || []).filter((i: Row) => i.kind !== 'data').map((i: Row) => i.text);
   c.objective = c.objective || NO_OBJECTIVE;
+  const rounds = arr<Row>(c.rounds);
+  const prior = rounds.length
+    ? { prior_analyses: { note: '같은 카테고리에서 앞서 열린 회의들의 분석입니다. 이번 회의록과 함께 종합해, 이어지는 흐름 속에서 새 종합분석을 냅니다.', rounds: rounds.map(({ meeting_doc_id: _m, ...r }) => r) } }
+    : {};
   const limit = limiter(ctx.inst.models?.concurrency || 4);
   const mine = async () => {
     const s = await ctx.db.one('councils', { eq: { id } });
@@ -215,7 +330,7 @@ export async function runStep(ctx: Ctx, id: string, step: string, token: string)
 
   try {
     if (step === 'agenda') {
-      const r = await call(S.secretary, 'agenda', { meeting: { title: meeting?.title, text: meeting?.body }, objective: c.objective, company_state, human_instructions });
+      const r = await call(S.secretary, 'agenda', { meeting: { title: meeting?.title, text: meeting?.body }, objective: c.objective, company_state, human_instructions, ...prior });
       const agenda = arr<Row>(r.output.agenda)
         .slice(0, ctx.inst.council?.max_agenda || 5)
         .map((a, k) => ({ id: a.id || `A${k + 1}`, title: String(a.title || `안건 ${k + 1}`), background: a.background || '' }));
@@ -247,7 +362,7 @@ export async function runStep(ctx: Ctx, id: string, step: string, token: string)
 
     if (step === 'direction') {
       const items = res.agenda.map((a: Row) => ({ agenda: a, critic: res.debates?.[a.id]?.critic, advocate: res.debates?.[a.id]?.advocate }));
-      const r = await call(S.judge, 'direction', { objective: c.objective, company_state, meeting_summary: res.minutes?.summary, items, human_instructions });
+      const r = await call(S.judge, 'direction', { objective: c.objective, company_state, meeting_summary: res.minutes?.summary, items, human_instructions, ...prior });
       res.direction = { overall_direction: r.output.overall_direction || '', directions: arr(r.output.directions) };
     }
 
@@ -255,7 +370,7 @@ export async function runStep(ctx: Ctx, id: string, step: string, token: string)
       const approved = arr<Row>(res.direction?.directions).filter((d) => d.decision !== '부');
       const r = await call(S.forecaster, 'propose', {
         objective: c.objective, company_state, overall_direction: res.direction?.overall_direction, directions: approved,
-        track_record: await ledger.trackRecord(ctx), strategy_count: ctx.inst.council?.strategies || 3, human_instructions,
+        track_record: await ledger.trackRecord(ctx), strategy_count: ctx.inst.council?.strategies || 3, human_instructions, ...prior,
       });
       res.proposal = normStrategies(r.output);
       res.forecaster_provider = r.provider;
@@ -286,7 +401,7 @@ export async function runStep(ctx: Ctx, id: string, step: string, token: string)
       const strategies = res.revision?.strategies || res.proposal.strategies;
       const r = await call(S.judge, 'final', {
         objective: c.objective, overall_direction: res.direction?.overall_direction, strategies, verification: res.verification,
-        track_record: await ledger.trackRecord(ctx), human_instructions,
+        track_record: await ledger.trackRecord(ctx), human_instructions, ...prior,
       });
       res.final = {
         recommended: r.output.recommended || strategies[0]?.name, summary: r.output.summary || '', rationale: r.output.rationale || '',
@@ -325,6 +440,7 @@ export async function runStep(ctx: Ctx, id: string, step: string, token: string)
     ref_type: 'council', ref_id: id, visibility: c.visibility, requested_by: 'system',
   });
   await ctx.db.update('councils', { eq: { id } }, { status: tier === 'auto' ? 'approved' : 'awaiting_approval', updated_at: now() });
+  if (c.room_id && ctx.postToRoom) await ctx.postToRoom(c.room_id, roomSummary(c, res, chosen, openGaps({ ...c, result: res })), c.created_by).catch(() => undefined);
   if (tier === 'auto') await onApproved(ctx, ap, user, '');
 }
 
@@ -336,6 +452,12 @@ export function toMarkdown(ctx: Ctx, c: Row, res: Row, warnings: string[], chose
     L.push('## 사람의 지시');
     for (const i of c.interventions) L.push(i.kind === 'data' ? `- ${i.user_name || ''} (자료 넣기 · ${i.gap}): ${i.text}` : `- ${i.user_name || ''}: ${i.text}`);
     L.push('');
+  }
+  const rounds = arr<Row>(c.rounds);
+  if (rounds.length) {
+    L.push(`## 이전 분석 (${rounds.length}회)`);
+    for (const r of rounds) L.push(`- ${r.round}차 (${String(r.at || '').slice(0, 10)}): ${r.recommended ? `추천 「${r.recommended}」 — ` : ''}${clip(r.final_summary || r.overall_direction || '', 200)}`);
+    L.push('', `## 이번 회의 (${rounds.length + 1}차 종합분석)`);
   }
   L.push('## 회의 요약', res.minutes?.summary || '', '');
   L.push('## 안건별 토론과 판정');
@@ -375,7 +497,7 @@ export async function intervene(ctx: Ctx, user: AxUser, id: string, text: unknow
   const t = String(text || '').trim();
   if (!t) throw new AxError(400, '지시 내용을 입력하세요.');
   const c = await get(ctx, user, id);
-  if (!['admin', 'lead'].includes(user.role)) throw new AxError(403, '지시는 관리자·팀장만 넣을 수 있습니다.');
+  if (!c.can_act) throw new AxError(403, '지시는 관리자·팀장이나 연결된 대화방 참여자만 넣을 수 있습니다.');
   const list = [...c.interventions, { at: now(), user_id: user.id, user_name: user.name, text: t, step: c.step }];
   await ctx.db.update('councils', { eq: { id } }, { interventions: list, updated_at: now() });
   await store.audit(ctx, user, 'council.intervene', id, t);
@@ -400,8 +522,8 @@ export async function supply(ctx: Ctx, user: AxUser, id: string, gap: unknown, t
   if (!g) throw new AxError(400, '어떤 자료인지 골라 주세요.');
   if (!t) throw new AxError(400, '자료 내용을 입력하세요.');
   if (t.length > 4000) throw new AxError(400, '자료는 4000자 이내로 넣어 주세요.');
-  if (!['admin', 'lead'].includes(user.role)) throw new AxError(403, '자료는 관리자·팀장만 넣을 수 있습니다.');
   const c = await get(ctx, user, id);
+  if (!c.can_act) throw new AxError(403, '자료는 관리자·팀장이나 연결된 대화방 참여자만 넣을 수 있습니다.');
   if (c.status === 'approved') throw new AxError(409, '이미 승인된 위원회입니다. 새 위원회를 열어 자료를 넣어 주세요.');
   const list = [...c.interventions, { at: now(), user_id: user.id, user_name: user.name, text: t, step: c.step, kind: 'data', gap: g }];
   const rest = arr<Row>(c.interventions).filter((i) => i.kind === 'data').length + 1;
@@ -418,7 +540,7 @@ export async function supply(ctx: Ctx, user: AxUser, id: string, gap: unknown, t
 
 export async function rerun(ctx: Ctx, user: AxUser, id: string, fromStep: string) {
   const c = await get(ctx, user, id);
-  if (user.role !== 'admin') throw new AxError(403, '다시 실행은 관리자만 할 수 있습니다.');
+  if (!c.can_rerun) throw new AxError(403, '다시 실행은 관리자나 연결된 대화방 참여자만 할 수 있습니다.');
   if (c.status === 'running') throw new AxError(409, '진행 중에는 다시 실행할 수 없습니다.');
   if (c.status === 'approved') throw new AxError(409, '이미 승인된 위원회는 다시 실행할 수 없습니다. 새 위원회를 여세요.');
   if (STEPS.findIndex((s) => s.key === fromStep) < 0) throw new AxError(400, '단계 이름이 올바르지 않습니다.');
@@ -432,7 +554,7 @@ export async function rerun(ctx: Ctx, user: AxUser, id: string, fromStep: string
 
 export async function cancel(ctx: Ctx, user: AxUser, id: string) {
   const c = await get(ctx, user, id);
-  if (user.role !== 'admin') throw new AxError(403, '중단은 관리자만 할 수 있습니다.');
+  if (!c.can_rerun) throw new AxError(403, '중단은 관리자나 연결된 대화방 참여자만 할 수 있습니다.');
   if (c.status !== 'running') throw new AxError(409, '진행 중인 위원회만 중단할 수 있습니다.');
   await ctx.db.update('councils', { eq: { id } }, { status: 'cancelled', updated_at: now() });
   await store.audit(ctx, user, 'council.cancel', id);

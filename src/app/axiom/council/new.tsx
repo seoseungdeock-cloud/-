@@ -46,8 +46,8 @@ function Form({ inst }: { inst: R }) {
   return (
     <>
       <MockNotice />
-      <Input label="제목" value={title} onChangeText={setTitle} placeholder="예: 4분기 마케팅 방향" />
-      <Section title="회의록">
+      <Input label="카테고리" value={title} onChangeText={setTitle} placeholder="예: 마케팅, 인사, 신규 사업" />
+      <Section title="첫 회의록">
         {meetings?.length ? (
           <Chips>
             <Chip label="붙여 넣기" active={!meetingId} onPress={() => setMeetingId(undefined)} />

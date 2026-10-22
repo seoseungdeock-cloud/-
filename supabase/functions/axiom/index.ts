@@ -11,6 +11,7 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
 import { handle, runJob, scheduler } from '../../../src/core/axiom/api';
+import { GUEST_OPS } from '../../../src/core/axiom/council';
 import type { Db, FindOpts, Row, Table, Where } from '../../../src/core/axiom/db';
 import { INSTANCE } from '../../../src/core/axiom/instance';
 import { complete, resolve } from '../../../src/core/axiom/llm';
@@ -103,6 +104,20 @@ function makeCtx(sb: SupabaseClient, url: string, secret: string): Ctx {
     async owner() {
       const { data } = await sb.from('profiles').select('id, nickname, role, super_admin, active').eq('role', 'admin').eq('super_admin', true).eq('active', true).order('created_at').limit(1);
       return toAx((data?.[0] as Profile) ?? null);
+    },
+    async room(roomId: string) {
+      if (!/^[0-9a-f-]{36}$/.test(roomId)) return null;
+      const [{ data: room }, { data: members }] = await Promise.all([
+        sb.from('rooms').select('kind, title').eq('id', roomId).maybeSingle(),
+        sb.from('room_members').select('user_id, profiles(role, active)').eq('room_id', roomId),
+      ]);
+      if (!room) return null;
+      const list = (members ?? []) as unknown as { user_id: string; profiles: { role: string; active: boolean } | null }[];
+      return { kind: room.kind, title: room.title, members: list.filter((m) => m.profiles?.active).map((m) => ({ id: m.user_id, role: m.profiles?.role ?? '' })) };
+    },
+    async postToRoom(roomId: string, text: string, by: string) {
+      const { error } = await sb.from('messages').insert({ room_id: roomId, sender_kind: 'ai', kind: 'ai', text: text.slice(0, 4000), origin_id: /^[0-9a-f-]{36}$/.test(by) ? by : null });
+      if (error) console.error('[axiom postToRoom]', error.message);
     },
     spawn(job: Job) {
       // 새 실행으로 넘기기: 받는 쪽은 바로 202 로 답하고 자기 실행 시간 안에서 일을 합니다
@@ -202,7 +217,12 @@ Deno.serve(async (req) => {
       return reply(200, { ok: false, status: 500, reason: 'AI가 답하지 못했습니다. 잠시 후 다시 시도해 주세요.' });
     }
   }
-  const user = await ctx.userById(who.user.id);
+  let user = await ctx.userById(who.user.id);
+  // 어드민이 아니어도: 대화방에 연결된 경영위원회는 그 방 참여자가 씁니다 (방 참여 여부는 위원회 쪽에서 다시 확인)
+  if (!user && GUEST_OPS.has(String(body.op ?? ''))) {
+    const { data: p } = await sb.from('profiles').select('id, nickname, role, active').eq('id', who.user.id).maybeSingle();
+    if (p?.active && p.role !== 'client') user = { id: p.id, name: p.nickname, role: 'member', teams: [] };
+  }
   if (!user) return reply(200, { ok: false, status: 403, reason: '어드민 계정만 쓸 수 있습니다.' });
   try {
     return reply(200, { ok: true, data: await handle(ctx, user, String(body.op ?? ''), body.args ?? {}) });

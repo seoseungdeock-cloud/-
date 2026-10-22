@@ -164,6 +164,48 @@ describe('AXIOM 엔진 (라잇나우판)', () => {
     expect(JSON.stringify(run?.input ?? '')).toContain('9월 매출 12억');
   });
 
+  test('대화방 연결: 방 참여자가 위원회를 쓰고, 새 회의록은 이전 분석과 함께 종합, 결과는 방에 올라감', async () => {
+    const { call, drain, ctx, jobs } = makeCtx();
+    const STAFF: AxUser = { id: 'u_staff', name: '직원', role: 'member', teams: [] };
+    const OUT: AxUser = { id: 'u_out', name: '바깥', role: 'member', teams: [] };
+    const rooms: Record<string, { kind: string; title: string; members: { id: string; role: string }[] }> = {
+      r_team: { kind: 'group', title: '경영 회의방', members: [{ id: CEO.id, role: 'admin' }, { id: STAFF.id, role: 'staff' }] },
+      r_client: { kind: 'group', title: '의뢰인 있는 방', members: [{ id: CEO.id, role: 'admin' }, { id: 'u_cl', role: 'client' }] },
+    };
+    const posts: { room: string; text: string }[] = [];
+    ctx.room = async (id) => rooms[id] ?? null;
+    ctx.postToRoom = async (room, text) => void posts.push({ room, text });
+
+    const c = await call(CEO, 'councils.start', { title: '마케팅', meeting_text: MEETING });
+    await drain();
+    await expect(call(STAFF, 'councils.get', { id: c.id })).rejects.toThrow('열람 권한');
+    await expect(call(CEO, 'councils.link', { id: c.id, room_id: 'r_client' })).rejects.toThrow('의뢰인');
+    await call(CEO, 'councils.link', { id: c.id, room_id: 'r_team' });
+    expect(posts.pop()?.text).toContain('연결되었습니다');
+    expect((await call(STAFF, 'councils.forRoom', { room_id: 'r_team' })).map((x: any) => x.id)).toEqual([c.id]);
+    expect(await call(OUT, 'councils.forRoom', { room_id: 'r_team' })).toEqual([]);
+    await expect(call(OUT, 'councils.get', { id: c.id })).rejects.toThrow('열람 권한');
+    const g = await call(STAFF, 'councils.get', { id: c.id });
+    expect(g.can_act).toBe(true);
+    expect(g.room_title).toBe('경영 회의방');
+
+    // 방 참여자가 새 회의록 → 2차 종합분석, 이전 분석이 함께 들어가고 결과가 방에 올라감
+    await call(STAFF, 'councils.addMeeting', { id: c.id, meeting_text: '2026년 11월 경영회의\n1. 검색광고 성과 점검\n2. 유튜브 채널 개설' });
+    expect(jobs[0]).toMatchObject({ type: 'council', step: 'agenda' });
+    await drain();
+    const c2 = await call(STAFF, 'councils.get', { id: c.id });
+    expect(c2.round).toBe(2);
+    expect(c2.rounds).toHaveLength(1);
+    expect(c2.status).toBe('awaiting_approval');
+    expect(c2.record_md).toContain('이전 분석 (1회)');
+    const run = (await ctx.db.find('runs', {})).filter((x: any) => x.mode === 'agenda').pop();
+    expect(JSON.stringify(run?.input ?? '')).toContain('prior_analyses');
+    const post = posts.pop()!;
+    expect(post.room).toBe('r_team');
+    expect(post.text).toContain('2차 종합분석');
+    await call(STAFF, 'councils.intervene', { id: c.id, text: '광고비는 월 300만원 이내' });
+  });
+
   test('공개 등급: 팀장은 다른 팀·기밀 문서를 못 본다', async () => {
     const { call } = makeCtx();
     const conf = await call(CEO, 'docs.create', { kind: 'note', title: '인사 메모', body: '평가', visibility: 'confidential' });
