@@ -1,4 +1,6 @@
 // 디자인 토큰 (흰 바탕, 대륜 붉은색 강조, 기기 기본 글씨체, 광고·장식 없음)
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSyncExternalStore } from 'react';
 import { Platform, useColorScheme } from 'react-native';
 
 const light = {
@@ -49,8 +51,56 @@ const dark: typeof light = {
 
 export type Colors = typeof light;
 
+/** 화면 모드: 기기 설정 따라가기 / 라이트 / 다크 (이 기기에 기억) */
+export type ThemeMode = 'system' | 'light' | 'dark';
+export const THEME_MODES: { key: ThemeMode; label: string }[] = [
+  { key: 'system', label: '자동' },
+  { key: 'light', label: '라이트' },
+  { key: 'dark', label: '다크' },
+];
+const MODE_KEY = 'daeryuntalk.themeMode';
+const modeListeners = new Set<() => void>();
+const asMode = (v: string | null | undefined): ThemeMode => (v === 'light' || v === 'dark' ? v : 'system');
+let mode: ThemeMode = 'system';
+try {
+  // 웹은 바로 읽어서 첫 화면부터 맞는 색으로
+  if (Platform.OS === 'web') mode = asMode(globalThis.localStorage?.getItem(MODE_KEY));
+  else void AsyncStorage.getItem(MODE_KEY).then((v) => setThemeMode(asMode(v), false)).catch(() => undefined);
+} catch {
+  // 저장이 막힌 브라우저: 기기 설정 따라감
+}
+
+export function setThemeMode(next: ThemeMode, save = true) {
+  mode = next;
+  if (save) void AsyncStorage.setItem(MODE_KEY, next).catch(() => undefined);
+  modeListeners.forEach((fn) => fn());
+}
+
+export function useThemeMode(): ThemeMode {
+  return useSyncExternalStore(
+    (fn) => {
+      modeListeners.add(fn);
+      return () => modeListeners.delete(fn);
+    },
+    () => mode,
+    () => mode,
+  );
+}
+
+/** 실제로 쓰는 밝기 (고른 모드, 자동이면 기기 설정) */
+export function useScheme(): 'light' | 'dark' {
+  const system = useColorScheme();
+  const m = useThemeMode();
+  return m === 'system' ? (system === 'dark' ? 'dark' : 'light') : m;
+}
+
+/** 웹: 문서에 지금 밝기를 적어 둡니다 (자동 완성 글자색 맞춤용) */
+export function markScheme(scheme: 'light' | 'dark') {
+  if (Platform.OS === 'web' && typeof document !== 'undefined') document.documentElement.dataset.scheme = scheme;
+}
+
 export function useColors(): Colors {
-  return useColorScheme() === 'dark' ? dark : light;
+  return useScheme() === 'dark' ? dark : light;
 }
 
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
@@ -68,7 +118,11 @@ if (Platform.OS === 'web' && typeof document !== 'undefined' && !document.getEle
   document.head.appendChild(link);
   // PC에서 화면 옆 스크롤 막대를 숨김 (휠·터치 스크롤은 그대로)
   const style = document.createElement('style');
-  style.textContent = '*{scrollbar-width:none;-ms-overflow-style:none}*::-webkit-scrollbar{display:none;width:0;height:0}';
+  // 브라우저 자동 완성(저장된 비밀번호)이 칸을 연파랑으로 칠하지 않도록: 칸 색·글자색을 그대로
+  style.textContent =
+    '*{scrollbar-width:none;-ms-overflow-style:none}*::-webkit-scrollbar{display:none;width:0;height:0}' +
+    `input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus{-webkit-text-fill-color:${light.text};caret-color:${light.text};transition:background-color 99999s ease-out 0s}` +
+    `html[data-scheme=dark] input:-webkit-autofill{-webkit-text-fill-color:${dark.text};caret-color:${dark.text}}`;
   document.head.appendChild(style);
 }
 const face = (fontWeight: '400' | '500' | '600' | '700') => (Platform.OS === 'web' ? { fontFamily: SYSTEM_WEB, fontWeight } : { fontWeight });

@@ -7,7 +7,7 @@ import { isHidden, unreadCount } from '@/core/messenger';
 import { actions } from '@/core/store';
 import { Avatar } from './kit';
 import { Icon, type IconName } from './icons';
-import { family } from './theme';
+import { family, setThemeMode, THEME_MODES, useThemeMode, type ThemeMode } from './theme';
 import { useApp, useMe } from './use-app';
 
 export const RAIL_WIDTH = 64;
@@ -25,7 +25,11 @@ function logout() {
   router.replace('/login');
 }
 
+const MODE_ICON: Record<ThemeMode, IconName> = { system: 'auto', light: 'sun', dark: 'moon' };
+const NEXT_MODE: Record<ThemeMode, ThemeMode> = { system: 'light', light: 'dark', dark: 'system' };
+
 export function SideRail({ state, descriptors, navigation }: BottomTabBarProps) {
+  const mode = useThemeMode();
   const s = useApp();
   const user = useMe();
   const unread = s.rooms.filter((r) => r.memberIds.includes(user.id) && !isHidden(r, user.id, s.messages)).reduce((n, r) => n + unreadCount(r, user.id, s.messages, s.reads), 0);
@@ -65,6 +69,7 @@ export function SideRail({ state, descriptors, navigation }: BottomTabBarProps) 
         );
       })}
       <View style={{ marginTop: 'auto', paddingBottom: 14, gap: 6 }}>
+        <RailButton icon={MODE_ICON[mode]} label={`화면 모드: ${THEME_MODES.find((m) => m.key === mode)!.label} (누르면 바뀜)`} onPress={() => setThemeMode(NEXT_MODE[mode])} />
         <RailButton icon="exit" label="로그아웃" onPress={logout} />
         <RailButton icon="power" label="종료" onPress={quit} />
       </View>

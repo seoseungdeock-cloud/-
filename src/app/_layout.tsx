@@ -2,7 +2,6 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
 
 import { usePush } from '@/core/push';
 import { resumeWebPush } from '@/core/web-push';
@@ -11,12 +10,13 @@ import { HearingAlertModal } from '@/ui/hearing';
 import { ImageViewerHost } from '@/ui/image-viewer';
 import { SyncNotice } from '@/ui/sync-notice';
 import { useApp } from '@/ui/use-app';
+import { markScheme, useScheme } from '@/ui/theme';
 import { WebFrame } from '@/ui/web-frame';
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const scheme = useColorScheme();
+  const scheme = useScheme();
   const app = useApp();
   const signedIn = loggedIn(app);
   // 서버 연결 시 저장된 로그인을 확인한 뒤에 화면을 엽니다
@@ -29,6 +29,7 @@ export default function RootLayout() {
   useEffect(() => {
     void startServer();
   }, []);
+  useEffect(() => markScheme(scheme), [scheme]);
 
   useEffect(() => {
     if (ready) SplashScreen.hideAsync();
@@ -39,7 +40,7 @@ export default function RootLayout() {
   // 로그인하지 않으면 로그인 화면만 열립니다
   return (
     <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <StatusBar style="auto" />
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       {/* PC 웹: 처음에는 폰 메신저 크기 (나 탭에서 바꿈) */}
       <WebFrame>
       <Stack screenOptions={{ headerShown: false }}>

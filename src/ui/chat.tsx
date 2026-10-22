@@ -1,7 +1,7 @@
 // 대화방 화면 조각 (웍스 대화방 구성: 읽음 수, 답장 인용, 전달, 회수, 공감, 멘션, 공지, 방 메뉴)
 import { router } from 'expo-router';
-import { createElement, useState, type ReactNode } from 'react';
-import { Image, Modal, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { createElement, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 
 import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
 import { actions } from '@/core/store';
@@ -44,6 +44,35 @@ function Body({ text, names, color, mention, mark }: { text: string; names: stri
         </Text>
       ))}
     </Text>
+  );
+}
+
+/** AI가 답을 쓰는 동안: AI 말풍선 안에서 점 세 개가 차례로 튀어 오릅니다 */
+export function AiThinking() {
+  const c = useColors();
+  const dots = useRef([0, 1, 2].map(() => new Animated.Value(0))).current;
+  useEffect(() => {
+    const bounce = (v: Animated.Value) =>
+      Animated.sequence([
+        Animated.timing(v, { toValue: 1, duration: 260, easing: Easing.out(Easing.quad), useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(v, { toValue: 0, duration: 260, easing: Easing.in(Easing.quad), useNativeDriver: Platform.OS !== 'web' }),
+      ]);
+    const loop = Animated.loop(Animated.sequence([Animated.stagger(150, dots.map(bounce)), Animated.delay(250)]));
+    loop.start();
+    return () => loop.stop();
+  }, [dots]);
+  return (
+    <View accessibilityLabel="AI가 답을 쓰는 중" style={{ flexDirection: 'row', gap: space.sm, marginVertical: space.xs }}>
+      <Avatar name="AI" size={36} tone={c.aiSoft} />
+      <View>
+        <Text style={{ ...family.semibold, fontSize: 13, color: c.ai, marginBottom: 2 }}>✦ AI</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: c.aiSoft, borderRadius: radius.lg, paddingHorizontal: space.md + 2, height: 38 }}>
+          {dots.map((v, i) => (
+            <Animated.View key={i} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: c.ai, opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.45, 1] }), transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) }] }} />
+          ))}
+        </View>
+      </View>
+    </View>
   );
 }
 

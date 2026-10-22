@@ -2,7 +2,7 @@
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
 type Props = { name: IconName; color: string; size?: number };
-export type IconName = 'home' | 'search' | 'chat' | 'case' | 'map' | 'work' | 'me' | 'plus' | 'lock' | 'spark' | 'back' | 'send' | 'chevron' | 'board' | 'up' | 'down' | 'mail' | 'flag' | 'pin' | 'mute' | 'phone' | 'menu' | 'star' | 'check' | 'close' | 'reply' | 'copy' | 'notice' | 'forward' | 'trash' | 'hide' | 'exit' | 'people' | 'link' | 'file' | 'contact' | 'recall' | 'smile' | 'calendar' | 'image' | 'power';
+export type IconName = 'home' | 'search' | 'chat' | 'case' | 'map' | 'work' | 'me' | 'plus' | 'lock' | 'spark' | 'back' | 'send' | 'chevron' | 'board' | 'up' | 'down' | 'mail' | 'flag' | 'pin' | 'mute' | 'phone' | 'menu' | 'star' | 'check' | 'close' | 'reply' | 'copy' | 'notice' | 'forward' | 'trash' | 'hide' | 'exit' | 'people' | 'link' | 'file' | 'contact' | 'recall' | 'smile' | 'calendar' | 'image' | 'power' | 'sun' | 'moon' | 'auto';
 
 export function Icon({ name, color, size = 24 }: Props) {
   const p = { stroke: color, strokeWidth: 1.8, fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -77,6 +77,19 @@ export function Icon({ name, color, size = 24 }: Props) {
       {name === 'trash' && <Path {...p} d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" />}
       {name === 'hide' && <Path {...p} d="M3 3l18 18M10.6 6.1A9 9 0 0 1 21 12a14 14 0 0 1-2.4 3M6.6 6.6A14 14 0 0 0 3 12s3 6 9 6a9 9 0 0 0 4-1M9.9 9.9a3 3 0 0 0 4.2 4.2" />}
       {name === 'power' && <Path {...p} d="M12 3v8M7 6.3a7.5 7.5 0 1 0 10 0" />}
+      {name === 'sun' && (
+        <>
+          <Circle {...p} cx={12} cy={12} r={4} />
+          <Path {...p} d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />
+        </>
+      )}
+      {name === 'moon' && <Path {...p} d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />}
+      {name === 'auto' && (
+        <>
+          <Circle {...p} cx={12} cy={12} r={8} />
+          <Path d="M12 4a8 8 0 0 1 0 16z" fill={color} />
+        </>
+      )}
       {name === 'exit' && <Path {...p} d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10" />}
       {name === 'people' && (
         <>

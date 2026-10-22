@@ -10,7 +10,7 @@ import { HonorsCard } from '@/ui/honors';
 import { Icon } from '@/ui/icons';
 import { usePresenceColor } from '@/ui/presence';
 import { Avatar, Badge, Button, Card, Chip, Chips, Screen, Section, Sub, T } from '@/ui/kit';
-import { family, space, useColors } from '@/ui/theme';
+import { family, setThemeMode, space, THEME_MODES, useColors, useThemeMode } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 import { FRAME_SIZES, setFrameSize, useFrameSize } from '@/ui/web-frame';
 
@@ -59,6 +59,7 @@ export default function MeScreen() {
         </Section>
       ) : null}
       <WebPushCard />
+      <ThemeModeCard />
       <FrameSizeCard />
       <Section title="라잇나우 건의사항">
         <Card onPress={() => router.push('/suggest')}>
@@ -97,6 +98,18 @@ function WebPushCard() {
         <T bold>{state === 'granted' ? '알림 받는 중' : state === 'denied' ? '알림이 차단됨' : '알림 받기'}</T>
         {state === 'denied' ? <Sub>브라우저 주소창 왼쪽 자물쇠 아이콘에서 알림을 허용해 주세요.</Sub> : null}
       </Card>
+    </Section>
+  );
+}
+
+/** 화면 모드: 자동(기기 설정) / 라이트 / 다크 */
+function ThemeModeCard() {
+  const mode = useThemeMode();
+  return (
+    <Section title="화면 모드">
+      <Chips>
+        {THEME_MODES.map((m) => <Chip key={m.key} label={m.label} active={mode === m.key} onPress={() => setThemeMode(m.key)} />)}
+      </Chips>
     </Section>
   );
 }

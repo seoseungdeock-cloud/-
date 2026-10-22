@@ -37,6 +37,7 @@ import { boardOf, canSeeBoard, canWriteBoard, formatUntil, MAX_ATTACHMENTS, need
 import { displayName, isMaster, parseMentions, roomMasters, type Reads } from './messenger';
 import { findLawyer } from './offices';
 import { aliasOf, canManageOpen, canUseOpenChat, checkAlias, checkOpenPassword, isOpenMember, OPEN_MAX_OPTIONS, parseTags } from './open-chat';
+import { keepSession } from './login-prefs';
 import { procedureReply } from './procedures';
 import { roomAiInput, roomAiSystem } from './room-ai';
 import { aiAnswerLevel, canCreateRoom, canJoinMembership, canSeeSuggestions, canUseAgents, type RoomCheck } from './rooms';
@@ -114,6 +115,8 @@ export type State = {
   booted: boolean;
   /** 서버 연결 시: 서버에 저장하지 못한 사유 (화면 위에 잠깐 표시) */
   syncError?: string;
+  /** @AI 답을 기다리는 방 (말풍선 점 세 개) */
+  aiThinking?: Record<string, boolean>;
 };
 
 const T0 = '2026-10-13T09:00:00.000Z';
@@ -600,7 +603,9 @@ export async function startServer(): Promise<void> {
   started = true;
   try {
     const { data } = await supabase.auth.getSession();
-    if (data.session) await enter(data.session.user.id).catch(() => supabase!.auth.signOut());
+    // 자동 로그인을 끈 기기: 저장된 로그인을 지우고 로그인 화면부터
+    if (data.session && !(await keepSession())) await supabase.auth.signOut().catch(() => undefined);
+    else if (data.session) await enter(data.session.user.id).catch(() => supabase!.auth.signOut());
   } finally {
     set({ booted: true });
   }
@@ -1077,6 +1082,9 @@ export const actions = {
     }
     let reply: string;
     let refused = false;
+    const thinking = (on: boolean) => set((s) => ({ aiThinking: { ...s.aiThinking, [roomId]: on } }));
+    thinking(true);
+    try {
     if (supabase) {
       // 실제 AI는 서버에서만 (키는 서버 비밀값에만). 서버가 방·참여자를 다시 확인하고 사건 수행 질문에만 답합니다.
       const { data, error } = await supabase.functions.invoke('axiom', { body: { op: 'room.ask', args: { roomId, text } } });
@@ -1091,6 +1099,9 @@ export const actions = {
       const recent = state.messages.filter((m) => m.roomId === roomId).slice(-20).map((m) => ({ senderId: m.senderId, senderKind: m.kind === 'ai' ? 'ai' : 'user', text: m.text }));
       const roleOf = Object.fromEntries(members.map((u) => [u.id, u.role]));
       reply = await getAi().complete({ task: 'room-reply', system: roomAiSystem(level), input: roomAiInput(recent, roleOf, text) });
+    }
+    } finally {
+      thinking(false);
     }
     if (level === 'general-info' && !refused) reply += '\n\n※ 일반 법률 정보이며 개별 사건의 법률 자문이 아닙니다. 변호사 상담을 받아 보세요.';
     pushMessage(roomId, AI_SENDER, 'ai', reply);

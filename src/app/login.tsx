@@ -1,33 +1,14 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { autoLoginNow, saveLoginPrefs, savedLoginId, savedLoginIdNow } from '@/core/login-prefs';
 import { actions, me } from '@/core/store';
 import { serverEnabled } from '@/core/supabase';
 import { Icon, type IconName } from '@/ui/icons';
 import { Notice, Sub } from '@/ui/kit';
 import { family, font, radius, space, useColors } from '@/ui/theme';
-
-const SAVED_ID = 'daeryuntalk.loginId';
-
-// PC·웹에서만 아이디를 기억합니다 (폰은 저장된 로그인이 이어짐)
-function savedId(): string {
-  try {
-    return (Platform.OS === 'web' && globalThis.localStorage?.getItem(SAVED_ID)) || '';
-  } catch {
-    return '';
-  }
-}
-function saveId(id: string | null) {
-  try {
-    if (Platform.OS !== 'web') return;
-    if (id) globalThis.localStorage?.setItem(SAVED_ID, id);
-    else globalThis.localStorage?.removeItem(SAVED_ID);
-  } catch {
-    // 저장 못 해도 로그인은 됩니다
-  }
-}
 
 const MARK = require('../../assets/images/logo-mark.png');
 const WORDMARK = require('../../assets/images/logo-text.png');
@@ -70,11 +51,33 @@ function Field({ icon, right, ...props }: React.ComponentProps<typeof TextInput>
   );
 }
 
+function Check({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+  const c = useColors();
+  return (
+    <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: on }} onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+      <View style={{ width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: on ? c.accent : c.line, backgroundColor: on ? c.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+        {on ? <Icon name="check" color="#FFFFFF" size={14} /> : null}
+      </View>
+      <Text style={{ color: c.sub, fontSize: font.small, ...family.regular }}>{label}</Text>
+    </Pressable>
+  );
+}
+
 export default function LoginScreen() {
   const c = useColors();
-  const [loginId, setLoginId] = useState(savedId);
+  const [loginId, setLoginId] = useState(savedLoginIdNow);
   const [password, setPassword] = useState('');
-  const [remember, setRemember] = useState(() => !!savedId());
+  const [remember, setRemember] = useState(() => !!savedLoginIdNow());
+  const [auto, setAuto] = useState(autoLoginNow);
+  // 폰: 저장된 아이디는 기기 저장소에서 읽어 옵니다
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    void savedLoginId().then((id) => {
+      if (!id) return;
+      setLoginId((cur) => cur || id);
+      setRemember(true);
+    });
+  }, []);
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -86,7 +89,7 @@ export default function LoginScreen() {
     const res = await actions.signIn(loginId, password);
     setBusy(false);
     if (!res.ok) return setError(res.reason);
-    saveId(remember ? loginId.trim() : null);
+    await saveLoginPrefs(remember ? loginId.trim() : null, auto);
     router.replace(me().role === 'client' ? '/home' : '/');
   };
 
@@ -116,14 +119,10 @@ export default function LoginScreen() {
             }
           />
 
-          {Platform.OS === 'web' ? (
-            <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: remember }} onPress={() => setRemember((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginVertical: space.sm }}>
-              <View style={{ width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: remember ? c.accent : c.line, backgroundColor: remember ? c.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-                {remember ? <Icon name="check" color="#FFFFFF" size={14} /> : null}
-              </View>
-              <Text style={{ color: c.sub, fontSize: font.small, ...family.regular }}>아이디 저장</Text>
-            </Pressable>
-          ) : null}
+          <View style={{ flexDirection: 'row', gap: space.xl, marginVertical: space.sm }}>
+            <Check label="아이디 저장" on={remember} onPress={() => setRemember((v) => !v)} />
+            <Check label="자동 로그인" on={auto} onPress={() => setAuto((v) => !v)} />
+          </View>
 
           {error ? <View style={{ marginTop: space.sm }}><Notice text={error} /></View> : null}
 

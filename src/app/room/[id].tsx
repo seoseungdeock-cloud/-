@@ -13,7 +13,7 @@ import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Attachment, type Message, type User } from '@/core/types';
 import { newId } from '@/core/ids';
 import { CasePanel } from '@/ui/case-panel';
-import { Bubble, CalendarSheet, ContactSheet, DayDivider, ForwardSheet, MessageMenu, NoticeBar, ReactionsSheet, ReadersSheet, RoomDrawer } from '@/ui/chat';
+import { AiThinking, Bubble, CalendarSheet, ContactSheet, DayDivider, ForwardSheet, MessageMenu, NoticeBar, ReactionsSheet, ReadersSheet, RoomDrawer } from '@/ui/chat';
 import { Icon, type IconName } from '@/ui/icons';
 import { Avatar, Button, Empty, enterToSend, Input, ModeBadge, ModeBanner, Notice, Screen, Sub } from '@/ui/kit';
 import { roomTitle } from '@/ui/room-row';
@@ -291,6 +291,7 @@ export default function RoomScreen() {
           data={items}
           keyExtractor={(m) => m.id}
           ListHeaderComponent={header}
+          ListFooterComponent={s.aiThinking?.[room.id] ? <AiThinking /> : null}
           onContentSizeChange={() => {
             if (!query && !highlight) list.current?.scrollToEnd({ animated: false });
           }}
