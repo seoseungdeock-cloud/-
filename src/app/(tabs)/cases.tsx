@@ -1,14 +1,37 @@
 import { router } from 'expo-router';
-import { View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
-import { limitStatus, limitWhen } from '@/core/deadlines';
-import { dDay, dDayLabel, whenLabel } from '@/core/hearings';
-import { Badge, Button, Card, Empty, ModeBadge, Screen, Section, Sub, T } from '@/ui/kit';
-import { space } from '@/ui/theme';
+import { limitStatus } from '@/core/deadlines';
+import { dDay, dDayLabel } from '@/core/hearings';
+import { Button, Empty, Screen, Section } from '@/ui/kit';
+import type { Room, User } from '@/core/types';
+import { family, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 
-// 웍스 목록처럼 촘촘하게
-const tight = { paddingVertical: space.sm + 2, paddingHorizontal: space.md, marginBottom: 6 };
+// 대륜탑 앱 목록 형식 (게시글 크기): 1줄 당사자, 2줄 사건번호 / 사건명, 3줄 날짜 [D-n] 시간 / 기일
+function CaseRow({ top, mid, date, tag, warn, rest, onPress }: { top: string; mid: string; date?: string; tag?: string; warn?: boolean; rest?: string; onPress: () => void }) {
+  const c = useColors();
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => ({ paddingVertical: space.sm + 2, borderBottomWidth: 1, borderBottomColor: c.line, gap: 2, opacity: pressed ? 0.6 : 1 })}>
+      <Text numberOfLines={1} style={{ ...family.bold, fontSize: 15, color: c.text }}>{top}</Text>
+      <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 13, color: c.accent }}>{mid}</Text>
+      {date || rest ? (
+        <Text numberOfLines={1} style={{ ...family.regular, fontSize: 13, color: c.sub }}>
+          {date ? `${date} ` : ''}
+          {tag ? <Text style={{ ...family.semibold, color: warn ? c.warn : c.sub }}>[{tag}]</Text> : null}
+          {rest ? `${date ? ' ' : ''}${rest}` : ''}
+        </Text>
+      ) : null}
+    </Pressable>
+  );
+}
+
+/** 1줄: 의뢰인 / 상대방 (상대방 정보가 없으면 -) */
+const parties = (r: Room, users: User[]) => {
+  const clients = r.memberIds.map((id) => users.find((u) => u.id === id)).filter((u) => u?.role === 'client').map((u) => u!.nickname);
+  return `${clients.join(', ') || r.caseInfo?.title || r.title} / -`;
+};
+const caseLine = (r: Room) => [r.caseInfo?.caseNo, r.caseInfo?.title ?? r.title].filter(Boolean).join(' / ');
 
 export default function CasesScreen() {
   const s = useApp();
@@ -27,15 +50,7 @@ export default function CasesScreen() {
         <Section title={`남은 불변기간 ${limits.length}건`}>
           {limits.map(({ r, d }) => {
             const st = limitStatus(d);
-            return (
-              <Card key={d.id} style={tight} onPress={() => open(r.id)}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-                  <Badge fixed label={st.label} tone={st.tone} />
-                  <T bold>{d.label}</T>
-                </View>
-                <Sub>{r.caseInfo!.title} · {limitWhen(d)}</Sub>
-              </Card>
-            );
+            return <CaseRow key={d.id} top={parties(r, s.users)} mid={caseLine(r)} date={d.due} tag={st.label} warn={st.tone === 'warn'} rest={`24:00 / ${d.label}`} onPress={() => open(r.id)} />;
           })}
         </Section>
       ) : null}
@@ -44,16 +59,11 @@ export default function CasesScreen() {
           cases.map((r) => {
             const ci = r.caseInfo!;
             const next = [...ci.deadlines].filter((d) => dDay(d.date) >= 0 && (user.role !== 'client' || !d.firmOnly)).sort((a, b) => a.date.localeCompare(b.date))[0];
-            return (
-              <Card key={r.id} style={tight} onPress={() => open(r.id)}>
-                <View style={{ flexDirection: 'row', gap: space.sm, marginBottom: space.xs }}>
-                  <Badge label={ci.stage} />
-                  <ModeBadge mode="private" />
-                  {next ? <Badge fixed label={dDayLabel(dDay(next.date))} tone={dDay(next.date) <= 7 ? 'accent' : 'plain'} /> : null}
-                </View>
-                <T bold>{ci.title}</T>
-                <Sub>{ci.field}{next ? ` · 다음 기일 ${next.label} ${whenLabel(next.date, next.time)}` : ''}</Sub>
-              </Card>
+            const n = next ? dDay(next.date) : 0;
+            return next ? (
+              <CaseRow key={r.id} top={parties(r, s.users)} mid={caseLine(r)} date={next.date} tag={dDayLabel(n)} warn={n <= 3} rest={`${next.time ?? '00:00'} / ${next.label}`} onPress={() => open(r.id)} />
+            ) : (
+              <CaseRow key={r.id} top={parties(r, s.users)} mid={caseLine(r)} rest={`${ci.field} · ${ci.stage} · 잡힌 기일 없음`} onPress={() => open(r.id)} />
             );
           })
         ) : (
@@ -62,15 +72,7 @@ export default function CasesScreen() {
       </Section>
       <Section title="상담">
         {consults.length ? (
-          consults.map((r) => (
-            <Card key={r.id} style={tight} onPress={() => open(r.id)}>
-              <View style={{ flexDirection: 'row', gap: space.sm, marginBottom: space.xs }}>
-                <Badge label="상담" tone="plain" />
-                <ModeBadge mode="private" />
-              </View>
-              <T bold>{r.title}</T>
-            </Card>
-          ))
+          consults.map((r) => <CaseRow key={r.id} top={parties(r, s.users)} mid={`상담 / ${r.title}`} onPress={() => open(r.id)} />)
         ) : (
           <View style={{ gap: space.sm }}>
             <Empty text="상담 내역이 없습니다." />
