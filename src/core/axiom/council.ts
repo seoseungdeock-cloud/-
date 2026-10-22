@@ -95,6 +95,7 @@ export async function get(ctx: Ctx, user: AxUser, id: string): Promise<Row> {
   return {
     ...named, steps: STEPS, status_label: STATUS[c.status], visibility_label: acl.label(c.visibility, ctx.inst), runs, pending_approval_id: pending?.id || null,
     record_md: toMarkdown(ctx, c, res, c.warnings || [], chosen),
+    data_gaps: openGaps(c),
   };
 }
 
@@ -190,7 +191,10 @@ export async function runStep(ctx: Ctx, id: string, step: string, token: string)
       company_state = { metrics: [], notes: stateDoc.body };
     }
   }
-  const human_instructions = (c.interventions || []).map((i: Row) => i.text);
+  // '자료 넣기'로 보충한 자료는 회사 상태에, 나머지 개입은 사람의 지시로 넘깁니다
+  const supplied = (c.interventions || []).filter((i: Row) => i.kind === 'data');
+  if (supplied.length) company_state = { ...company_state, supplied_data: supplied.map((i: Row) => ({ item: i.gap, value: i.text })) };
+  const human_instructions = (c.interventions || []).filter((i: Row) => i.kind !== 'data').map((i: Row) => i.text);
   c.objective = c.objective || NO_OBJECTIVE;
   const limit = limiter(ctx.inst.models?.concurrency || 4);
   const mine = async () => {
@@ -255,7 +259,8 @@ export async function runStep(ctx: Ctx, id: string, step: string, token: string)
       });
       res.proposal = normStrategies(r.output);
       res.forecaster_provider = r.provider;
-      if (res.proposal.data_gaps?.length) warnings.add(`예측자가 밝힌 자료 부족: ${res.proposal.data_gaps.join(', ')}`);
+      const gaps = arr<string>(res.proposal.data_gaps).filter((g) => !supplied.some((i: Row) => i.gap === g));
+      if (gaps.length) warnings.add(`${GAP_WARNING}${gaps.join(', ')}`);
       if (!res.proposal.strategies.length) throw new Error('예측자가 전략을 내지 못했습니다.');
     }
 
@@ -329,7 +334,7 @@ export function toMarkdown(ctx: Ctx, c: Row, res: Row, warnings: string[], chose
   L.push(`# 경영위원회: ${c.title}`, '', `- 공개 등급: ${acl.label(c.visibility, ctx.inst)}`, `- 시작: ${String(c.created_at).slice(0, 16).replace('T', ' ')} (UTC)`, '', '## 회사의 상태·목적·방향성', c.objective || NO_OBJECTIVE, '');
   if (c.interventions?.length) {
     L.push('## 사람의 지시');
-    for (const i of c.interventions) L.push(`- ${i.user_name || ''}: ${i.text}`);
+    for (const i of c.interventions) L.push(i.kind === 'data' ? `- ${i.user_name || ''} (자료 넣기 · ${i.gap}): ${i.text}` : `- ${i.user_name || ''}: ${i.text}`);
     L.push('');
   }
   L.push('## 회의 요약', res.minutes?.summary || '', '');
@@ -375,6 +380,40 @@ export async function intervene(ctx: Ctx, user: AxUser, id: string, text: unknow
   await ctx.db.update('councils', { eq: { id } }, { interventions: list, updated_at: now() });
   await store.audit(ctx, user, 'council.intervene', id, t);
   return { interventions: list, applies: c.status === 'running' ? '다음 단계부터 반영됩니다.' : '반영하려면 원하는 단계부터 다시 실행하세요.' };
+}
+
+const GAP_WARNING = '예측자가 밝힌 자료 부족: ';
+const gapText = (x: unknown) => (typeof x === 'string' ? x : String((x as Row)?.item || (x as Row)?.text || (x as Row)?.name || '')).trim();
+
+/** 예측자·비판자가 부족하다고 한 자료 가운데 아직 넣지 않은 것 */
+export function openGaps(c: Row): string[] {
+  const res: Row = c.result || {};
+  const done = new Set((c.interventions || []).filter((i: Row) => i.kind === 'data').map((i: Row) => i.gap));
+  const all = [...arr(res.proposal?.data_gaps), ...arr(res.revision?.data_gaps), ...arr(res.verification?.missing_data)].map(gapText).filter(Boolean);
+  return [...new Set(all)].filter((g) => !done.has(g)).slice(0, 12);
+}
+
+/** 부족한 자료 넣기: 저장하고 바로 예측 단계부터 다시 계산합니다 (진행 중이면 다음 단계부터 반영). */
+export async function supply(ctx: Ctx, user: AxUser, id: string, gap: unknown, text: unknown) {
+  const g = String(gap || '').trim().slice(0, 200);
+  const t = String(text || '').trim();
+  if (!g) throw new AxError(400, '어떤 자료인지 골라 주세요.');
+  if (!t) throw new AxError(400, '자료 내용을 입력하세요.');
+  if (t.length > 4000) throw new AxError(400, '자료는 4000자 이내로 넣어 주세요.');
+  if (!['admin', 'lead'].includes(user.role)) throw new AxError(403, '자료는 관리자·팀장만 넣을 수 있습니다.');
+  const c = await get(ctx, user, id);
+  if (c.status === 'approved') throw new AxError(409, '이미 승인된 위원회입니다. 새 위원회를 열어 자료를 넣어 주세요.');
+  const list = [...c.interventions, { at: now(), user_id: user.id, user_name: user.name, text: t, step: c.step, kind: 'data', gap: g }];
+  const rest = arr<Row>(c.interventions).filter((i) => i.kind === 'data').length + 1;
+  const left = openGaps({ ...c, interventions: list }).length;
+  const warnings = arr<string>(c.warnings).filter((w) => !w.startsWith(GAP_WARNING));
+  await ctx.db.update('councils', { eq: { id } }, { interventions: list, warnings, updated_at: now() });
+  await store.audit(ctx, user, 'council.supply', id, `${g}: ${clip(t, 200)}`);
+  if (c.status === 'running') return { applies: '진행 중이라 다음 단계부터 반영됩니다.', supplied: rest };
+  if (!c.result?.direction) return { applies: '판정 단계가 끝나면 반영됩니다.', supplied: rest };
+  await approvals.supersede(ctx, 'council', id);
+  await launch(ctx, id, 'forecast');
+  return { applies: left ? `예측 단계부터 다시 계산합니다. 아직 비어 있는 자료 ${left}건.` : '예측 단계부터 다시 계산합니다.', supplied: rest };
 }
 
 export async function rerun(ctx: Ctx, user: AxUser, id: string, fromStep: string) {

@@ -14,9 +14,9 @@ const TONE: Record<string, 'ai' | 'accent' | 'warn' | 'plain'> = {
 };
 
 export default function AxWork() {
-  const { council } = useLocalSearchParams<{ council?: string }>();
+  const { council, team: only } = useLocalSearchParams<{ council?: string; team?: string }>();
   const inst = useInstance();
-  const [team, setTeam] = useState<string>();
+  const [team, setTeam] = useState<string | undefined>(only);
   const { data, error, reload } = useAx<R[]>(
     'work.list',
     { team, council_id: council },
@@ -24,9 +24,9 @@ export default function AxWork() {
       poll: (l) => (l.some((w) => w.status === 'running' || w.status === 'queued') ? 3000 : false),
     },
   );
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!only);
   const [f, setF] = useState({
-    team: 'marketing',
+    team: only || 'marketing',
     title: '',
     detail: '',
     deliverable: '',
@@ -41,9 +41,9 @@ export default function AxWork() {
     }
   };
   return (
-    <AgentGate title="작업지시">
+    <AgentGate title={only === 'marketing' ? '마케팅팀' : '작업지시'}>
       <AxScreen
-        title="작업지시"
+        title={only === 'marketing' ? '마케팅팀' : '작업지시'}
         error={error}
         loading={!data}
         right={<Button label={open ? '닫기' : '새 작업'} small kind={open ? 'ghost' : 'primary'} onPress={() => setOpen((v) => !v)} />}

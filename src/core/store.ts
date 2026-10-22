@@ -813,6 +813,16 @@ function planText(p: Plan): string {
   ].join('\n');
 }
 
+/** '@AI 마케팅 …' → 경영관리 마케팅팀 작업지시 (서버의 마케팅팀 에이전트가 수행) */
+async function marketingOrder(arg: string): Promise<string> {
+  const first = arg.split('\n')[0].trim();
+  const title = first.length > 60 ? `${first.slice(0, 60)}…` : first;
+  const { data, error } = await supabase!.functions.invoke('axiom', { body: { op: 'work.create', args: { team: 'marketing', title, detail: arg, deliverable: '' } } });
+  const res = data as { ok: boolean; reason?: string; data?: { status_label?: string } } | null;
+  if (error || !res?.ok) return res?.reason ?? '마케팅팀에 지시를 넣지 못했습니다. 잠시 후 다시 시도해 주세요.';
+  return `마케팅팀 작업지시로 넣었습니다: ${title} (${res.data?.status_label ?? '대기'})\n결과는 업무 탭 → 경영관리 → 마케팅팀에서 확인하세요.`;
+}
+
 function runCommand(roomId: string, cmd: AiCommand): string {
   switch (cmd.kind) {
     case 'help':
@@ -1069,6 +1079,11 @@ export const actions = {
     if (cmd.kind !== 'chat') {
       if (needsAgentAccess(cmd) && !canUseAgents(me())) {
         pushMessage(roomId, AI_SENDER, 'ai', '이 기능은 어드민 허용이 필요합니다.');
+        return;
+      }
+      if (supabase && cmd.kind === 'marketing' && cmd.arg) {
+        // 마케팅 지휘실은 경영관리의 마케팅팀 에이전트로 합쳤습니다: 지시는 마케팅팀 작업지시가 됩니다
+        pushMessage(roomId, AI_SENDER, 'ai', await marketingOrder(cmd.arg));
         return;
       }
       pushMessage(roomId, AI_SENDER, 'ai', runCommand(roomId, cmd));

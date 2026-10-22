@@ -96,6 +96,13 @@ export default function AxCouncil() {
             <Section title="회의 기록">
               <Markdown text={cn.record_md} />
             </Section>
+            {cn.data_gaps?.length ? (
+              <Section title="부족한 자료">
+                {cn.data_gaps.map((g: string) => (
+                  <GapRow key={g} gap={g} busy={act.busy} onSend={(text) => after(act.run('councils.supply', { id, gap: g, text }))} />
+                ))}
+              </Section>
+            ) : null}
             <Section title="개입">
               {cn.interventions?.map((x: R, i: number) => (
                 <Sub key={i}>
@@ -141,5 +148,17 @@ export default function AxCouncil() {
         ) : null}
       </AxScreen>
     </AgentGate>
+  );
+}
+
+/** 부족한 자료 한 줄: 넣으면 그 자리에서 예측 단계부터 다시 계산합니다 */
+function GapRow({ gap, busy, onSend }: { gap: string; busy: boolean; onSend: (text: string) => Promise<void> }) {
+  const [text, setText] = useState('');
+  return (
+    <View style={{ marginBottom: space.md }}>
+      <T bold size="small">{gap}</T>
+      <Input multiline value={text} onChangeText={setText} placeholder="예: 9월 매출 12억, 형사 3억" />
+      <Button label="자료 넣기" small disabled={busy || !text.trim()} onPress={() => void onSend(text.trim())} />
+    </View>
   );
 }

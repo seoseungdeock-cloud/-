@@ -141,6 +141,29 @@ describe('AXIOM 엔진 (라잇나우판)', () => {
     expect((await call(CEO, 'councils.get', { id: d.id })).status).toBe('awaiting_approval');
   });
 
+  test('목적 없이 열 수 있고, 부족한 자료를 넣으면 예측부터 다시 계산한다', async () => {
+    const { call, drain, jobs, ctx } = makeCtx();
+    const c = await call(CEO, 'councils.start', { title: '자료 보충', meeting_text: MEETING });
+    await drain();
+    const c1 = await call(CEO, 'councils.get', { id: c.id });
+    expect(c1.status).toBe('awaiting_approval');
+    expect(c1.record_md).toContain('회의록 내용으로 판단');
+    const gaps: string[] = c1.data_gaps;
+    expect(gaps.length).toBeGreaterThan(0);
+    await expect(call(CEO, 'councils.supply', { id: c.id, gap: gaps[0], text: '' })).rejects.toThrow('자료 내용');
+    const r = await call(CEO, 'councils.supply', { id: c.id, gap: gaps[0], text: '9월 매출 12억' });
+    expect(r.applies).toContain('예측 단계부터');
+    expect(jobs[0]).toMatchObject({ type: 'council', step: 'forecast' });
+    await drain();
+    const c2 = await call(CEO, 'councils.get', { id: c.id });
+    expect(c2.status).toBe('awaiting_approval');
+    expect(c2.data_gaps).not.toContain(gaps[0]);
+    expect(c2.warnings.some((w: string) => w.startsWith('예측자가 밝힌 자료 부족') && w.includes(gaps[0]))).toBe(false);
+    expect(c2.record_md).toContain(`자료 넣기 · ${gaps[0]}`);
+    const run = (await ctx.db.find('runs', {})).filter((x: any) => x.mode === 'propose').pop();
+    expect(JSON.stringify(run?.input ?? '')).toContain('9월 매출 12억');
+  });
+
   test('공개 등급: 팀장은 다른 팀·기밀 문서를 못 본다', async () => {
     const { call } = makeCtx();
     const conf = await call(CEO, 'docs.create', { kind: 'note', title: '인사 메모', body: '평가', visibility: 'confidential' });
