@@ -1,7 +1,7 @@
 // 대화방 화면 조각 (웍스 대화방 구성: 읽음 수, 답장 인용, 전달, 회수, 공감, 멘션, 공지, 방 메뉴)
 import { router } from 'expo-router';
 import { createElement, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, Text, TextInput, Vibration, View } from 'react-native';
 
 import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
 import { actions } from '@/core/store';
@@ -1044,7 +1044,7 @@ function RoomCouncils({ room, me, members, onOpen }: { room: Room; me: User; mem
 }
 
 /** 배당인사 확인: 완료면 누가 언제, 아니면 부장변호사에게 체크 버튼, 다른 사람에게는 기한 */
-function GreetingRow({ m }: { m: Message }) {
+function GreetingRow({ m, onStamp, onFail }: { m: Message; onStamp: () => void; onFail: () => void }) {
   const c = useColors();
   const s = useApp();
   const me = useMe();
@@ -1067,7 +1067,13 @@ function GreetingRow({ m }: { m: Message }) {
       <View style={{ gap: 4 }}>
         <Pressable
           accessibilityLabel="배당인사 완료 체크"
-          onPress={() => void actions.confirmGreeting(m.id).then((r) => setErr(r.ok ? '' : r.reason))}
+          onPress={() => {
+            onStamp();
+            void actions.confirmGreeting(m.id).then((r) => {
+              setErr(r.ok ? '' : r.reason);
+              if (!r.ok) onFail();
+            });
+          }}
           style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: space.sm, borderRadius: radius.sm, backgroundColor: c.accent, opacity: pressed ? 0.7 : 1 })}>
           <Icon name="check" color="#FFFFFF" size={16} />
           <Text style={{ ...family.bold, fontSize: 14, color: '#FFFFFF' }}>배당인사 완료 체크</Text>
@@ -1090,13 +1096,37 @@ function AssignCard({ notice, m }: { notice: AssignNotice; m: Message }) {
   const c = useColors();
   const [open, setOpen] = useState(false);
   const frameW = useFrameWidth();
+  // 배당인사 완료 도장 (승덕 2026-10-22 시안 A): 누르면 위에서 쾅 찍히고 말풍선이 살짝 눌림
+  const native = Platform.OS !== 'web';
+  const greeted = !!m.assignGreeting?.greetedAt;
+  const stamp = useRef(new Animated.Value(greeted ? 1 : 0)).current;
+  const thud = useRef(new Animated.Value(0)).current;
+  const playing = useRef(false);
+  useEffect(() => {
+    if (greeted && !playing.current) stamp.setValue(1);
+  }, [greeted, stamp]);
+  const playStamp = () => {
+    playing.current = true;
+    try {
+      Vibration.vibrate(40);
+    } catch {
+      // 진동이 없는 기기
+    }
+    Animated.parallel([
+      Animated.spring(stamp, { toValue: 1, friction: 5, tension: 140, useNativeDriver: native }),
+      Animated.sequence([Animated.delay(170), Animated.timing(thud, { toValue: 1, duration: 80, useNativeDriver: native }), Animated.timing(thud, { toValue: 0, duration: 180, useNativeDriver: native })]),
+    ]).start(() => {
+      playing.current = false;
+    });
+  };
+  const stampDate = new Date(m.assignGreeting?.greetedAt ?? Date.now());
   const who = [notice.chief && `부장 및 주수행 : ${lawyerName(notice.chief)}`, notice.associate && `평 변호사 : ${lawyerName(notice.associate)}`].filter(Boolean).join(' / ');
   return (
-    <View style={{ width: 250, gap: 6 }}>
+    <Animated.View style={{ width: 250, gap: 6, transform: [{ translateY: thud.interpolate({ inputRange: [0, 1], outputRange: [0, 3] }) }] }}>
       <Text style={{ ...family.semibold, fontSize: 12, color: c.sub }}>{notice.reassign ? '재배당 안내' : '배당 안내'}</Text>
       {who ? <Text style={{ ...family.bold, fontSize: 15, lineHeight: 21, color: c.text }}>{who}</Text> : null}
       <Text style={{ ...family.regular, fontSize: 13, color: c.sub }}>{notice.head}</Text>
-      {m.assignGreeting ? <GreetingRow m={m} /> : null}
+      {m.assignGreeting ? <GreetingRow m={m} onStamp={playStamp} onFail={() => stamp.setValue(0)} /> : null}
       <Pressable
         accessibilityLabel="배당 안내 자세히 보기"
         onPress={() => setOpen(true)}
@@ -1119,6 +1149,20 @@ function AssignCard({ notice, m }: { notice: AssignNotice; m: Message }) {
           </Pressable>
         </Pressable>
       </Modal>
-    </View>
+      {m.assignGreeting ? (
+        <Animated.View
+          pointerEvents="none"
+          accessibilityElementsHidden
+          style={{
+            position: 'absolute', right: -18, top: 4, width: 84, height: 84, borderRadius: 42, borderWidth: 3, borderColor: c.accent,
+            alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.55)',
+            opacity: stamp.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 1, 0.92] }),
+            transform: [{ rotate: '-14deg' }, { scale: stamp.interpolate({ inputRange: [0, 1], outputRange: [2.4, 1] }) }],
+          }}>
+          <Text style={{ ...family.bold, fontSize: 12.5, lineHeight: 16, color: c.accent, textAlign: 'center' }}>배당인사{'\n'}완료</Text>
+          <Text style={{ ...family.semibold, fontSize: 10, color: c.accent }}>{stampDate.getMonth() + 1}.{stampDate.getDate()}</Text>
+        </Animated.View>
+      ) : null}
+    </Animated.View>
   );
 }
