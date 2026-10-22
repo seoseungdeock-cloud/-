@@ -1,7 +1,7 @@
 // 배당·재배당 안내 (승덕 2026-10-22): 그룹 배당표 엑셀 → 사건방마다 '배당 안내' 카드.
 // 배당표에는 사건번호가 없어 '의뢰인 이름(사건방의 의뢰인 계정) + 사건명'으로 방을 찾고, 올리기 전에 사람이 확인합니다.
 // 사건방에는 의뢰인도 있으므로 사건·관할·담당 변호사만 담고 착수금·입금·전문인력·요청사항·사건개요는 담지 않습니다.
-import type { Room, User } from './types';
+import type { Message, Room, User } from './types';
 
 /** 맞춰 볼 사건방 (서버에서는 어드민 전용 목록으로 받음) */
 export type CaseRoomRef = { id: string; title: string; clients: string[]; /** 사건명 맞추기에 함께 보는 글 */ alt?: string };
@@ -193,3 +193,26 @@ export function parseAssignText(text: string): AssignNotice | null {
   return { reassign: !!m[2], head: lines[0].trim(), chief: find(/^부장변호사/), associate: find(/^평변호사$/), fields, full: text };
 }
 
+
+// ── 배당인사 확인 (승덕 2026-10-22): 부장변호사가 당일, 늦어도 다음 날 24시까지 배당인사 후 체크 ──
+
+/** 안내 양식의 부장변호사 이름 ('변호사' 떼고) */
+export function assignChiefName(d: AssignDraft): string | null {
+  const v = d.fields.find((f) => f.label.replace(/\s/g, '').startsWith('부장변호사'))?.value ?? '';
+  const name = v.split(',')[0].replace(/\s*변호사$/, '').trim();
+  return name && name !== 'X' ? name : null;
+}
+
+/** 체크할 수 있는 사람: 부장변호사 (계정을 못 찾은 안내는 그 방 변호사 누구나) */
+export function canConfirmGreeting(m: Message, me: User, room?: Room): boolean {
+  const g = m.assignGreeting;
+  if (!g) return false;
+  if (g.chiefId) return g.chiefId === me.id;
+  return me.role === 'lawyer' && !!room?.memberIds.includes(me.id);
+}
+
+/** 기한: 안내가 올라온 다음 날 (한국 날짜, 그날 24시까지) */
+export function greetingDue(at: string): Date {
+  const kst = new Date(new Date(at).getTime() + 9 * 3600 * 1000);
+  return new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate() + 1) - 9 * 3600 * 1000);
+}

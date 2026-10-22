@@ -1238,6 +1238,21 @@ describe('대화방 이름 바꾸기', () => {
     expect(clients.every((u) => m.deletedFor?.includes(u.id))).toBe(true);
   });
 
+  it('배당인사: 부장변호사만 체크하고, 체크하면 완료로 남음', async () => {
+    as('admin');
+    const draft = { reassign: false, fields: [{ label: '부장변호사 겸 주수행 변호사', value: '샘플 변호사 A' }, { label: '평변호사', value: '' }] };
+    await actions.postAssignNotices([{ roomId: 'r_case1', draft }]);
+    const m = getState().messages.filter((x) => x.roomId === 'r_case1').pop()!;
+    expect(m.assignGreeting).toEqual({ chiefName: '샘플 변호사 A', chiefId: 'u_lawyer' });
+    as('staff');
+    expect((await actions.confirmGreeting(m.id)).ok).toBe(false);
+    as('lawyer');
+    expect((await actions.confirmGreeting(m.id)).ok).toBe(true);
+    const g = getState().messages.find((x) => x.id === m.id)!.assignGreeting!;
+    expect(g.greetedBy).toBe('u_lawyer');
+    expect(g.greetedAt).toBeTruthy();
+  });
+
   it('방 사진도 마스터만 바꾸고 지울 수 있음', () => {
     const id = 'r_case1';
     as('lawyer');

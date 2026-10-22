@@ -5,8 +5,9 @@ import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, Text, 
 
 import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
 import { actions } from '@/core/store';
+import { useApp, useMe } from '@/ui/use-app';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Attachment, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
-import { lawyerName, parseAssignText, type AssignNotice } from '@/core/assign';
+import { canConfirmGreeting, greetingDue, lawyerName, parseAssignText, type AssignNotice } from '@/core/assign';
 import type { RoomDocRef } from '@/core/room-ai';
 import { aiAnswerLevel } from '@/core/rooms';
 import { Icon, type IconName } from './icons';
@@ -206,7 +207,7 @@ export function Bubble({
             {m.hearingAlertId ? (
               <HearingCard alertId={m.hearingAlertId} />
             ) : assign ? (
-              <AssignCard notice={assign} />
+              <AssignCard notice={assign} m={m} />
             ) : m.bundle ? (
               <BundleCard m={m} users={users} mark={mark} />
             ) : m.forwardOf ? (
@@ -1042,8 +1043,50 @@ function RoomCouncils({ room, me, members, onOpen }: { room: Room; me: User; mem
   );
 }
 
+/** 배당인사 확인: 완료면 누가 언제, 아니면 부장변호사에게 체크 버튼, 다른 사람에게는 기한 */
+function GreetingRow({ m }: { m: Message }) {
+  const c = useColors();
+  const s = useApp();
+  const me = useMe();
+  const [err, setErr] = useState('');
+  const g = m.assignGreeting!;
+  const who = g.chiefName ? lawyerName(g.chiefName) : '부장변호사';
+  if (g.greetedAt) {
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: space.sm, borderRadius: radius.sm, backgroundColor: c.bg }}>
+        <Icon name="check" color={c.secure} size={16} />
+        <Text style={{ flex: 1, ...family.semibold, fontSize: 13, color: c.secure }}>배당인사 완료 · {nameOf(s.users, g.greetedBy ?? '') || who} · {clockTime(g.greetedAt)}</Text>
+      </View>
+    );
+  }
+  const due = greetingDue(m.at);
+  const dueText = `기한 ${due.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', timeZone: 'Asia/Seoul' })}`;
+  const late = Date.now() >= due.getTime() + 24 * 3600 * 1000;
+  if (canConfirmGreeting(m, me, s.rooms.find((r) => r.id === m.roomId))) {
+    return (
+      <View style={{ gap: 4 }}>
+        <Pressable
+          accessibilityLabel="배당인사 완료 체크"
+          onPress={() => void actions.confirmGreeting(m.id).then((r) => setErr(r.ok ? '' : r.reason))}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: space.sm, borderRadius: radius.sm, backgroundColor: c.accent, opacity: pressed ? 0.7 : 1 })}>
+          <Icon name="check" color="#FFFFFF" size={16} />
+          <Text style={{ ...family.bold, fontSize: 14, color: '#FFFFFF' }}>배당인사 완료 체크</Text>
+        </Pressable>
+        <Text style={{ ...family.regular, fontSize: 12, color: late ? c.accent : c.sub }}>{late ? '기한이 지났습니다. 배당인사 후 바로 체크해 주세요.' : `배당인사 후 눌러 주세요 · ${dueText}`}</Text>
+        {err ? <Text style={{ ...family.regular, fontSize: 12, color: c.accent }}>{err}</Text> : null}
+      </View>
+    );
+  }
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: space.sm, borderRadius: radius.sm, backgroundColor: c.bg }}>
+      <Icon name="notice" color={c.accent} size={15} />
+      <Text style={{ flex: 1, ...family.semibold, fontSize: 12.5, color: c.accent }}>{late ? `배당인사 미확인 · 기한 지남 (${who})` : `배당인사 확인 전 · ${who} · ${dueText}`}</Text>
+    </View>
+  );
+}
+
 /** 배당·재배당 안내: 일반 대화와 다른 간략 말풍선 + '자세히 보기'로 전체 글 */
-function AssignCard({ notice }: { notice: AssignNotice }) {
+function AssignCard({ notice, m }: { notice: AssignNotice; m: Message }) {
   const c = useColors();
   const [open, setOpen] = useState(false);
   const frameW = useFrameWidth();
@@ -1053,6 +1096,7 @@ function AssignCard({ notice }: { notice: AssignNotice }) {
       <Text style={{ ...family.semibold, fontSize: 12, color: c.sub }}>{notice.reassign ? '재배당 안내' : '배당 안내'}</Text>
       {who ? <Text style={{ ...family.bold, fontSize: 15, lineHeight: 21, color: c.text }}>{who}</Text> : null}
       <Text style={{ ...family.regular, fontSize: 13, color: c.sub }}>{notice.head}</Text>
+      {m.assignGreeting ? <GreetingRow m={m} /> : null}
       <Pressable
         accessibilityLabel="배당 안내 자세히 보기"
         onPress={() => setOpen(true)}

@@ -9,7 +9,7 @@ import { similarity } from './text';
 import type { DecisionRecord } from './knowledge';
 import { opinionFor } from './knowledge';
 import { titleFrom, type ProgramRequest } from './builder';
-import { assignText, caseRoomRefs, type AssignDraft, type CaseRoomRef } from './assign';
+import { assignChiefName, assignText, canConfirmGreeting, caseRoomRefs, type AssignDraft, type CaseRoomRef } from './assign';
 import { newId, nowIso, useServerIds } from './ids';
 import { loadAll, loadMessagesSince, messagesFromRows, remoteOps, type PhoneResult, type Remote } from './remote';
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
@@ -1922,9 +1922,10 @@ export const actions = {
     for (const { roomId, draft } of items) {
       const text = assignText(draft);
       const room = state.rooms.find((r) => r.id === roomId && r.kind === 'case');
+      const chiefName = assignChiefName(draft);
       if (remote) {
         try {
-          await remote.postAssignNotice(newId('m'), roomId, text);
+          await remote.postAssignNotice(newId('m'), roomId, text, chiefName);
           ok += 1;
         } catch (e) {
           failed.push({ roomId, reason: reasonOf(e as { message?: string }, '올리지 못했습니다.') });
@@ -1932,7 +1933,12 @@ export const actions = {
       } else if (room) {
         // 의뢰인에게는 보이지 않음 (서버에서는 의뢰인에게 내려가지 않음)
         const clients = room.memberIds.filter((id) => state.users.find((u) => u.id === id)?.role === 'client');
-        const msg: Message = { id: newId('m'), roomId, senderId: BOT_SENDER, kind: 'bot', text, at: nowIso(), ...(clients.length ? { deletedFor: clients } : {}) };
+        const chief = chiefName ? state.users.find((u) => u.role === 'lawyer' && u.nickname === chiefName && room.memberIds.includes(u.id)) ?? state.users.filter((u) => u.role === 'lawyer' && u.nickname === chiefName).at(0) : undefined;
+        const msg: Message = {
+          id: newId('m'), roomId, senderId: BOT_SENDER, kind: 'bot', text, at: nowIso(),
+          ...(clients.length ? { deletedFor: clients } : {}),
+          ...(chiefName ? { assignGreeting: { chiefName, ...(chief ? { chiefId: chief.id } : {}) } } : {}),
+        };
         set((s) => ({ messages: [...s.messages, msg] }));
         ok += 1;
       } else failed.push({ roomId, reason: '사건방을 찾지 못했습니다.' });
@@ -1955,6 +1961,24 @@ export const actions = {
       set((s) => ({ users: s.users.map((u) => (u.id === hits[0].id ? { ...u, phone } : u)) }));
       return { name, result: 'ok' };
     });
+  },
+
+  /** 배당 안내에서 부장변호사가 '배당인사 완료' 체크 */
+  async confirmGreeting(messageId: string): Promise<RoomCheck> {
+    const m = state.messages.find((x) => x.id === messageId);
+    const g = m?.assignGreeting;
+    if (!m || !g) return { ok: false, reason: '배당 안내가 아닙니다.' };
+    if (!canConfirmGreeting(m, me(), state.rooms.find((r) => r.id === m.roomId))) return { ok: false, reason: '부장변호사만 체크할 수 있습니다.' };
+    if (g.greetedAt) return { ok: true };
+    if (remote) {
+      try {
+        await remote.confirmAssignGreeting(messageId);
+      } catch (e) {
+        return { ok: false, reason: reasonOf(e as { message?: string }, '체크하지 못했습니다.') };
+      }
+    }
+    updateMessage(messageId, (x) => ({ ...x, assignGreeting: { ...g, greetedAt: nowIso(), greetedBy: me().id } }));
+    return { ok: true };
   },
 
   async importDaeryuntop(rows: DtHearing[]): Promise<{ ok: true; results: DtResult[] } | { ok: false; reason: string }> {

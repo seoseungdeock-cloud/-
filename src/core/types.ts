@@ -173,6 +173,8 @@ export type Message = {
   deletedFor?: string[];
   /** 방에 올린 사진·파일 */
   attachments?: Attachment[];
+  /** 배당·재배당 안내: 부장변호사의 배당인사 확인 */
+  assignGreeting?: { chiefId?: string; chiefName: string; greetedAt?: string; greetedBy?: string };
 };
 
 export const AI_SENDER = 'ai';

@@ -1,4 +1,4 @@
-import { assignDraft, assignText, lawyerName, matchAssignments, parseAssignSheet, parseAssignText } from '../assign';
+import { assignChiefName, greetingDue, assignDraft, assignText, lawyerName, matchAssignments, parseAssignSheet, parseAssignText } from '../assign';
 
 // 그룹 배당표와 같은 모양의 가짜 표 (이름·사건은 모두 지어낸 것)
 const H = ['날짜', '의뢰인', '사건명', '관할', '사건진행정도', '부', '담당', '담당변호사', '', '', '전문인력', '전문인력\n결재자', '단독부/\n합의부', '수임사무소', '착수금', '', '', '비고'];
@@ -62,5 +62,14 @@ describe('배당 안내', () => {
 
   it('배당표 모양이 아니면 알려 줌', () => {
     expect(parseAssignSheet([['a', 'b']]).error).toContain('의뢰인');
+  });
+
+  it('배당인사 기한은 다음 날 (한국 날짜), 부장 이름은 변호사 떼고', () => {
+    // 한국 10월 22일 23시 = UTC 14시 → 기한 10월 23일 (그날 0시 = UTC 10월 22일 15시)
+    expect(greetingDue('2026-10-22T14:00:00Z').toISOString()).toBe('2026-10-22T15:00:00.000Z');
+    // 한국 10월 23일 0시 30분 = UTC 10월 22일 15시 30분 → 기한 10월 24일
+    expect(greetingDue('2026-10-22T15:30:00Z').toISOString()).toBe('2026-10-23T15:00:00.000Z');
+    expect(assignChiefName({ reassign: true, fields: [{ label: '부장변호사', value: '정소용 변호사' }] })).toBe('정소용');
+    expect(assignChiefName({ reassign: false, fields: [{ label: '부장변호사 겸 주수행 변호사', value: '' }] })).toBeNull();
   });
 });

@@ -146,6 +146,7 @@ export function messageFromRow(m: Row, meId: string, reactions: Row[] | undefine
     ...(m.hearing_alert_id ? { hearingAlertId: m.hearing_alert_id } : {}),
     ...(m.contact_id ? { contactId: m.contact_id } : {}),
     ...(atts.length ? { attachments: atts } : {}),
+    ...(m.assign_chief_name ? { assignGreeting: { chiefName: m.assign_chief_name, ...(m.assign_chief ? { chiefId: m.assign_chief } : {}), ...(m.greeted_at ? { greetedAt: m.greeted_at, greetedBy: m.greeted_by ?? undefined } : {}) } } : {}),
     ...(hidden ? { deletedFor: [meId] } : {}),
   };
 }
@@ -479,7 +480,8 @@ export function remoteOps(sb: SupabaseClient) {
     renameRoom: (roomId: string, title: string) => rpc(sb, 'rename_room', { p_room: roomId, p_title: title }),
     /** 배당표와 맞춰 볼 사건방 (어드민 전용, 들어가 있지 않은 방 포함) */
     assignCaseRooms: async () => (await rpc<Row[]>(sb, 'assign_case_rooms')).map((r) => ({ id: r.id as string, title: (r.title as string) ?? '', clients: (r.clients as string[]) ?? [] })),
-    postAssignNotice: (id: string, roomId: string, text: string) => rpc(sb, 'post_assign_notice', { p_id: id, p_room: roomId, p_text: text }),
+    postAssignNotice: (id: string, roomId: string, text: string, chief: string | null) => rpc(sb, 'post_assign_notice', { p_id: id, p_room: roomId, p_text: text, p_chief: chief }),
+    confirmAssignGreeting: (messageId: string) => rpc(sb, 'confirm_assign_greeting', { p_message: messageId }),
     setClientPhones: async (items: { name: string; phone: string }[]) => (await rpc<Row[]>(sb, 'set_client_phones', { p_items: items })).map((r) => ({ name: r.name as string, result: r.result as PhoneResult })),
     /** 방 사진: '방 id/_photo/시각.확장자'로 올리고 방에 연결 (마스터만). uri가 없으면 사진 삭제 */
     setRoomPhoto: async (roomId: string, uri: string | null) => {
