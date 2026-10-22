@@ -1220,6 +1220,19 @@ describe('대화방 이름 바꾸기', () => {
     expect(actions.renameRoom(room.id, '').ok).toBe(false);
     expect(actions.renameRoom(room.id, '가'.repeat(31)).ok).toBe(false);
   });
+
+  it('방 사진도 마스터만 바꾸고 지울 수 있음', () => {
+    const id = 'r_case1';
+    as('lawyer');
+    expect(actions.setRoomPhoto(id, 'file:///room.jpg')).toEqual({ ok: false, reason: '마스터만 방 사진을 바꿀 수 있습니다.' });
+    as('client');
+    const before = getState().messages.length;
+    expect(actions.setRoomPhoto(id, 'file:///room.jpg').ok).toBe(true);
+    expect(getState().rooms.find((r) => r.id === id)!.photo).toBe('file:///room.jpg');
+    expect(getState().messages.length).toBe(before);
+    expect(actions.setRoomPhoto(id, null).ok).toBe(true);
+    expect(getState().rooms.find((r) => r.id === id)!.photo).toBeUndefined();
+  });
 });
 
 describe('캘린더와 나와의 메시지', () => {

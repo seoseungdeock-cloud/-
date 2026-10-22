@@ -1317,6 +1317,17 @@ export const actions = {
     return { ok: true };
   },
 
+  /** 방 사진 바꾸기·지우기: 그 방의 마스터만 (안내 메시지는 남기지 않음) */
+  setRoomPhoto(roomId: string, uri: string | null): RoomCheck {
+    const room = state.rooms.find((r) => r.id === roomId);
+    const u = me();
+    if (!room || !room.memberIds.includes(u.id) || !isMaster(room, u.id)) return { ok: false, reason: '마스터만 방 사진을 바꿀 수 있습니다.' };
+    if ((uri ?? undefined) === room.photo) return { ok: true };
+    updateRoom(roomId, (r) => ({ ...r, photo: uri ?? undefined }));
+    mirror((r) => r.setRoomPhoto(roomId, uri));
+    return { ok: true };
+  },
+
   /** 마스터 지정·해제. 마스터만 할 수 있고, 마스터는 한 명 이상 남아야 합니다. */
   setMaster(roomId: string, userId: string, on: boolean): RoomCheck {
     const room = state.rooms.find((r) => r.id === roomId);

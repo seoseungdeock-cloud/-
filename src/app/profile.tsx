@@ -1,13 +1,13 @@
-import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Platform, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { PRESENCE } from '@/core/messenger';
 import { actions } from '@/core/store';
 import type { Presence } from '@/core/types';
 import { Icon } from '@/ui/icons';
 import { Avatar, Button, Chip, Chips, Input, Notice, Screen, Sub, T } from '@/ui/kit';
+import { pickSquarePhoto } from '@/ui/pick-photo';
 import { usePresenceColor } from '@/ui/presence';
 import { family, space, useColors } from '@/ui/theme';
 import { useMe } from '@/ui/use-app';
@@ -29,8 +29,8 @@ export default function ProfileScreen() {
   const [error, setError] = useState('');
 
   const pick = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.7 });
-    if (!res.canceled && res.assets[0]) setPhoto(await shrink(res.assets[0].uri));
+    const uri = await pickSquarePhoto();
+    if (uri) setPhoto(uri);
   };
 
   const save = () => {
@@ -90,21 +90,3 @@ export default function ProfileScreen() {
   );
 }
 
-/** 웹: 큰 사진을 512px 정사각 JPEG로 줄여 올립니다 (프로필 사진 상한 5MB). 휴대폰은 고르기 화면에서 이미 잘라 줄입니다. */
-async function shrink(uri: string): Promise<string> {
-  if (Platform.OS !== 'web' || typeof document === 'undefined') return uri;
-  try {
-    const img = new window.Image();
-    img.src = uri;
-    await img.decode();
-    const side = Math.min(img.naturalWidth, img.naturalHeight);
-    const out = Math.min(512, side);
-    const canvas = document.createElement('canvas');
-    canvas.width = out;
-    canvas.height = out;
-    canvas.getContext('2d')?.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, out, out);
-    return canvas.toDataURL('image/jpeg', 0.85);
-  } catch {
-    return uri;
-  }
-}

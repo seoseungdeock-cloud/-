@@ -48,7 +48,7 @@ export function RoomRow({ room, selecting, selected, onToggle }: { room: Room; s
         </View>
       ) : null}
       <View>
-        <Avatar name={room.title} size={42} group={group} uri={room.kind === 'direct' ? s.users.find((u) => u.id !== user.id && room.memberIds.includes(u.id))?.photo : undefined} />
+        <Avatar name={room.title} size={42} group={group} uri={room.photo ?? (room.kind === 'direct' ? s.users.find((u) => u.id !== user.id && room.memberIds.includes(u.id))?.photo : undefined)} />
         {pinned ? (
           <View style={{ position: 'absolute', left: -4, top: -4, width: 20, height: 20, borderRadius: 10, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="pin" color={c.accent} size={13} />

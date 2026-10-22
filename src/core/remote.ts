@@ -255,6 +255,7 @@ export async function loadAll(sb: SupabaseClient, meId: string, withMessages = t
       ...(c.case_no ? { caseNo: c.case_no } : {}),
     };
   };
+  const roomPhotos = await signPaths(sb, ROOM_FILES, rooms.map((r) => r.photo_path).filter(Boolean));
   const roomList: Room[] = [...rooms].reverse().map((r) => {
     const ms = membersBy.get(r.id) ?? [];
     const by = (f: (m: Row) => boolean) => ms.filter(f).map((m) => m.user_id as string);
@@ -262,6 +263,7 @@ export async function loadAll(sb: SupabaseClient, meId: string, withMessages = t
     return {
       id: r.id, kind: r.kind, mode: r.mode, title: r.title, createdBy: r.created_by ?? '', createdAt: r.created_at,
       memberIds: ms.map((m) => m.user_id), masters: by((m) => m.is_master),
+      ...(r.photo_path && roomPhotos.get(r.photo_path) ? { photo: roomPhotos.get(r.photo_path) } : {}),
       officeId: opt(r.office_id), lawyerId: opt(r.lawyer_id), ...(info ? { caseInfo: info } : {}),
       pinnedBy: by((m) => m.pinned),
       notify: Object.fromEntries(ms.filter((m) => m.notify !== 'all').map((m) => [m.user_id, m.notify])),
@@ -473,6 +475,18 @@ export function remoteOps(sb: SupabaseClient) {
     setMaster: (roomId: string, u: string, on: boolean) => rpc(sb, 'set_master', { p_room: roomId, p_user: u, p_on: on }),
     leaveRoom: (roomId: string) => rpc(sb, 'leave_room', { p_room: roomId }),
     renameRoom: (roomId: string, title: string) => rpc(sb, 'rename_room', { p_room: roomId, p_title: title }),
+    /** 방 사진: '방 id/_photo/시각.확장자'로 올리고 방에 연결 (마스터만). uri가 없으면 사진 삭제 */
+    setRoomPhoto: async (roomId: string, uri: string | null) => {
+      let path: string | null = null;
+      if (uri) {
+        const blob = await (await fetch(uri)).blob();
+        const type = /^image\/(jpeg|png|webp|gif)$/.test(blob.type) ? blob.type : 'image/jpeg';
+        path = `${roomId}/_photo/${Date.now().toString(36)}.${type === 'image/jpeg' ? 'jpg' : type.slice(6)}`;
+        const { error } = await sb.storage.from(ROOM_FILES).upload(path, await blob.arrayBuffer(), { contentType: type });
+        if (error) throw new Error('방 사진을 올리지 못했습니다.');
+      }
+      await rpc(sb, 'set_room_photo', { p_room: roomId, p_path: path });
+    },
     markRead: (roomId: string) => rpc(sb, 'mark_read', { p_room: roomId }),
     setPinned: (roomId: string, on: boolean) => memberRow(roomId, { pinned: on }),
     setNotify: (roomId: string, level: string) => memberRow(roomId, { notify: level }),

@@ -10,6 +10,7 @@ import { Icon, type IconName } from './icons';
 import { HearingCard } from './hearing';
 import { FileActions, fileSize, isVideo, openFile } from './board';
 import { openViewer } from './image-viewer';
+import { pickSquarePhoto } from './pick-photo';
 import { Avatar } from './kit';
 import { chatTime, clockTime, roomTitle } from './room-row';
 import { family, radius, space, useColors } from './theme';
@@ -637,6 +638,12 @@ export function RoomDrawer({
     if (!r.ok) return onError(r.reason);
     setRename(undefined);
   };
+  const changePhoto = async () => {
+    const uri = await pickSquarePhoto();
+    if (!uri) return;
+    const r = actions.setRoomPhoto(room.id, uri);
+    if (!r.ok) onError(r.reason);
+  };
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.35)' }}>
@@ -644,7 +651,7 @@ export function RoomDrawer({
         <View style={{ width: '86%', maxWidth: 380, backgroundColor: c.bg }}>
           <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.sm }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-              <Avatar name={room.title} size={48} group={members.length > 2} />
+              <Avatar name={room.title} size={48} group={members.length > 2} uri={room.photo} />
               <Text numberOfLines={2} style={{ flex: 1, ...family.bold, fontSize: 17, color: c.text }}>{roomTitle(room)}</Text>
               <Pressable accessibilityLabel="메뉴 닫기" onPress={onClose} hitSlop={8}>
                 <Icon name="close" color={c.text} size={22} />
@@ -652,9 +659,19 @@ export function RoomDrawer({
             </View>
             {canRename ? (
               rename === undefined ? (
-                <Pressable accessibilityLabel="방 이름 바꾸기" onPress={() => setRename(room.title)} hitSlop={6} style={{ alignSelf: 'flex-start' }}>
-                  <Text style={{ ...family.semibold, fontSize: 13, color: c.accent }}>방 이름 바꾸기</Text>
-                </Pressable>
+                <View style={{ flexDirection: 'row', gap: space.lg }}>
+                  <Pressable accessibilityLabel="방 이름 바꾸기" onPress={() => setRename(room.title)} hitSlop={6}>
+                    <Text style={{ ...family.semibold, fontSize: 13, color: c.accent }}>방 이름 바꾸기</Text>
+                  </Pressable>
+                  <Pressable accessibilityLabel="방 사진 바꾸기" onPress={() => void changePhoto()} hitSlop={6}>
+                    <Text style={{ ...family.semibold, fontSize: 13, color: c.accent }}>방 사진 바꾸기</Text>
+                  </Pressable>
+                  {room.photo ? (
+                    <Pressable accessibilityLabel="방 사진 삭제" onPress={() => { const r = actions.setRoomPhoto(room.id, null); if (!r.ok) onError(r.reason); }} hitSlop={6}>
+                      <Text style={{ ...family.regular, fontSize: 13, color: c.sub }}>사진 삭제</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               ) : (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
                   <TextInput

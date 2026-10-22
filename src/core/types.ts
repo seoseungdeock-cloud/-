@@ -124,6 +124,8 @@ export type Room = {
   /** 방 마스터: 강퇴·마스터 지정 권한. 없으면 만든 사람. */
   masters?: string[];
   createdAt: string;
+  /** 방 사진 (마스터가 바꿈). 서버에서는 임시 주소 */
+  photo?: string;
   caseInfo?: CaseInfo;
   officeId?: string; // 상담·사건방의 담당 사무소
   lawyerId?: string; // 찾기에서 고른 담당 변호사 (배당 정보 안내용)
