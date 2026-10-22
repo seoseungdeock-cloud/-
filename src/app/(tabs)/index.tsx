@@ -196,9 +196,9 @@ function HitRow({ h, onDept }: { h: DirectoryHit; onDept: (d: string) => void })
   return (
     <Pressable
       onPress={() => (h.type === 'dept' ? onDept(h.dept) : router.push({ pathname: '/room/[id]', params: { id: h.room.id } }))}
-      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm + 2, opacity: pressed ? 0.6 : 1 })}>
-      <Avatar name={label} size={48} group />
-      <Text numberOfLines={1} style={{ flex: 1, ...family.bold, fontSize: 16, color: c.text }}>{label}</Text>
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm + 4, paddingVertical: 7, opacity: pressed ? 0.6 : 1 })}>
+      <Avatar name={label} size={38} group />
+      <Text numberOfLines={1} style={{ flex: 1, ...family.bold, fontSize: 14, color: c.text }}>{label}</Text>
       {h.type === 'dept' ? <Text style={{ color: c.faint, ...family.regular }}>{h.count}</Text> : null}
       <Icon name="chevron" color={c.faint} size={16} />
     </Pressable>
@@ -337,10 +337,10 @@ function SearchResults({ query, scope }: { query: string; scope: (r: Room) => bo
               key={m.id}
               onPress={() => router.push({ pathname: '/room/[id]', params: { id: m.roomId, q: query, focus: m.id } })}
               style={({ pressed }) => ({ flexDirection: 'row', gap: space.md, paddingVertical: space.sm, opacity: pressed ? 0.6 : 1 })}>
-              <Avatar name={r.title} size={44} group={r.memberIds.length > 2} />
+              <Avatar name={r.title} size={38} group={r.memberIds.length > 2} />
               <View style={{ flex: 1, gap: 2 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text numberOfLines={1} style={{ flex: 1, ...family.bold, fontSize: 15, color: c.text }}>{roomTitle(r)}</Text>
+                  <Text numberOfLines={1} style={{ flex: 1, ...family.bold, fontSize: 13.5, color: c.text }}>{roomTitle(r)}</Text>
                   <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{chatTime(m.at)}</Text>
                 </View>
                 <Mark text={`${sender(m)}: ${m.bundle ? m.bundle.items.map((i) => i.text).join(' / ') : m.text}`} style={{ ...family.regular, fontSize: 14, lineHeight: 20, color: c.sub }} />
@@ -379,11 +379,11 @@ function SelfChatRow() {
   const room = s.rooms.find((r) => isSelfRoom(r, user.id));
   if (room && !isHidden(room, user.id, s.messages)) return null;
   return (
-    <Pressable onPress={() => router.push({ pathname: '/room/[id]', params: { id: actions.openSelfChat() } })} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm + 2, opacity: pressed ? 0.7 : 1 })}>
-      <Avatar name={user.nickname} uri={user.photo} size={42} />
+    <Pressable onPress={() => router.push({ pathname: '/room/[id]', params: { id: actions.openSelfChat() } })} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm + 4, paddingVertical: 7, opacity: pressed ? 0.7 : 1 })}>
+      <Avatar name={user.nickname} uri={user.photo} size={38} />
       <View style={{ flex: 1 }}>
-        <Text style={{ ...family.bold, fontSize: 14, color: c.text }}>{SELF_ROOM_TITLE}</Text>
-        <Text numberOfLines={1} style={{ ...family.regular, fontSize: 13, color: c.sub, marginTop: 2 }}>메모나 파일을 나에게 보내 두세요</Text>
+        <Text style={{ ...family.bold, fontSize: 13.5, color: c.text }}>{SELF_ROOM_TITLE}</Text>
+        <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12.5, color: c.sub, marginTop: 2 }}>메모나 파일을 나에게 보내 두세요</Text>
       </View>
     </Pressable>
   );

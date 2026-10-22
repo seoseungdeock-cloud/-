@@ -20,18 +20,18 @@ export function AuthBotRow() {
   return (
     <Pressable
       onPress={() => router.push('/auth-codes')}
-      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm + 2, opacity: pressed ? 0.6 : 1 })}>
-      <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name="lock" color="#FFFFFF" size={21} />
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm + 4, paddingVertical: 7, opacity: pressed ? 0.6 : 1 })}>
+      <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name="lock" color="#FFFFFF" size={19} />
       </View>
       <View style={{ flex: 1, gap: 2 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
-          <Text style={{ ...family.bold, fontSize: 14, color: c.text }}>{AUTH_BOT_NAME}</Text>
+          <Text style={{ ...family.bold, fontSize: 13.5, color: c.text }}>{AUTH_BOT_NAME}</Text>
           <Text style={{ ...family.semibold, fontSize: 11, color: c.accent, borderWidth: 1, borderColor: c.accent, borderRadius: radius.pill, paddingHorizontal: 5 }}>봇</Text>
           {last ? <Text style={{ marginLeft: 'auto', ...family.regular, fontSize: 11, color: c.faint }}>{chatTime(last.at)}</Text> : null}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text numberOfLines={1} style={{ flex: 1, ...family.regular, fontSize: 13, color: c.sub }}>
+          <Text numberOfLines={1} style={{ flex: 1, ...family.regular, fontSize: 12.5, color: c.sub }}>
             {last ? (left ? `인증코드가 도착했습니다 · ${Math.ceil(left / 60)}분 안에 입력` : '인증코드 (만료)') : '받은 인증코드 없음'}
           </Text>
           {unread ? (

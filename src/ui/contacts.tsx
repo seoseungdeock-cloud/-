@@ -23,18 +23,18 @@ export function ContactRow({ u, left, onPress, me }: { u: User; left?: ReactNode
   return (
     <Pressable
       onPress={onPress ?? (() => router.push({ pathname: '/contact/[id]', params: { id: u.id } }))}
-      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm + 2, opacity: pressed ? 0.6 : 1 })}>
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm + 4, paddingVertical: 7, opacity: pressed ? 0.6 : 1 })}>
       {left}
-      <Avatar name={u.nickname} size={48} uri={u.photo} dot={u.role === 'client' ? undefined : dot(u)} />
+      <Avatar name={u.nickname} size={38} uri={u.photo} dot={u.role === 'client' ? undefined : dot(u)} />
       <View style={{ flex: 1 }}>
-        <Text numberOfLines={1} style={{ ...family.bold, fontSize: 16, color: c.text }}>{displayName(u)}</Text>
-        <Text numberOfLines={1} style={{ ...family.regular, fontSize: 13, color: c.sub }}>
+        <Text numberOfLines={1} style={{ ...family.bold, fontSize: 14, color: c.text }}>{displayName(u)}</Text>
+        <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.sub, marginTop: 1 }}>
           {me ? '나 · ' : ''}
           {u.dept ?? ROLE_LABEL[u.role]}
           {u.role !== 'client' && presence.key !== 'available' ? ` · ${presence.label}` : ''}
         </Text>
       </View>
-      {fav ? <Icon name="star" color={c.accent} size={18} /> : null}
+      {fav ? <Icon name="star" color={c.accent} size={16} /> : null}
     </Pressable>
   );
 }
@@ -48,12 +48,12 @@ export function OrgBrowser({ people, dept, onDept, renderMember }: { people: Use
     <View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: c.line }}>
         <Pressable onPress={() => onDept(undefined)} hitSlop={8}>
-          <Text style={{ ...(current ? family.regular : family.bold), fontSize: 15, color: current ? c.faint : c.text }}>TOP</Text>
+          <Text style={{ ...(current ? family.regular : family.bold), fontSize: 14, color: current ? c.faint : c.text }}>TOP</Text>
         </Pressable>
         {current ? (
           <>
             <Icon name="chevron" color={c.faint} size={14} />
-            <Text style={{ ...family.bold, fontSize: 15, color: c.text }}>{current.dept}</Text>
+            <Text style={{ ...family.bold, fontSize: 14, color: c.text }}>{current.dept}</Text>
           </>
         ) : null}
       </View>
@@ -78,12 +78,12 @@ export function OrgBrowser({ people, dept, onDept, renderMember }: { people: Use
         </>
       ) : groups.length ? (
         groups.map((g) => (
-          <Pressable key={g.dept} onPress={() => onDept(g.dept)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md, opacity: pressed ? 0.6 : 1 })}>
-            <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="people" color={c.sub} size={20} />
+          <Pressable key={g.dept} onPress={() => onDept(g.dept)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm + 4, paddingVertical: 8, opacity: pressed ? 0.6 : 1 })}>
+            <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="people" color={c.sub} size={18} />
             </View>
-            <Text style={{ flex: 1, ...family.semibold, fontSize: 16, color: c.text }}>{g.dept}</Text>
-            <Text style={{ ...family.regular, fontSize: 14, color: c.faint }}>{g.members.length}</Text>
+            <Text style={{ flex: 1, ...family.semibold, fontSize: 14, color: c.text }}>{g.dept}</Text>
+            <Text style={{ ...family.regular, fontSize: 13, color: c.faint }}>{g.members.length}</Text>
             <Icon name="chevron" color={c.faint} size={16} />
           </Pressable>
         ))
