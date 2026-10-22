@@ -17,3 +17,19 @@ describe('한글 파일 글 뽑기', () => {
     expect(() => hwpText(new Uint8Array(512), (d) => d)).toThrow();
   });
 });
+
+import { roomDocs } from '../room-ai';
+
+describe('방 서면 고르기', () => {
+  const msgs = [
+    { roomId: 'r', senderId: 'a', at: '2026-10-22T01:00:00Z', attachments: [{ name: '소장.pdf', path: 'r/1/x.pdf' }, { name: '사진.jpg', path: 'r/1/y.jpg' }] },
+    { roomId: 'r', senderId: 'b', at: '2026-10-22T02:00:00Z', attachments: [{ name: '준비서면.hwp', path: 'r/2/z.hwp' }] },
+    { roomId: 'r', senderId: 'b', at: '2026-10-22T03:00:00Z', recalled: true, attachments: [{ name: '회수.pdf', path: 'r/3/w.pdf' }] },
+    { roomId: 'r', senderId: 'b', at: '2026-10-22T04:00:00Z', deletedFor: ['me'], attachments: [{ name: '지운.pdf', path: 'r/4/v.pdf' }] },
+    { roomId: 'o', senderId: 'b', at: '2026-10-22T05:00:00Z', attachments: [{ name: '다른방.pdf', path: 'o/5/u.pdf' }] },
+  ];
+  it('띠지는 PDF만, 오타는 한글도, 최근 것부터, 회수·지운 것 제외', () => {
+    expect(roomDocs(msgs, 'r', 'me', 'stamp').map((d) => d.name)).toEqual(['소장.pdf']);
+    expect(roomDocs(msgs, 'r', 'me', 'proof').map((d) => d.name)).toEqual(['준비서면.hwp', '소장.pdf']);
+  });
+});

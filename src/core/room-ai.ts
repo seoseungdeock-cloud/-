@@ -82,3 +82,30 @@ export function finishRoomAi(text: string): { reply: string; refused: boolean } 
   if (!t || t.includes(OFF)) return { reply: ROOM_AI_REFUSAL, refused: true };
   return { reply: t, refused: false };
 }
+
+/** '@AI 띠지'·'@AI 오타'에서 고를 수 있는 서면 */
+export type DocKind = 'pdf' | 'hwp' | 'hwpx';
+export function docKindOf(a: { name?: string; mime?: string }): DocKind | null {
+  const n = (a.name ?? '').toLowerCase();
+  if (a.mime === 'application/pdf' || n.endsWith('.pdf')) return 'pdf';
+  if (n.endsWith('.hwpx')) return 'hwpx';
+  if (n.endsWith('.hwp')) return 'hwp';
+  return null;
+}
+
+export type RoomDocRef = { path: string; name: string; at: string; senderId: string; kind: DocKind };
+
+/** 방에 올라온 서면 (회수·내 화면에서 지운 것 제외, 최근 것부터). 띠지는 PDF만. */
+export function roomDocs(messages: { roomId: string; senderId: string; at: string; recalled?: boolean; deletedFor?: string[]; attachments?: { name: string; mime?: string; path?: string; uri?: string }[] }[], roomId: string, userId: string, mode: 'stamp' | 'proof'): RoomDocRef[] {
+  const out: RoomDocRef[] = [];
+  for (const m of messages) {
+    if (m.roomId !== roomId || m.recalled || m.deletedFor?.includes(userId)) continue;
+    for (const a of m.attachments ?? []) {
+      const kind = docKindOf(a);
+      const path = a.path ?? a.uri; // 서버에 올리기 전(기기 안)에는 주소로
+      if (!path || !kind || (mode === 'stamp' && kind !== 'pdf')) continue;
+      out.push({ path, name: a.name, at: m.at, senderId: m.senderId, kind });
+    }
+  }
+  return out.reverse();
+}

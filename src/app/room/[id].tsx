@@ -7,13 +7,14 @@ import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, V
 
 import { clientCanSee, dayKey, displayName, firstOfDay, lastReadAt, mentionQuery, messageDays, notifyLevel, searchMessages, visibleMessages } from '@/core/messenger';
 import { isSelfRoom } from '@/core/calendar';
+import { roomDocs } from '@/core/room-ai';
 import { aiAnswerLevel, ROOM_KIND_LABEL } from '@/core/rooms';
 import { contactsFor } from '@/core/contacts';
 import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Attachment, type Message, type User } from '@/core/types';
 import { newId } from '@/core/ids';
 import { CasePanel } from '@/ui/case-panel';
-import { AiThinking, Bubble, CalendarSheet, ContactSheet, DayDivider, ForwardSheet, MessageMenu, NoticeBar, ReactionsSheet, ReadersSheet, RoomDrawer } from '@/ui/chat';
+import { AiThinking, Bubble, CalendarSheet, DocPickSheet, ContactSheet, DayDivider, ForwardSheet, MessageMenu, NoticeBar, ReactionsSheet, ReadersSheet, RoomDrawer } from '@/ui/chat';
 import { Icon, type IconName } from '@/ui/icons';
 import { Avatar, Button, Empty, enterToSend, Input, ModeBadge, ModeBanner, Notice, Screen, Sub } from '@/ui/kit';
 import { roomTitle } from '@/ui/room-row';
@@ -459,6 +460,9 @@ export default function RoomScreen() {
       <ReadersSheet m={readsFor} room={room} reads={s.reads} users={s.users} onClose={() => setReadsFor(undefined)} />
       <ReactionsSheet m={reactFor ? s.messages.find((x) => x.id === reactFor.id) : undefined} me={user} users={s.users} onClose={() => setReactFor(undefined)} />
       {calendar ? <CalendarSheet open days={messageDays(messages)} onClose={() => setCalendar(false)} onPick={jumpToDay} /> : null}
+      {s.docPick?.roomId === room.id ? (
+        <DocPickSheet mode={s.docPick.mode} docs={roomDocs(s.messages, room.id, user.id, s.docPick.mode)} users={s.users} onPick={(p) => void actions.pickDoc(p)} />
+      ) : null}
       <ContactSheet open={contactPick} contacts={shareable} onClose={() => setContactPick(false)} onPick={(u) => actions.shareContact(room.id, u.id)} />
       <RoomDrawer open={drawer} onClose={() => setDrawer(false)} room={room} me={user} users={s.users} messages={messages} onError={setToast} />
     </Screen>

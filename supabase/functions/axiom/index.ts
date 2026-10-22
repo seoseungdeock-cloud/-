@@ -6,7 +6,7 @@
 //   2) 이 함수 자신: { job } — 오래 걸리는 일(위원회 한 단계, 작업지시 수행)을 새 실행 시간으로 넘김
 //   3) 예약 작업(5분마다): { tick: true } — 예정 시각이 지난 정기 보고
 //   4) 대화방 @AI(모든 계정): { op: 'room.ask', args: { roomId, text } } — 의뢰인 없는 방의 참여자만, 사건 수행 질문만
-//   5) 대화방 '@AI 띠지': { op: 'room.stamp', args: { roomId } } — 방의 최근 PDF에 대륜 띠지를 입혀 새 PDF로 올림 (AI는 쓰지 않음)
+//   5) 대화방 '@AI 띠지': { op: 'room.stamp', args: { roomId, path } } — 방에서 고른 PDF에 대륜 띠지를 입혀 새 PDF로 올림 (AI는 쓰지 않음)
 // 2·3 은 x-axiom-job 머리글에 푸시 함수와 같은 비밀값(PUSH_CRON_SECRET)이 있어야 합니다.
 // AI 키(ANTHROPIC_API_KEY · OPENAI_API_KEY · GEMINI_API_KEY)는 Supabase 함수 비밀값에만 둡니다. 없으면 모의 응답.
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
@@ -16,7 +16,7 @@ import { GUEST_OPS } from '../../../src/core/axiom/council';
 import type { Db, FindOpts, Row, Table, Where } from '../../../src/core/axiom/db';
 import { INSTANCE } from '../../../src/core/axiom/instance';
 import { complete, resolve } from '../../../src/core/axiom/llm';
-import { finishRoomAi, levelOf, roomAiInput, roomAiSystem, type RoomDoc } from '../../../src/core/room-ai';
+import { docKindOf as docKind, finishRoomAi, levelOf, roomAiInput, roomAiSystem, type DocKind, type RoomDoc } from '../../../src/core/room-ai';
 import { extractText, getDocumentProxy } from 'npm:unpdf@1.8.1';
 import { inflateSync, unzipSync } from 'npm:fflate@0.8.2';
 import { PDFDocument } from 'npm:pdf-lib@1.17.1';
@@ -153,7 +153,6 @@ async function roomAsk(sb: SupabaseClient, ctx: Ctx, uid: string, args: Record<s
   const pick = resolve(INSTANCE, ctx.env, 'tier:balanced');
   if (pick.provider === 'mock') return { reply: null, reason: 'AI 키가 아직 연결되지 않았습니다.' };
   const { data: rows } = await sb.from('messages').select('sender_id, sender_kind, text, kind, recalled, attachments').eq('room_id', roomId).order('created_at', { ascending: false }).limit(20);
-  type Att = { name?: string; mime?: string; path?: string; size?: number };
   const kept = ((rows ?? []) as { sender_id: string | null; sender_kind: string; text: string; kind: string; recalled: boolean; attachments: Att[] | null }[])
     .filter((m) => !m.recalled && (m.kind === 'text' || m.kind === 'ai'))
     .reverse();
@@ -162,7 +161,10 @@ async function roomAsk(sb: SupabaseClient, ctx: Ctx, uid: string, args: Record<s
     return { senderId: m.sender_id, senderKind: m.sender_kind, text: [m.text, files].filter(Boolean).join(' ') };
   });
   // 최근 대화에 올린 PDF·한글(HWP·HWPX) 파일 (가장 최근 3개, 20MB 이하)의 글을 읽어 함께 보냅니다
-  const files = kept.flatMap((m) => m.attachments ?? []).filter((a) => a.path && docKind(a) && (a.size ?? 0) <= 20 * 1024 * 1024).slice(-3);
+  // 서면을 골랐으면(@AI 오타) 그 파일만 읽습니다. 이 방 메시지에 붙은 파일인지 다시 확인합니다.
+  const picked = args.docPath ? await roomFile(sb, roomId, String(args.docPath)) : null;
+  if (args.docPath && !picked) return { reply: null, reason: '고른 서면을 이 방에서 찾지 못했습니다.' };
+  const files = picked ? [picked] : kept.flatMap((m) => m.attachments ?? []).filter((a) => a.path && docKind(a) && (a.size ?? 0) <= 20 * 1024 * 1024).slice(-3);
   const docs: RoomDoc[] = [];
   for (const a of files) {
     if (!String(a.path).startsWith(`${roomId}/`)) continue;
@@ -181,15 +183,6 @@ async function roomAsk(sb: SupabaseClient, ctx: Ctx, uid: string, args: Record<s
   return { ...finishRoomAi(out.text), level, model: out.model, docs: docs.map((d) => ({ name: d.name, chars: d.text.length })) };
 }
 
-type DocKind = 'pdf' | 'hwp' | 'hwpx';
-function docKind(a: { name?: string; mime?: string }): DocKind | null {
-  const n = (a.name ?? '').toLowerCase();
-  if (a.mime === 'application/pdf' || n.endsWith('.pdf')) return 'pdf';
-  if (n.endsWith('.hwpx')) return 'hwpx';
-  if (n.endsWith('.hwp')) return 'hwp';
-  return null;
-}
-
 async function docText(sb: SupabaseClient, path: string, kind: DocKind): Promise<string> {
   const { data, error } = await sb.storage.from('room-files').download(path);
   if (error || !data) return '';
@@ -201,7 +194,17 @@ async function docText(sb: SupabaseClient, path: string, kind: DocKind): Promise
   return Array.isArray(text) ? text.join('\n') : text;
 }
 
-/** '@AI 띠지': 방의 최근 PDF에 대륜 서면 띠지를 모든 쪽에 입혀 새 PDF로 방에 올립니다. AI로 내용을 보내지 않으므로 사건방에서도 됩니다. */
+type Att = { id?: string; name?: string; mime?: string; path?: string; size?: number };
+
+/** 이 방의 (회수되지 않은) 메시지에 붙은 파일인지 확인하고 그 첨부 정보를 돌려줍니다 */
+async function roomFile(sb: SupabaseClient, roomId: string, path: string): Promise<Att | null> {
+  if (!path.startsWith(`${roomId}/`) || path.length > 300) return null;
+  const { data } = await sb.from('messages').select('attachments').eq('room_id', roomId).eq('recalled', false).contains('attachments', [{ path }]).limit(1);
+  const row = (data?.[0] as { attachments: Att[] } | undefined) ?? null;
+  return row?.attachments.find((a) => a.path === path) ?? null;
+}
+
+/** '@AI 띠지': 방에서 고른 PDF에 대륜 서면 띠지를 모든 쪽에 입혀 새 PDF로 방에 올립니다. AI로 내용을 보내지 않으므로 사건방에서도 됩니다. */
 async function roomStamp(sb: SupabaseClient, uid: string, args: Record<string, unknown>) {
   const roomId = String(args.roomId ?? '');
   if (!/^[0-9a-f-]{36}$/.test(roomId)) throw Object.assign(new Error('bad request'), { status: 400 });
@@ -209,13 +212,8 @@ async function roomStamp(sb: SupabaseClient, uid: string, args: Record<string, u
   const prof = (me as unknown as { profiles: { role: string; active: boolean } | null } | null)?.profiles;
   if (!prof?.active) return { ok: false, reason: '참여 중인 방이 아닙니다.' };
   if (prof.role === 'client') return { ok: false, reason: '띠지 붙이기는 변호사·직원만 쓸 수 있습니다.' };
-  const { data: rows } = await sb.from('messages').select('attachments, recalled').eq('room_id', roomId).order('created_at', { ascending: false }).limit(30);
-  type Att = { name?: string; mime?: string; path?: string; size?: number };
-  const pdf = ((rows ?? []) as { attachments: Att[] | null; recalled: boolean }[])
-    .filter((m) => !m.recalled)
-    .flatMap((m) => [...(m.attachments ?? [])].reverse())
-    .find((a) => a.path && docKind(a) === 'pdf' && !/_띠지\.pdf$/i.test(a.name ?? '') && String(a.path).startsWith(`${roomId}/`));
-  if (!pdf) return { ok: false, reason: '띠지를 붙일 PDF를 먼저 방에 올려 주세요. (한글 파일은 PDF로 저장해서 올려 주세요)' };
+  const pdf = await roomFile(sb, roomId, String(args.path ?? ''));
+  if (!pdf || docKind(pdf) !== 'pdf') return { ok: false, reason: '띠지를 붙일 PDF를 이 방에서 찾지 못했습니다. (한글 파일은 PDF로 저장해서 올려 주세요)' };
   if ((pdf.size ?? 0) > 30 * 1024 * 1024) return { ok: false, reason: '30MB가 넘는 PDF는 띠지를 붙이지 못합니다.' };
   const { data: file, error } = await sb.storage.from('room-files').download(pdf.path!);
   if (error || !file) return { ok: false, reason: 'PDF를 받지 못했습니다.' };

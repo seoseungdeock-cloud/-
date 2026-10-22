@@ -7,6 +7,7 @@ import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups
 import { actions } from '@/core/store';
 import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Attachment, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
 import { lawyerName, parseAssignText, type AssignNotice } from '@/core/assign';
+import type { RoomDocRef } from '@/core/room-ai';
 import { aiAnswerLevel } from '@/core/rooms';
 import { Icon, type IconName } from './icons';
 import { HearingCard } from './hearing';
@@ -846,6 +847,34 @@ const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const keyOf = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
 /** 날짜로 대화 찾기: 대화가 있는 날만 고를 수 있습니다. */
+/** '@AI 띠지'·'@AI 오타' 뒤: 방에 있는 서면 중 하나 고르기 */
+export function DocPickSheet({ mode, docs, users, onPick }: { mode?: 'stamp' | 'proof'; docs: RoomDocRef[]; users: User[]; onPick: (path: string | null) => void }) {
+  const c = useColors();
+  return (
+    <Sheet open={!!mode} onClose={() => onPick(null)}>
+      <Text style={{ ...family.bold, fontSize: 17, color: c.text }}>{mode === 'stamp' ? '띠지를 붙일 서면 고르기' : '오타를 볼 서면 고르기'}</Text>
+      <Text style={{ ...family.regular, fontSize: 12.5, color: c.sub }}>{mode === 'stamp' ? '이 방에 올린 PDF입니다. 한글 파일은 PDF로 저장해서 올려 주세요.' : '이 방에 올린 PDF·한글 파일입니다.'}</Text>
+      <ScrollView style={{ maxHeight: 420 }}>
+        {docs.length ? (
+          docs.map((d) => (
+            <Pressable key={d.path} accessibilityLabel={`서면 ${d.name}`} onPress={() => onPick(d.path)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.line, opacity: pressed ? 0.6 : 1 })}>
+              <View style={{ width: 40, height: 40, borderRadius: radius.sm, backgroundColor: c.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ ...family.bold, fontSize: 11, color: c.accent }}>{d.kind.toUpperCase()}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 14, color: c.text }}>{d.name}</Text>
+                <Text style={{ ...family.regular, fontSize: 12, color: c.sub }}>{nameOf(users, d.senderId)} · {new Date(d.at).toLocaleDateString('ko-KR')} {clockTime(d.at)}</Text>
+              </View>
+            </Pressable>
+          ))
+        ) : (
+          <Text style={{ ...family.regular, fontSize: 14, color: c.faint, paddingVertical: space.lg, textAlign: 'center' }}>{mode === 'stamp' ? '이 방에 올린 PDF가 없습니다.' : '이 방에 올린 서면이 없습니다.'}</Text>
+        )}
+      </ScrollView>
+    </Sheet>
+  );
+}
+
 export function CalendarSheet({ open, days, onClose, onPick }: { open: boolean; days: Set<string>; onClose: () => void; onPick: (day: string) => void }) {
   const c = useColors();
   const latest = [...days].sort().at(-1);

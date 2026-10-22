@@ -118,6 +118,8 @@ export type State = {
   syncError?: string;
   /** @AI 답을 기다리는 방 (말풍선 점 세 개) */
   aiThinking?: Record<string, boolean>;
+  /** '@AI 띠지'·'@AI 오타' 뒤 서면 고르기 창 */
+  docPick?: { roomId: string; mode: 'stamp' | 'proof'; text: string };
 };
 
 const T0 = '2026-10-13T09:00:00.000Z';
@@ -686,6 +688,34 @@ export function postAiToRoom(roomId: string, text: string) {
   if (state.rooms.some((r) => r.id === roomId)) pushMessage(roomId, AI_SENDER, 'ai', text);
 }
 
+async function askRoomAi(roomId: string, members: User[], level: ReturnType<typeof aiAnswerLevel>, text: string, docPath?: string) {
+  let reply: string;
+  let refused = false;
+  const thinking = (on: boolean) => set((s) => ({ aiThinking: { ...s.aiThinking, [roomId]: on } }));
+  thinking(true);
+  try {
+    if (supabase) {
+      // 실제 AI는 서버에서만 (키는 서버 비밀값에만). 서버가 방·참여자를 다시 확인하고 사건 수행 질문에만 답합니다.
+      const { data, error } = await supabase.functions.invoke('axiom', { body: { op: 'room.ask', args: { roomId, text, ...(docPath ? { docPath } : {}) } } });
+      const res = data as { ok: boolean; reason?: string; data?: { reply: string | null; reason?: string; refused?: boolean } } | null;
+      if (error || !res?.ok || !res.data?.reply) {
+        pushMessage(roomId, SYSTEM_SENDER, 'system', res?.data?.reason ?? res?.reason ?? 'AI가 답하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        return;
+      }
+      reply = res.data.reply;
+      refused = !!res.data.refused;
+    } else {
+      const recent = state.messages.filter((m) => m.roomId === roomId).slice(-20).map((m) => ({ senderId: m.senderId, senderKind: m.kind === 'ai' ? 'ai' : 'user', text: m.text }));
+      const roleOf = Object.fromEntries(members.map((u) => [u.id, u.role]));
+      reply = await getAi().complete({ task: 'room-reply', system: roomAiSystem(level), input: roomAiInput(recent, roleOf, text) });
+    }
+  } finally {
+    thinking(false);
+  }
+  if (level === 'general-info' && !refused) reply += '\n\n※ 일반 법률 정보이며 개별 사건의 법률 자문이 아닙니다. 변호사 상담을 받아 보세요.';
+  pushMessage(roomId, AI_SENDER, 'ai', reply);
+}
+
 function pushMessage(roomId: string, senderId: string, kind: Message['kind'], text: string, extra: Partial<Message> = {}) {
   const msg: Message = { id: newId('m'), roomId, senderId, kind, text, at: nowIso(), ...extra };
   set((s) => ({ messages: [...s.messages, msg] }));
@@ -1063,19 +1093,9 @@ export const actions = {
       }
     }
     if (!/@ai\b/i.test(text)) return;
-    // '@AI 띠지': 방의 최근 PDF에 대륜 띠지를 입혀 새 PDF로 올림. AI로 내용을 보내지 않아 사건방에서도 됩니다.
-    if (/띠지/.test(text) && supabase) {
-      if (me().role === 'client') return;
-      const thinking = (on: boolean) => set((s) => ({ aiThinking: { ...s.aiThinking, [roomId]: on } }));
-      thinking(true);
-      try {
-        const { data, error } = await supabase.functions.invoke('axiom', { body: { op: 'room.stamp', args: { roomId } } });
-        const res = data as { ok: boolean; reason?: string; data?: { ok: boolean; reason?: string } } | null;
-        if (error || !res?.ok || !res.data?.ok) pushMessage(roomId, SYSTEM_SENDER, 'system', res?.data?.reason ?? res?.reason ?? '띠지를 붙이지 못했습니다. 잠시 후 다시 시도해 주세요.');
-        else await refresh();
-      } finally {
-        thinking(false);
-      }
+    // '@AI 띠지': 방에 있는 PDF 중 고른 것에 대륜 띠지를 입혀 새 PDF로 올림. AI로 내용을 보내지 않아 사건방에서도 됩니다.
+    if (/띠지/.test(text)) {
+      if (me().role !== 'client') set({ docPick: { roomId, mode: 'stamp', text } });
       return;
     }
     const level = aiAnswerLevel(room, members);
@@ -1096,6 +1116,11 @@ export const actions = {
       );
       return;
     }
+    // '@AI 오타': 방에 있는 서면(PDF·HWP·HWPX) 중 고른 것만 읽고 검수
+    if (/오타|맞춤법/.test(text) && supabase) {
+      set({ docPick: { roomId, mode: 'proof', text } });
+      return;
+    }
     const cmd = parseAiCommand(text);
     if (cmd.kind !== 'chat') {
       if (needsAgentAccess(cmd) && !canUseAgents(me())) {
@@ -1110,31 +1135,35 @@ export const actions = {
       pushMessage(roomId, AI_SENDER, 'ai', runCommand(roomId, cmd));
       return;
     }
-    let reply: string;
-    let refused = false;
-    const thinking = (on: boolean) => set((s) => ({ aiThinking: { ...s.aiThinking, [roomId]: on } }));
+    await askRoomAi(roomId, members, level, text);
+  },
+
+  /** '@AI 띠지'·'@AI 오타'에서 서면을 고르면 (null = 취소) */
+  async pickDoc(path: string | null) {
+    const pick = state.docPick;
+    set({ docPick: undefined });
+    if (!pick || !path) return;
+    const room = state.rooms.find((r) => r.id === pick.roomId);
+    if (!room) return;
+    if (pick.mode === 'proof') {
+      const members = room.memberIds.map(userById).filter((u): u is User => !!u);
+      await askRoomAi(room.id, members, aiAnswerLevel(room, members), pick.text, path);
+      return;
+    }
+    if (!supabase) {
+      pushMessage(room.id, SYSTEM_SENDER, 'system', '띠지 붙이기는 서버에 연결된 앱에서 됩니다.');
+      return;
+    }
+    const thinking = (on: boolean) => set((s) => ({ aiThinking: { ...s.aiThinking, [room.id]: on } }));
     thinking(true);
     try {
-    if (supabase) {
-      // 실제 AI는 서버에서만 (키는 서버 비밀값에만). 서버가 방·참여자를 다시 확인하고 사건 수행 질문에만 답합니다.
-      const { data, error } = await supabase.functions.invoke('axiom', { body: { op: 'room.ask', args: { roomId, text } } });
-      const res = data as { ok: boolean; reason?: string; data?: { reply: string | null; reason?: string; refused?: boolean } } | null;
-      if (error || !res?.ok || !res.data?.reply) {
-        pushMessage(roomId, SYSTEM_SENDER, 'system', res?.data?.reason ?? res?.reason ?? 'AI가 답하지 못했습니다. 잠시 후 다시 시도해 주세요.');
-        return;
-      }
-      reply = res.data.reply;
-      refused = !!res.data.refused;
-    } else {
-      const recent = state.messages.filter((m) => m.roomId === roomId).slice(-20).map((m) => ({ senderId: m.senderId, senderKind: m.kind === 'ai' ? 'ai' : 'user', text: m.text }));
-      const roleOf = Object.fromEntries(members.map((u) => [u.id, u.role]));
-      reply = await getAi().complete({ task: 'room-reply', system: roomAiSystem(level), input: roomAiInput(recent, roleOf, text) });
-    }
+      const { data, error } = await supabase.functions.invoke('axiom', { body: { op: 'room.stamp', args: { roomId: room.id, path } } });
+      const res = data as { ok: boolean; reason?: string; data?: { ok: boolean; reason?: string } } | null;
+      if (error || !res?.ok || !res.data?.ok) pushMessage(room.id, SYSTEM_SENDER, 'system', res?.data?.reason ?? res?.reason ?? '띠지를 붙이지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      else await refresh();
     } finally {
       thinking(false);
     }
-    if (level === 'general-info' && !refused) reply += '\n\n※ 일반 법률 정보이며 개별 사건의 법률 자문이 아닙니다. 변호사 상담을 받아 보세요.';
-    pushMessage(roomId, AI_SENDER, 'ai', reply);
   },
 
   // ---- 라잇나우 ----
