@@ -18,6 +18,7 @@ import { pickSquarePhoto } from './pick-photo';
 import { Avatar } from './kit';
 import { chatTime, clockTime, roomTitle } from './room-row';
 import { family, radius, space, useColors } from './theme';
+import { useFrameWidth } from './web-frame';
 
 export const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
@@ -387,10 +388,12 @@ export function ReactionsSheet({ m, me, users, onClose }: { m?: Message; me: Use
 /** 바닥에서 올라오는 시트 */
 export function Sheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
   const c = useColors();
+  // PC 웹에서도 앱 화면(폰 크기 등) 폭 안에서만 열림
+  const frameW = useFrameWidth();
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable accessibilityLabel="닫기" onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}>
-        <Pressable onPress={() => undefined} style={{ backgroundColor: c.bg, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, gap: space.sm, maxHeight: '80%', width: '100%', maxWidth: 720, alignSelf: 'center' }}>
+        <Pressable onPress={() => undefined} style={{ backgroundColor: c.bg, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, gap: space.sm, maxHeight: '80%', width: '100%', maxWidth: frameW, alignSelf: 'center' }}>
           {children}
         </Pressable>
       </Pressable>
@@ -625,6 +628,7 @@ export function RoomDrawer({
   onError: (text: string) => void;
 }) {
   const c = useColors();
+  const frameW = useFrameWidth();
   const level = notifyLevel(room, me.id);
   const members = room.memberIds.map((id) => users.find((u) => u.id === id)).filter((u): u is User => !!u);
   const links = roomLinks(messages);
@@ -653,7 +657,8 @@ export function RoomDrawer({
   };
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.35)' }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' }}>
+       <View style={{ flex: 1, flexDirection: 'row', width: '100%', maxWidth: frameW, alignSelf: 'center' }}>
         <Pressable accessibilityLabel="메뉴 닫기" onPress={onClose} style={{ flex: 1 }} />
         <View style={{ width: '86%', maxWidth: 380, backgroundColor: c.bg }}>
           <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.sm }}>
@@ -828,6 +833,7 @@ export function RoomDrawer({
             </View>
           </ScrollView>
         </View>
+       </View>
       </View>
     </Modal>
   );
@@ -1040,6 +1046,7 @@ function RoomCouncils({ room, me, members, onOpen }: { room: Room; me: User; mem
 function AssignCard({ notice }: { notice: AssignNotice }) {
   const c = useColors();
   const [open, setOpen] = useState(false);
+  const frameW = useFrameWidth();
   const who = [notice.chief && `부장 및 주수행 : ${lawyerName(notice.chief)}`, notice.associate && `평 변호사 : ${lawyerName(notice.associate)}`].filter(Boolean).join(' / ');
   return (
     <View style={{ width: 250, gap: 6 }}>
@@ -1054,7 +1061,7 @@ function AssignCard({ notice }: { notice: AssignNotice }) {
       </Pressable>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable accessibilityLabel="닫기" onPress={() => setOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: space.lg }}>
-          <Pressable onPress={() => undefined} style={{ backgroundColor: c.bg, borderRadius: radius.lg, width: '100%', maxWidth: 520, maxHeight: '85%', alignSelf: 'center', overflow: 'hidden' }}>
+          <Pressable onPress={() => undefined} style={{ backgroundColor: c.bg, borderRadius: radius.lg, width: '100%', maxWidth: Math.min(520, frameW - 2 * space.lg), maxHeight: '85%', alignSelf: 'center', overflow: 'hidden' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: c.line }}>
               <Text style={{ flex: 1, ...family.bold, fontSize: 16, color: c.text }}>{notice.reassign ? '재배당 안내' : '배당 안내'}</Text>
               <Pressable accessibilityLabel="닫기" onPress={() => setOpen(false)} hitSlop={8}>
