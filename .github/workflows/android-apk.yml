@@ -4,7 +4,7 @@
 name: android-apk
 on:
   push:
-    branches: [claude/project-thread-kz6zqr]
+    branches: [main, claude/project-thread-kz6zqr]
   workflow_dispatch:
 jobs:
   apk:
