@@ -1,0 +1,9 @@
+## 2026-11-16 13:04 — 스카이넷 Supabase 자체 설치 서버 (AWS ap-northeast-2, 기존 Supabase 클라우드를 회사 AWS 계정 안으로 옮기기)
+- 2026-11-16 13:01 | EC2 Security Group | skynet-supabase-sg / sg-030e822dd13c1119d (vpc-080f233a084684112, 80·443 인바운드만) | Supabase 서버 방화벽
+- 2026-11-16 13:01 | IAM Role + Instance Profile | skynet-supabase-ec2-role / skynet-supabase-ec2-profile (AmazonSSMManagedInstanceCore + 배포 버킷 읽기) | EC2 가 SSM 으로 관리되도록 (SSH 키 없음)
+- 2026-11-16 13:01 | Elastic IP | eipalloc-0ceb3e019317dc8f1 / 13.209.254.132 | 서버 고정 IP
+- 2026-11-16 13:12 | Route53 A record | skynet-api.skyzkorea.net → 13.209.254.132 (zone Z09056642VDFAV8MVF69B, TTL 60) | Supabase API 주소 (TLS 는 서버의 Caddy 가 Let's Encrypt 로 발급). ※ 처음 만든 skynet-api.daeryunlaw.net 레코드는 그 영역이 인터넷에 위임돼 있지 않아 삭제함
+- 2026-11-16 13:03 | S3 Bucket | skynet-supabase-deploy-219028344147 (비공개) | 서버 배포 묶음(.env·함수·마이그레이션) 전달용
+- 2026-11-16 13:03 | Secrets Manager | skynet/supabase (arn:aws:secretsmanager:ap-northeast-2:219028344147:secret:skynet/supabase-RVX61u) | 서버 .env 비밀값 전체 사본 (DB 비밀번호, JWT, anon/service 키, 대시보드 로그인, 푸시 키)
+- 2026-11-16 13:03 | DLM Lifecycle Policy | policy-0ac2ccf6219a58be8 (태그 Name=skynet-supabase 인스턴스, 매일 03:00 KST, 7일 보관) | 서버 디스크 자동 백업
+- 2026-11-16 13:04 | EC2 Instance | skynet-supabase / i-00e5148840f434793 (t3.large, Ubuntu 24.04, gp3 80GB 암호화, subnet ap-northeast-2a) | Supabase 전체 스택(Docker Compose: Postgres·Auth·PostgREST·Realtime·Storage·Functions·Studio·Caddy)

@@ -2,11 +2,19 @@
 
 옛 이름은 대륜톡(그 전엔 라잇나우)입니다. 2026-11-16 스카이넷으로 바꿨습니다. 코드 안의 `rightnow` 가 붙은 식별자(로그인 도메인 `rightnow.local`, 멤버십 값, 저장소 키, 의뢰인 표시 `대륜톡 의뢰인`)는 **이미 운영 DB 와 기기에 저장된 값이라 그대로 둡니다** — 바꾸면 기존 계정·설정이 끊깁니다.
 
-의뢰인·변호사·직원이 함께 쓰는 사내 메신저 겸 업무 앱입니다. 하나의 코드로 웹(PC·폰 브라우저, 앱 설치 가능)과 안드로이드 앱이 나옵니다.
+의뢰인·변호사·직원이 함께 쓰는 사내 메신저 겸 업무 앱입니다. 하나의 코드로 웹(PC·폰 브라우저), PC 앱(브라우저에서 설치하는 PWA), 안드로이드 앱이 나옵니다.
+
+**화면 구성** (2026-11-16, SKYZAI 송무 화면 구성 참고) — 창 폭에 따라 자동으로 고르며 MY 탭 「화면 구성」에서 고정할 수 있습니다.
+| 구성 | 언제 | 모습 |
+|---|---|---|
+| 데스크톱 | 창 폭 1024px 이상 | 왼쪽 240px 메뉴(`src/ui/shell.tsx`) + 본문. 메신저는 「방 목록 340px | 대화」 2단(`src/ui/messenger-list.tsx`), 다른 화면은 가운데 흰 본문 칸(최대 960px) |
+| 태블릿 | 768~1023px | 왼쪽 64px 아이콘 메뉴, 메신저는 1단 |
+| 모바일 | 767px 이하, 폰 앱 | 아래 탭. PC 에서 '모바일'을 고르면 504px 폰 틀을 가운데에 띄움 |
 이 문서는 개발팀 인수인계용입니다. 비밀 키 값은 이 저장소에 없고, 이름만 적어 두었습니다.
 
 - 운영 웹: https://seoseungdeock-cloud.github.io/-/ (GitHub Pages, `gh-pages` 가지)
-- 서버: Supabase 프로젝트 `jzhzroexavltxrrjcbfa` (Pro, 서울 리전)
+- 서버: **회사 AWS 계정(서울)에 직접 설치한 Supabase** — `https://skynet-api.skyzkorea.net` (EC2 `skynet-supabase`, 2026-11-16부터). 자세한 것은 아래 「서버(Supabase) 운영」.
+  옛 Supabase 클라우드 프로젝트 `jzhzroexavltxrrjcbfa` 는 대륜톡 시절 데이터를 가지고 있으며, 옮기기 전까지는 그대로 둡니다.
 - 기본 가지: `main`
 
 ## 로그인 (2026-11-16부터 대륜탑 사번)
@@ -22,7 +30,7 @@
 
 대륜탑에 없는 계정(의뢰인, 옛 발급 계정)은 함수가 `not_staff` 로 답하고 앱이 **종전의 비밀번호 로그인**으로 넘어갑니다. 그래서 백오피스의 계정 발급은 의뢰인용으로 계속 씁니다.
 
-함수 설정값(`supabase secrets set`): `DAERYUNTOP_BRIDGE_URL`(SKYZAI 주소), `DAERYUNTOP_BRIDGE_KEY`(SKYZAI 쪽 `SKYNET_BRIDGE_KEY` 와 같은 값). 둘이 없으면 이름만 AEGIS 응답으로 채우고 역할은 `staff` 가 됩니다.
+함수 설정값(서버의 `/opt/skynet/.env`): `DAERYUNTOP_BRIDGE_URL`(SKYZAI 주소), `DAERYUNTOP_BRIDGE_KEY`(SKYZAI 쪽 `SKYNET_BRIDGE_KEY` 와 같은 값). 둘이 없으면 이름만 AEGIS 응답으로 채우고 역할은 `staff` 가 됩니다.
 
 ## 무엇이 들어 있나
 
@@ -78,7 +86,7 @@ bash supabase/tests/run.sh   # DB 마이그레이션·보안 규칙 시험 (로�
 | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Supabase 공개 키 (보안은 DB의 RLS가 담당) |
 | `EXPO_PUBLIC_VAPID_PUBLIC_KEY` | PC 웹 푸시 공개 키 |
 
-**Supabase → Edge Functions → Secrets** (서버에만 있음, 절대 앱·저장소·채팅에 넣지 않음)
+**서버 함수 비밀값** — 서버의 `/opt/skynet/.env` 에 있고 `docker-compose.skynet.yml` 이 함수 컨테이너에 넘깁니다 (절대 앱·저장소·채팅에 넣지 않음). 사본은 AWS Secrets Manager `skynet/supabase`.
 
 | 이름 | 쓰는 곳 |
 |---|---|
@@ -92,24 +100,48 @@ bash supabase/tests/run.sh   # DB 마이그레이션·보안 규칙 시험 (로�
 
 **DB Vault** (`vault.secrets`): `push_function_url`, `push_cron_secret` — 1분마다 도는 `pg_cron` 작업 `push-send`가 이 값으로 함수를 부릅니다.
 
-**배포하는 사람의 환경변수** (개인 것, 저장소에 넣지 않음): `SUPABASE_ACCESS_TOKEN` (Supabase 개인 접근 토큰).
+**배포하는 사람에게 필요한 것**: 회사 AWS 계정 권한 (서버는 SSH 키 없이 **SSM Session Manager** 로만 들어갑니다).
 첫 관리자 만들 때만: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FIRST_ADMIN_ID`, `FIRST_ADMIN_PASSWORD`, `FIRST_ADMIN_NAME`.
 
-## 서버(Supabase) 배포
+## 서버(Supabase) 운영 — 회사 AWS 계정 안에 직접 설치
 
-1. **DB**: `supabase/migrations/*.sql`을 날짜순으로 적용 (`supabase db push` 또는 SQL 편집기). 운영 DB에는 모두 적용되어 있습니다.
-2. **Edge Functions** (운영에 올라간 것과 JWT 확인 설정)
+2026-11-16부터 Supabase 클라우드 대신 **공식 Supabase 셀프 호스팅(Docker Compose)** 을 회사 AWS 에 올려 씁니다. 앱 코드와 DB 설계는 그대로이고 주소만 다릅니다.
 
-   | 함수 | verify_jwt | 올리는 법 |
-   |---|---|---|
-   | `axiom` | false (함수 안에서 직접 확인) | `bash scripts/deploy-axiom.sh --deploy` — `src/core`를 함께 묶어야 해서 이 스크립트로만 |
-   | `push-send` | false (`x-push-secret` 확인) | `supabase functions deploy push-send --no-verify-jwt` |
-   | `admin-accounts` | true | `supabase functions deploy admin-accounts` |
-   | `daeryuntop-login` | false (로그인 전이라 JWT 없음) | `supabase functions deploy daeryuntop-login --no-verify-jwt` |
-   | `board-upload` | true | `supabase functions deploy board-upload` |
-   | `daeryuntop-hearing` | — | 아직 배포 안 함 (대륜탑 쪽 보내기 기능이 준비되면) |
+| 항목 | 값 |
+|---|---|
+| 주소 | `https://skynet-api.skyzkorea.net` (Route53 `skyzkorea.net` 영역의 A 레코드 → 고정 IP 13.209.254.132) |
+| 서버 | EC2 `skynet-supabase` (t3.large, Ubuntu 24.04, 80GB 암호화 gp3, 리전 ap-northeast-2, 기본 VPC) |
+| 설치 위치 | 서버의 `/opt/skynet` (공식 `supabase/docker` 사본 + 우리 파일: `.env`, `docker-compose.skynet.yml`, `volumes/functions/*`, `migrations/`) |
+| 구성 | Postgres 17(pg_cron·pg_net·vault 포함), GoTrue(인증), PostgREST, Realtime, Storage(파일은 서버 디스크 `volumes/storage`), Edge Runtime(함수), Studio, Envoy, Caddy(TLS 자동 발급) |
+| 관리 화면 | `https://skynet-api.skyzkorea.net/` — 아이디·비밀번호는 Secrets Manager `skynet/supabase` 의 `DASHBOARD_USERNAME/PASSWORD` |
+| 비밀값 | 서버 `/opt/skynet/.env` 가 원본, AWS Secrets Manager `skynet/supabase` 가 사본 (DB 비밀번호, JWT 비밀, anon/service 키, 푸시 키) |
+| 방화벽 | 보안 그룹 `skynet-supabase-sg`: 80·443 만 열림. DB 포트는 바깥에 안 열림 |
+| 백업 | DLM 정책이 매일 03:00(KST) 디스크 스냅샷, 7일 보관 |
+| 만든 자원 목록 | 저장소의 `aws_resources.txt` |
 
-3. **첫 관리자** (새 프로젝트일 때 한 번): `node scripts/supabase-first-admin.mjs`
+**서버에 들어가기** (AWS 자격 증명 + Session Manager 플러그인 필요)
+
+```bash
+aws ssm start-session --target i-00e5148840f434793 --region ap-northeast-2
+sudo -i && cd /opt/skynet
+docker compose ps                      # 상태
+docker compose logs -f functions       # 서버 함수 로그
+docker exec -it supabase-db psql -U postgres   # DB 콘솔
+```
+
+**바꾼 것을 올리는 법**
+
+1. **DB 마이그레이션**: 새 `supabase/migrations/*.sql` 파일을 서버 `/opt/skynet/migrations/` 에 복사한 뒤
+   `docker exec -i supabase-db psql -v ON_ERROR_STOP=1 -U postgres -d postgres < 파일.sql`. (설치 때 21개 전부 적용됨)
+2. **서버 함수**: `supabase/functions/<이름>/index.ts` 를 서버 `/opt/skynet/volumes/functions/<이름>/index.ts` 에 복사하고 `docker compose restart functions`.
+   `axiom` 만은 `bash scripts/deploy-axiom.sh` 로 한 파일로 묶은 결과를 복사합니다. JWT 확인은 전역으로 꺼져 있고(`FUNCTIONS_VERIFY_JWT=false`),
+   `admin-accounts`·`board-upload` 는 함수 안에서 호출자의 토큰을 직접 확인합니다.
+3. **함수 비밀값**: 서버 `.env` 를 고치고 `docker compose up -d` (바뀐 컨테이너만 다시 뜸).
+4. 파일 전달은 S3 버킷 `skynet-supabase-deploy-219028344147` 에 올린 뒤 서버에서 `aws s3 cp` 로 받는 방법이 편합니다 (서버 역할에 읽기 권한 있음).
+
+**첫 관리자** (새로 설치했을 때 한 번): `node scripts/supabase-first-admin.mjs` — 2026-11-16 설치 때 `admin` 계정을 만들어 두었습니다.
+
+**옛 클라우드 프로젝트의 데이터 옮기기** (아직 안 함): 옛 프로젝트의 DB 비밀번호가 있으면 `pg_dump` → 서버 `psql` 로 넣고, 저장소 파일은 service 키로 내려받아 `volumes/storage` 에 넣습니다.
 
 ## 웹 배포 (GitHub Pages)
 
@@ -119,6 +151,7 @@ bash scripts/build-web.sh --deploy    # 빌드 후 gh-pages 가지에 올림
 ```
 
 앱 설치(PWA) 정보와 서비스 워커를 붙여 줍니다. 배포 후 사용자는 Ctrl+F5로 새로고침해야 새 버전이 보입니다.
+PC 앱 설치: 크롬·엣지에서 왼쪽 메뉴 아래 또는 MY 탭의 「PC 앱으로 설치」(`src/core/install.ts`, 브라우저의 설치 요청을 받아 둠)를 누르면 주소창 없는 앱 창으로 열리고 작업표시줄에 고정됩니다. 화면·알림은 웹과 같습니다.
 주의: 무료 GitHub에서 저장소를 비공개로 바꾸면 Pages가 멈춥니다 (GitHub Pro 또는 다른 호스팅 필요).
 
 ## 안드로이드 APK

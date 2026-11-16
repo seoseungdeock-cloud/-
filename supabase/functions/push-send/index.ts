@@ -10,7 +10,8 @@ type WebSub = { endpoint: string; keys: { p256dh: string; auth: string } };
 type Item = { id: number; user_id: string; title: string; body: string; data: Record<string, unknown>; tokens: string[]; web: WebSub[] };
 
 const vapidKey = Deno.env.get('VAPID_PRIVATE_KEY');
-const VAPID_PUBLIC = 'BJxZdUCxLWRBXYC1agdpladp4WLZPgd3vKCKJeJV28622GnLZdyKlYpbjJf00MSyZj-yrs6AzrS1HRKIxyvyJVI';
+// 공개 키는 함수 설정(VAPID_PUBLIC_KEY)이 있으면 그것, 없으면 대륜톡 시절 값 (앱의 EXPO_PUBLIC_VAPID_PUBLIC_KEY 와 같아야 함)
+const VAPID_PUBLIC = Deno.env.get('VAPID_PUBLIC_KEY') ?? 'BJxZdUCxLWRBXYC1agdpladp4WLZPgd3vKCKJeJV28622GnLZdyKlYpbjJf00MSyZj-yrs6AzrS1HRKIxyvyJVI';
 if (vapidKey) webpush.setVapidDetails(Deno.env.get('VAPID_SUBJECT') ?? 'mailto:noreply@rightnow.local', VAPID_PUBLIC, vapidKey);
 type Ticket = { status: 'ok' | 'error'; message?: string; details?: { error?: string } };
 
