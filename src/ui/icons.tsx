@@ -2,7 +2,7 @@
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
 type Props = { name: IconName; color: string; size?: number };
-export type IconName = 'home' | 'search' | 'chat' | 'case' | 'map' | 'work' | 'me' | 'plus' | 'lock' | 'spark' | 'back' | 'send' | 'chevron' | 'board' | 'up' | 'down' | 'mail' | 'flag' | 'pin' | 'mute' | 'phone' | 'menu' | 'star' | 'check' | 'close' | 'reply' | 'copy' | 'notice' | 'forward' | 'trash' | 'hide' | 'exit' | 'people' | 'link' | 'file' | 'contact' | 'recall' | 'smile' | 'calendar' | 'image' | 'power' | 'sun' | 'moon' | 'auto' | 'starFill';
+export type IconName = 'home' | 'search' | 'chat' | 'case' | 'map' | 'work' | 'me' | 'plus' | 'lock' | 'spark' | 'back' | 'send' | 'chevron' | 'board' | 'up' | 'down' | 'mail' | 'flag' | 'pin' | 'mute' | 'phone' | 'menu' | 'star' | 'check' | 'close' | 'reply' | 'copy' | 'notice' | 'forward' | 'trash' | 'hide' | 'eye' | 'exit' | 'people' | 'link' | 'file' | 'contact' | 'recall' | 'smile' | 'calendar' | 'image' | 'power' | 'sun' | 'moon' | 'auto' | 'starFill';
 
 export function Icon({ name, color, size = 24 }: Props) {
   const p = { stroke: color, strokeWidth: 1.8, fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -77,6 +77,12 @@ export function Icon({ name, color, size = 24 }: Props) {
       {name === 'forward' && <Path {...p} d="M14 8V4l7 7-7 7v-4c-5 0-8 1-11 5 1-6 4-10 11-11z" />}
       {name === 'trash' && <Path {...p} d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" />}
       {name === 'hide' && <Path {...p} d="M3 3l18 18M10.6 6.1A9 9 0 0 1 21 12a14 14 0 0 1-2.4 3M6.6 6.6A14 14 0 0 0 3 12s3 6 9 6a9 9 0 0 0 4-1M9.9 9.9a3 3 0 0 0 4.2 4.2" />}
+      {name === 'eye' && (
+        <>
+          <Path {...p} d="M3 12s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z" />
+          <Circle {...p} cx={12} cy={12} r={3} />
+        </>
+      )}
       {name === 'power' && <Path {...p} d="M12 3v8M7 6.3a7.5 7.5 0 1 0 10 0" />}
       {name === 'sun' && (
         <>

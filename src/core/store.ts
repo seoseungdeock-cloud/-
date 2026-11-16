@@ -939,11 +939,13 @@ function meetingText(notes: MeetingNotes): string {
 // ---- 사용자 ----
 type DaeryuntopLogin = { ok: true; tokenHash: string } | { ok: false; code: string; reason: string };
 
-/** 대륜탑 사번 로그인 — 서버 함수 daeryuntop-login 호출. 함수가 없거나 연결이 안 되면 code 'unavailable'. */
+/** 대륜탑 사번 로그인 — 서버 함수 daeryuntop-login 호출. 함수가 아직 배포되지 않았으면 code 'missing', 연결이 안 되면 'unavailable'. */
 async function daeryuntopLogin(loginId: string, password: string): Promise<DaeryuntopLogin> {
   if (!supabase) return { ok: false, code: 'unavailable', reason: '' };
   try {
     const { data, error } = await supabase.functions.invoke('daeryuntop-login', { body: { loginId: loginId.trim(), password } });
+    // 함수가 없으면 Supabase 가 404 로 답한다 (연결 문제와 구분해서 안내)
+    if ((error as { context?: { status?: number } } | null)?.context?.status === 404) return { ok: false, code: 'missing', reason: '' };
     if (error || !data) return { ok: false, code: 'unavailable', reason: '' };
     if (data.ok && typeof data.tokenHash === 'string') return { ok: true, tokenHash: data.tokenHash };
     return { ok: false, code: String(data.code ?? 'failed'), reason: String(data.reason ?? '로그인하지 못했습니다.') };
@@ -983,10 +985,14 @@ export const actions = {
       if (error || !data.user) return { ok: false, reason: reasonOf(error) };
       return finish(data.user.id);
     }
-    if (dt.code && dt.code !== 'not_staff' && dt.code !== 'unavailable') return { ok: false, reason: dt.reason };
-    // 2) 대륜탑에 없는 계정(의뢰인 등): 종전의 서버 계정 로그인
+    if (dt.code && dt.code !== 'not_staff' && dt.code !== 'unavailable' && dt.code !== 'missing') return { ok: false, reason: dt.reason };
+    // 2) 대륜탑에 없는 계정(의뢰인 등), 또는 대륜탑 로그인이 아직 준비되지 않은 동안: 종전의 서버 계정 로그인
     const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail(loginId), password });
-    if (error || !data.user) return { ok: false, reason: dt.code === 'unavailable' ? '대륜탑 인증 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.' : reasonOf(error) };
+    if (error || !data.user) {
+      if (dt.code === 'missing') return { ok: false, reason: '대륜탑 사번 로그인이 아직 서버에 설치되지 않았습니다. 관리자에게 알려 주시고, 발급받은 스카이넷 계정이 있으면 그것으로 로그인해 주세요.' };
+      if (dt.code === 'unavailable') return { ok: false, reason: '대륜탑 인증 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.' };
+      return { ok: false, reason: reasonOf(error) };
+    }
     return finish(data.user.id);
   },
 

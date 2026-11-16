@@ -1,70 +1,154 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 
 import { autoLoginNow, saveLoginPrefs, savedLoginId, savedLoginIdNow } from '@/core/login-prefs';
 import { actions, me } from '@/core/store';
 import { serverEnabled } from '@/core/supabase';
+import { AppMark } from '@/ui/brand';
 import { Icon, type IconName } from '@/ui/icons';
-import { Notice, Sub } from '@/ui/kit';
-import { family, font, radius, space, useColors } from '@/ui/theme';
+import { Sub } from '@/ui/kit';
+import { family, font, radius, space, useColors, useScheme } from '@/ui/theme';
 
-const MARK = require('../../assets/images/logo-mark.png');
-const WORDMARK = require('../../assets/images/logo-text.png');
+/** 웹은 JS 드라이버, 폰은 네이티브 드라이버 (transform·opacity 전용) */
+const NATIVE = Platform.OS !== 'web';
 
-/** 대륜 상징 (로고 파일에서 오려 낸 것) */
-export function AppMark({ width = 88 }: { width?: number }) {
-  const c = useColors();
-  return <Image source={MARK} accessibilityLabel="대륜 로고" style={{ width, height: width * (406 / 640), tintColor: c.accent }} resizeMode="contain" />;
+/** 처음 뜰 때 아래에서 살짝 떠오르며 나타나는 묶음. delay(ms)로 순서를 줍니다. */
+function Reveal({ delay = 0, children, style }: { delay?: number; children: ReactNode; style?: object }) {
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(v, { toValue: 1, duration: 520, delay, easing: Easing.out(Easing.cubic), useNativeDriver: NATIVE }).start();
+  }, [v, delay]);
+  return (
+    <Animated.View style={[style, { opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }] }]}>
+      {children}
+    </Animated.View>
+  );
 }
 
-function Field({ icon, right, ...props }: React.ComponentProps<typeof TextInput> & { icon: IconName; right?: React.ReactNode }) {
+/** 배경의 은은한 빛 덩어리. 아주 천천히 숨 쉬듯 움직입니다. */
+function Glow({ color, size, opacity, top, left, right, bottom, drift }: { color: string; size: number; opacity: number; top?: number; left?: number; right?: number; bottom?: number; drift: number }) {
+  const t = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(t, { toValue: 1, duration: 9000, easing: Easing.inOut(Easing.sin), useNativeDriver: NATIVE }),
+        Animated.timing(t, { toValue: 0, duration: 9000, easing: Easing.inOut(Easing.sin), useNativeDriver: NATIVE }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [t]);
+  const id = `glow-${drift}`;
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        top,
+        left,
+        right,
+        bottom,
+        width: size,
+        height: size,
+        transform: [
+          { translateX: t.interpolate({ inputRange: [0, 1], outputRange: [0, -drift] }) },
+          { translateY: t.interpolate({ inputRange: [0, 1], outputRange: [0, drift * 0.8] }) },
+          { scale: t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] }) },
+        ],
+      }}>
+      <Svg width={size} height={size} viewBox="0 0 100 100">
+        <Defs>
+          <RadialGradient id={id} cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor={color} stopOpacity={opacity} />
+            <Stop offset="0.55" stopColor={color} stopOpacity={opacity * 0.35} />
+            <Stop offset="1" stopColor={color} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Circle cx="50" cy="50" r="50" fill={`url(#${id})`} />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+function Field({ label, icon, right, onChangeText, ...props }: React.ComponentProps<typeof TextInput> & { label: string; icon: IconName; right?: ReactNode }) {
   const c = useColors();
   const [focus, setFocus] = useState(false);
+  const f = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(f, { toValue: focus ? 1 : 0, duration: 180, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+  }, [f, focus]);
   return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: space.sm,
-        backgroundColor: c.surface,
-        borderRadius: radius.md,
-        borderWidth: 1.5,
-        borderColor: focus ? c.accent : 'transparent',
-        paddingHorizontal: space.md,
-        marginBottom: space.sm + 2,
-        height: 54,
-      }}>
-      <View style={{ flexShrink: 0 }}>
+    <View style={{ marginBottom: space.md }}>
+      <Text style={{ color: focus ? c.accent : c.sub, fontSize: font.tiny + 1, marginBottom: 6, marginLeft: 2, ...family.semibold }}>{label}</Text>
+      <Animated.View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: space.sm + 2,
+          height: 56,
+          paddingHorizontal: space.md + 2,
+          borderRadius: radius.lg - 2,
+          borderWidth: 1.5,
+          borderColor: f.interpolate({ inputRange: [0, 1], outputRange: [c.line, c.accent] }),
+          backgroundColor: f.interpolate({ inputRange: [0, 1], outputRange: [c.surface, c.bg] }),
+          boxShadow: focus ? `0 6px 18px ${rgba(c.accent, 0.14)}` : '0 0 0 rgba(0,0,0,0)',
+        }}>
         <Icon name={icon} color={focus ? c.accent : c.faint} size={20} />
-      </View>
-      <TextInput
-        placeholderTextColor={c.faint}
-        onFocus={() => setFocus(true)}
-        onBlur={() => setFocus(false)}
-        {...props}
-        style={{ flex: 1, minWidth: 0, height: '100%', color: c.text, fontSize: font.body, ...family.regular, outlineStyle: 'none' } as object}
-      />
-      {right}
+        <TextInput
+          placeholderTextColor={c.faint}
+          onFocus={() => setFocus(true)}
+          onBlur={() => setFocus(false)}
+          onChangeText={onChangeText}
+          {...props}
+          style={{ flex: 1, minWidth: 0, height: '100%', color: c.text, fontSize: font.body, ...family.regular, outlineStyle: 'none' } as object}
+        />
+        {right}
+      </Animated.View>
     </View>
   );
 }
 
 function Check({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
   const c = useColors();
+  const s = useRef(new Animated.Value(1)).current;
+  const press = () => {
+    s.setValue(0.75);
+    Animated.spring(s, { toValue: 1, friction: 4, tension: 160, useNativeDriver: NATIVE }).start();
+    onPress();
+  };
   return (
-    <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: on }} onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-      <View style={{ width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: on ? c.accent : c.line, backgroundColor: on ? c.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+    <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: on }} onPress={press} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+      <Animated.View
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: radius.pill,
+          borderWidth: 1.5,
+          borderColor: on ? c.accent : c.line,
+          backgroundColor: on ? c.accent : c.bg,
+          alignItems: 'center',
+          justifyContent: 'center',
+          transform: [{ scale: s }],
+        }}>
         {on ? <Icon name="check" color="#FFFFFF" size={14} /> : null}
-      </View>
-      <Text style={{ color: c.sub, fontSize: font.small, ...family.regular }}>{label}</Text>
+      </Animated.View>
+      <Text style={{ color: on ? c.text : c.sub, fontSize: font.small, ...family.semibold }}>{label}</Text>
     </Pressable>
   );
 }
 
+/** 16진 색에 투명도를 더한 rgba 문자열 */
+function rgba(hex: string, alpha: number) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
 export default function LoginScreen() {
   const c = useColors();
+  const dark = useScheme() === 'dark';
   const [loginId, setLoginId] = useState(savedLoginIdNow);
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(() => !!savedLoginIdNow());
@@ -83,64 +167,134 @@ export default function LoginScreen() {
   const [busy, setBusy] = useState(false);
   const ready = !!loginId.trim() && !!password && !busy;
 
+  // 버튼 눌림(살짝 줄어듦)·실패 시 좌우 흔들림·오류 글 나타남
+  const press = useRef(new Animated.Value(1)).current;
+  const shake = useRef(new Animated.Value(0)).current;
+  const errorIn = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(errorIn, { toValue: error ? 1 : 0, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: NATIVE }).start();
+  }, [errorIn, error]);
+  const doShake = () => {
+    shake.setValue(0);
+    Animated.sequence(
+      [-10, 10, -7, 7, -3, 0].map((x) => Animated.timing(shake, { toValue: x, duration: 55, easing: Easing.linear, useNativeDriver: NATIVE })),
+    ).start();
+  };
+
   const submit = async () => {
     if (!ready) return;
     setBusy(true);
     const res = await actions.signIn(loginId, password);
     setBusy(false);
-    if (!res.ok) return setError(res.reason);
+    if (!res.ok) {
+      setError(res.reason);
+      doShake();
+      return;
+    }
     await saveLoginPrefs(remember ? loginId.trim() : null, auto);
     router.replace(me().role === 'client' ? '/home' : '/');
   };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
+      <Glow color={c.accent} size={420} opacity={dark ? 0.32 : 0.22} top={-150} right={-140} drift={24} />
+      <Glow color={c.ai} size={360} opacity={dark ? 0.26 : 0.16} bottom={-120} left={-150} drift={-18} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: space.xl, width: '100%', maxWidth: 420, alignSelf: 'center' }}>
-          <View style={{ alignItems: 'center', marginBottom: space.xxl + space.sm }}>
-            <AppMark width={120} />
-            <Image source={WORDMARK} accessibilityLabel="법무법인(유한) 대륜" style={{ marginTop: space.xl, width: 220, height: 220 * (175 / 900), tintColor: c.text }} resizeMode="contain" />
-          </View>
+        <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: space.xl, paddingVertical: space.xxl, width: '100%', maxWidth: 440, alignSelf: 'center' }}>
+            <Reveal delay={0} style={{ marginBottom: space.xxl }}>
+              <View style={{ width: 72, height: 72, borderRadius: 22, backgroundColor: c.accentSoft, alignItems: 'center', justifyContent: 'center', boxShadow: `0 10px 30px ${rgba(c.accent, dark ? 0.28 : 0.16)}` }}>
+                <AppMark width={44} />
+              </View>
+              <Text style={{ marginTop: space.xl, color: c.sub, fontSize: font.small, ...family.semibold }}>법무법인(유한) 대륜</Text>
+              <Text style={{ marginTop: space.xs, color: c.text, fontSize: 30, lineHeight: 40, letterSpacing: -0.5, ...family.bold }}>스카이넷에{'\n'}로그인하세요</Text>
+            </Reveal>
 
-          <Field icon="me" placeholder="대륜탑 사번(아이디)" autoCapitalize="none" autoCorrect={false} autoComplete="username" value={loginId} onChangeText={setLoginId} returnKeyType="next" />
-          <Field
-            icon="lock"
-            placeholder="비밀번호"
-            secureTextEntry={!show}
-            autoComplete="current-password"
-            value={password}
-            onChangeText={setPassword}
-            onSubmitEditing={submit}
-            returnKeyType="go"
-            right={
-              <Pressable accessibilityLabel={show ? '비밀번호 가리기' : '비밀번호 보기'} hitSlop={10} onPress={() => setShow((v) => !v)}>
-                <Text style={{ color: c.sub, fontSize: font.small, ...family.semibold }}>{show ? '숨김' : '보기'}</Text>
+            <Animated.View style={{ transform: [{ translateX: shake }] }}>
+              <Reveal delay={90}>
+                <Field label="대륜탑 사번" icon="me" placeholder="사번(아이디)" autoCapitalize="none" autoCorrect={false} autoComplete="username" value={loginId} onChangeText={(v) => { setLoginId(v); setError(undefined); }} returnKeyType="next" />
+              </Reveal>
+              <Reveal delay={160}>
+                <Field
+                  label="비밀번호"
+                  icon="lock"
+                  placeholder="비밀번호 입력"
+                  secureTextEntry={!show}
+                  autoComplete="current-password"
+                  value={password}
+                  onChangeText={(v) => { setPassword(v); setError(undefined); }}
+                  onSubmitEditing={submit}
+                  returnKeyType="go"
+                  right={
+                    <Pressable accessibilityLabel={show ? '비밀번호 가리기' : '비밀번호 보기'} hitSlop={10} onPress={() => setShow((v) => !v)} style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, padding: 2 })}>
+                      <Icon name={show ? 'hide' : 'eye'} color={c.faint} size={20} />
+                    </Pressable>
+                  }
+                />
+              </Reveal>
+            </Animated.View>
+
+            <Reveal delay={230}>
+              <View style={{ flexDirection: 'row', gap: space.xl, marginTop: space.xs, marginBottom: space.lg }}>
+                <Check label="아이디 저장" on={remember} onPress={() => setRemember((v) => !v)} />
+                <Check label="자동 로그인" on={auto} onPress={() => setAuto((v) => !v)} />
+              </View>
+            </Reveal>
+
+            {error ? (
+              <Animated.View
+                style={{
+                  opacity: errorIn,
+                  transform: [{ translateY: errorIn.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }],
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: space.sm,
+                  backgroundColor: c.warnSoft,
+                  borderRadius: radius.md,
+                  paddingHorizontal: space.md,
+                  paddingVertical: space.md - 2,
+                  marginBottom: space.md,
+                }}>
+                <Icon name="notice" color={c.warn} size={18} />
+                <Text style={{ flex: 1, color: c.warn, fontSize: font.small, lineHeight: font.small * 1.45, ...family.semibold }}>{error}</Text>
+              </Animated.View>
+            ) : null}
+
+            <Reveal delay={300}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={!ready}
+                onPress={submit}
+                onPressIn={() => Animated.spring(press, { toValue: 0.97, friction: 6, tension: 220, useNativeDriver: NATIVE }).start()}
+                onPressOut={() => Animated.spring(press, { toValue: 1, friction: 5, tension: 180, useNativeDriver: NATIVE }).start()}>
+                <Animated.View
+                  style={{
+                    height: 56,
+                    borderRadius: radius.lg - 2,
+                    backgroundColor: ready || busy ? c.accent : c.surface,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                    gap: space.sm,
+                    transform: [{ scale: press }],
+                    boxShadow: ready ? `0 10px 24px ${rgba(c.accent, 0.32)}` : '0 0 0 rgba(0,0,0,0)',
+                  }}>
+                  {busy ? <ActivityIndicator color="#FFFFFF" /> : null}
+                  <Text style={{ color: ready || busy ? '#FFFFFF' : c.faint, fontSize: font.body + 1, letterSpacing: 0.2, ...family.bold }}>{busy ? '로그인 중' : '로그인'}</Text>
+                </Animated.View>
               </Pressable>
-            }
-          />
+            </Reveal>
 
-          <View style={{ flexDirection: 'row', gap: space.xl, marginVertical: space.sm }}>
-            <Check label="아이디 저장" on={remember} onPress={() => setRemember((v) => !v)} />
-            <Check label="자동 로그인" on={auto} onPress={() => setAuto((v) => !v)} />
+            {__DEV__ && !serverEnabled ? (
+              <View style={{ marginTop: space.lg }}>
+                <Sub>개발용: admin / admin1234 · staff / staff1234 · lawyer / lawyer1234 · client / client1234</Sub>
+              </View>
+            ) : null}
           </View>
-
-          {error ? <View style={{ marginTop: space.sm }}><Notice text={error} /></View> : null}
-
-          <Pressable
-            accessibilityRole="button"
-            disabled={!ready}
-            onPress={submit}
-            style={({ pressed }) => ({ marginTop: space.md, height: 54, borderRadius: radius.md, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', opacity: !ready ? 0.4 : pressed ? 0.8 : 1 })}>
-            <Text style={{ color: '#FFFFFF', fontSize: font.body + 1, ...family.bold }}>{busy ? '로그인 중…' : '로그인'}</Text>
-          </Pressable>
-
-          {__DEV__ && !serverEnabled ? (
-            <View style={{ marginTop: space.lg }}>
-              <Sub>개발용: admin / admin1234 · staff / staff1234 · lawyer / lawyer1234 · client / client1234</Sub>
-            </View>
-          ) : null}
-        </View>
-        <Text style={{ textAlign: 'center', color: c.faint, fontSize: font.tiny, ...family.regular, paddingBottom: space.lg }}>© 법무법인(유한) 대륜</Text>
+          <Reveal delay={420}>
+            <Text style={{ textAlign: 'center', color: c.faint, fontSize: font.tiny, ...family.regular, paddingBottom: space.lg }}>© 법무법인(유한) 대륜 · 임직원 전용</Text>
+          </Reveal>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
