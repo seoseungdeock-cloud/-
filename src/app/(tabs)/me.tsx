@@ -64,7 +64,7 @@ export default function MeScreen() {
       <CallerNamesCard />
       <ThemeModeCard />
       <FrameSizeCard />
-      <Section title="라잇나우 건의사항">
+      <Section title="스카이넷 건의사항">
         <Card onPress={() => router.push('/suggest')}>
           <T bold>건의사항 쓰기</T>
         </Card>

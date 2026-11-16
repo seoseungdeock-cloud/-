@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "대륜톡",
-    "slug": "rightnow",
+    "name": "스카이넷",
+    "slug": "skynet",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "rightnow",
+    "scheme": "skynet",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "kr.rightnow.app"
+      "bundleIdentifier": "kr.daeryun.skynet"
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +19,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "kr.rightnow.app",
+      "package": "kr.daeryun.skynet",
       "versionCode": 1
     },
     "web": {

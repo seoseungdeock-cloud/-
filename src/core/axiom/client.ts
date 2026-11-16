@@ -12,7 +12,7 @@ import { AxError } from './util';
 
 export type AxResult<T = any> = { ok: true; data: T } | { ok: false; reason: string; status?: number };
 
-/** 라잇나우 계정 → AXIOM 권한: 관리자어드민은 관리자, 다른 어드민은 모든 팀의 팀장 */
+/** 스카이넷 계정 → AXIOM 권한: 관리자어드민은 관리자, 다른 어드민은 모든 팀의 팀장 */
 export function axUser(u: User): AxUser | null {
   if (u.role !== 'admin') return null;
   return { id: u.id, name: u.nickname, role: u.superAdmin ? 'admin' : 'lead', teams: INSTANCE.teams.map((t) => t.key) };

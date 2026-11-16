@@ -3,7 +3,7 @@
 //   team:<키>     해당 팀 구성원 (+관리자)
 //   case:<번호>   해당 사건 배정 인원 (+관리자)  — 의뢰인 비밀·정보차단벽
 //   confidential  관리자만  — 인사·민감 경영정보
-// 라잇나우판은 사건 배정·개별 허가 화면이 아직 없어서, 사건·기밀 등급은 관리자어드민만 봅니다.
+// 스카이넷판은 사건 배정·개별 허가 화면이 아직 없어서, 사건·기밀 등급은 관리자어드민만 봅니다.
 import type { Where } from './db';
 import type { AxUser, Instance } from './types';
 import { AxError } from './util';

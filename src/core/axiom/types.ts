@@ -44,7 +44,7 @@ export type AgentDef = {
   origin?: 'engine' | 'instance';
 };
 
-/** AXIOM 에서의 사람. 라잇나우 계정에서 옵니다: 관리자어드민 → admin, 다른 어드민 → lead(모든 팀) */
+/** AXIOM 에서의 사람. 스카이넷 계정에서 옵니다: 관리자어드민 → admin, 다른 어드민 → lead(모든 팀) */
 export type AxUser = { id: string; name: string; role: 'admin' | 'lead' | 'member'; teams: string[] };
 
 export type Env = { ANTHROPIC_API_KEY?: string; OPENAI_API_KEY?: string; GEMINI_API_KEY?: string; AXIOM_LLM?: string; AXIOM_LLM_TIMEOUT_MS?: string };

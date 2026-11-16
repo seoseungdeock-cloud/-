@@ -41,7 +41,7 @@ function makeCtx(env: Env = {}, fetchImpl?: typeof fetch) {
 const MEETING = `2026년 4분기 경영회의\n1. 형사 분야 검색광고 확대 여부\n2. 블로그 발행량을 하루 10건으로 늘리는 안\n3. 신규 변호사 채용 시기`;
 const STATE = '항목,값,단위\n월 매출,1000000000,원\n월 마케팅 비용,50000000,원';
 
-describe('AXIOM 엔진 (라잇나우판)', () => {
+describe('AXIOM 엔진 (스카이넷판)', () => {
   test('회사 상태 시트와 한국식 금액을 읽는다', () => {
     expect(koNum('13억')).toBe(1300000000);
     expect(koNum('3,500만원')).toBe(35000000);

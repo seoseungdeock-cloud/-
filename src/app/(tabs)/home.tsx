@@ -40,7 +40,7 @@ export default function HomeScreen() {
         <View style={{ width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', paddingHorizontal: space.lg }}>
           <Text style={{ ...family.heavy, fontSize: 28, lineHeight: 38, color: c.text, marginTop: space.sm }}>
             긴급한 법률 상담{'\n'}
-            <Text style={{ color: c.accent }}>라잇나우</Text>가 필요해!
+            <Text style={{ color: c.accent }}>스카이넷</Text>가 필요해!
           </Text>
 
           <View style={{ flexDirection: 'row', gap: space.md, marginTop: space.lg }}>
@@ -110,7 +110,7 @@ export default function HomeScreen() {
           </View>
 
           <SectionTitle>
-            복잡한 서류 준비 <Text style={{ color: c.accent }}>라잇나우</Text>에서!
+            복잡한 서류 준비 <Text style={{ color: c.accent }}>스카이넷</Text>에서!
           </SectionTitle>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
             {home.documents.map((d) => (

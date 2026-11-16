@@ -34,7 +34,7 @@ export type RoomKind =
   | 'group' // 단체방
   | 'stranger' // 모르는 사람과의 대화
   | 'office' // 사무소방
-  | 'consult' // 라잇나우 상담방
+  | 'consult' // 스카이넷 상담방
   | 'case' // 사건방
   | 'meeting' // 경영 회의방
   | 'marketing'; // 마케팅 작업방

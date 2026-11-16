@@ -6,7 +6,7 @@ import { Button, Empty, Input, Notice, Screen, Section } from '@/ui/kit';
 import { SuggestionCard } from '@/ui/suggestion';
 import { useApp, useMe } from '@/ui/use-app';
 
-// 라잇나우 건의사항: 누구나 쓰고, 내가 쓴 건의의 처리 상태와 답변을 봅니다.
+// 스카이넷 건의사항: 누구나 쓰고, 내가 쓴 건의의 처리 상태와 답변을 봅니다.
 export default function SuggestScreen() {
   const s = useApp();
   const user = useMe();

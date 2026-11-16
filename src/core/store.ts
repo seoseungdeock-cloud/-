@@ -89,7 +89,7 @@ export type State = {
   contents: ContentItem[];
   budgets: Partial<Record<Channel, number>>;
   performance: Performance[];
-  /** 라잇나우 변호사 id → 앱 사용자 id (변호사가 가입하면 연결) */
+  /** 스카이넷 변호사 id → 앱 사용자 id (변호사가 가입하면 연결) */
   lawyerAccounts: Record<string, string>;
   posts: BoardPost[];
   notes: NoteThread[];
@@ -104,7 +104,7 @@ export type State = {
   openMessages: OpenMessage[];
   /** 사용자 id → 확인한 공지 글 id (게시판 공지 팝업) */
   noticeSeen: Record<string, string[]>;
-  /** 라잇나우 건의사항 (관리자어드민이 봄) */
+  /** 스카이넷 건의사항 (관리자어드민이 봄) */
   suggestions: Suggestion[];
   /** 대륜탑 인증코드 (메신저 '대륜탑 인증' 봇) */
   authCodes: AuthCode[];
@@ -1166,7 +1166,7 @@ export const actions = {
     }
   },
 
-  // ---- 라잇나우 ----
+  // ---- 스카이넷 ----
   /** 찾기에서 고른 변호사와의 상담. 사건수행방으로만 열립니다. */
   requestConsult(lawyerId: string, summary: string): RoomCheck & { roomId?: string } {
     const lawyer = findLawyer(lawyerId);
