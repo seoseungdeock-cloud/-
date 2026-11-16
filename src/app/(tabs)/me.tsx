@@ -14,7 +14,8 @@ import { usePresenceBadge } from '@/ui/presence';
 import { Avatar, Badge, Button, Card, Chip, Chips, Screen, Section, Sub, T } from '@/ui/kit';
 import { family, setThemeMode, space, THEME_MODES, useColors, useThemeMode } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
-import { FRAME_SIZES, setFrameSize, useFrameSize } from '@/ui/web-frame';
+import { FRAME_SIZES, setFrameSize, useFrameSize, useLayout } from '@/ui/web-frame';
+import { promptInstall, useInstallState } from '@/core/install';
 
 export const ROLE_LABEL = { client: '의뢰인', lawyer: '변호사', staff: '직원', admin: '어드민' } as const;
 
@@ -61,6 +62,7 @@ export default function MeScreen() {
         </Section>
       ) : null}
       <WebPushCard />
+      <InstallCard />
       <CallerNamesCard />
       <ThemeModeCard />
       <FrameSizeCard />
@@ -149,15 +151,32 @@ function ThemeModeCard() {
   );
 }
 
-/** PC·웹 브라우저에서만: 화면 크기 (처음에는 폰 크기) */
+/** PC·웹 브라우저에서만: 화면 구성 (자동 / 데스크톱 / 모바일) */
 function FrameSizeCard() {
   const size = useFrameSize();
+  const { mode } = useLayout();
   if (Platform.OS !== 'web') return null;
+  const now = { phone: '모바일', tablet: '태블릿(아이콘 메뉴)', desktop: '데스크톱' }[mode];
   return (
-    <Section title="화면 크기">
+    <Section title="화면 구성">
       <Chips>
         {FRAME_SIZES.map((f) => <Chip key={f.key} label={f.label} active={size === f.key} onPress={() => setFrameSize(f.key)} />)}
       </Chips>
+      <Sub>{FRAME_SIZES.find((f) => f.key === size)!.hint} · 지금은 {now} 구성입니다.</Sub>
+    </Section>
+  );
+}
+
+/** PC 웹 브라우저(크롬·엣지)에서만: 데스크톱 앱으로 설치 */
+function InstallCard() {
+  const state = useInstallState();
+  if (state === 'unsupported') return null;
+  return (
+    <Section title="PC 앱">
+      <Card onPress={state === 'available' ? () => void promptInstall() : undefined}>
+        <T bold>{state === 'installed' ? 'PC 앱으로 쓰는 중' : 'PC 앱으로 설치'}</T>
+        <Sub>{state === 'installed' ? '바탕화면·작업표시줄의 스카이넷 아이콘으로 엽니다.' : '주소창 없는 앱 창으로 열리고, 작업표시줄·독에 고정할 수 있습니다. 화면과 알림은 웹과 같습니다.'}</Sub>
+      </Card>
     </Section>
   );
 }

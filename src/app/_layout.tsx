@@ -8,6 +8,7 @@ import { resumeWebPush } from '@/core/web-push';
 import { loggedIn, startServer } from '@/core/store';
 import { HearingAlertModal } from '@/ui/hearing';
 import { ImageViewerHost } from '@/ui/image-viewer';
+import { Shell } from '@/ui/shell';
 import { SyncNotice } from '@/ui/sync-notice';
 import { useApp } from '@/ui/use-app';
 import { markScheme, useScheme } from '@/ui/theme';
@@ -41,8 +42,9 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-      {/* PC 웹: 처음에는 폰 메신저 크기 (나 탭에서 바꿈) */}
+      {/* 화면 구성(MY 탭에서 바꿈): PC 는 왼쪽 메뉴 틀(Shell), '모바일' 구성은 폰 틀(WebFrame) */}
       <WebFrame>
+      <Shell signedIn={signedIn}>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Protected guard={signedIn}>
           <Stack.Screen name="(tabs)" />
@@ -90,6 +92,7 @@ export default function RootLayout() {
           <Stack.Screen name="login" />
         </Stack.Protected>
       </Stack>
+      </Shell>
       </WebFrame>
       {/* 기일 알람: 의뢰인·변호사 모두 확인할 때까지 어느 화면에서든 뜹니다 */}
       {signedIn ? <HearingAlertModal /> : null}

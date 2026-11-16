@@ -1,29 +1,28 @@
 import { Tabs } from 'expo-router';
-import { Platform } from 'react-native';
 
 import { canSeeWorkTab } from '@/core/rooms';
 import { useCallerNamesAutoSync } from '@/ui/caller-sync';
 import { Icon, type IconName } from '@/ui/icons';
 import { family, useColors } from '@/ui/theme';
-import { SideRail } from '@/ui/side-rail';
 import { useMe } from '@/ui/use-app';
+import { useLayout } from '@/ui/web-frame';
 
-// PC 웹은 왼쪽 붉은 세로 메뉴(아이콘만), 폰 앱은 하단 탭.
+// 모바일(폰 앱·좁은 창)은 하단 탭. PC 구성(데스크톱·태블릿)은 탭 대신 왼쪽 메뉴(ui/shell.tsx)가 모든 화면에 붙으므로 여기서는 탭 막대를 숨깁니다.
 // 하단 탭: 의뢰인은 홈 / 대화 / 게시판 / 사건 / 캘린더 / 찾기 / MY, 변호사는 대화 / 게시판 / 사건 / 캘린더 / MY, 직원은 찾기 포함, 어드민은 찾기·업무 포함
 export default function TabLayout() {
   const c = useColors();
   const user = useMe();
+  const { desktop } = useLayout();
   useCallerNamesAutoSync();
   const icon = (name: IconName) => ({ focused }: { focused: boolean }) => <Icon name={name} color={focused ? c.text : c.faint} />;
   return (
     <Tabs
-      tabBar={Platform.OS === 'web' ? (props) => <SideRail {...props} /> : undefined}
+      tabBar={desktop ? () => null : undefined}
       screenOptions={{
-        tabBarPosition: Platform.OS === 'web' ? 'left' : 'bottom',
         headerShown: false,
         tabBarActiveTintColor: c.text,
         tabBarInactiveTintColor: c.faint,
-        tabBarStyle: { backgroundColor: c.bg, borderTopColor: c.line, ...(Platform.OS === 'web' ? { height: 64, paddingBottom: 8 } : null) },
+        tabBarStyle: { backgroundColor: c.bg, borderTopColor: c.line },
         tabBarLabelStyle: { fontSize: 11, ...family.semibold },
       }}>
       <Tabs.Screen name="home" options={{ title: '홈', tabBarIcon: icon('home'), href: user.role === 'client' ? undefined : null }} />

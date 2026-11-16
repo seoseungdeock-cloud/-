@@ -1,3 +1,4 @@
+// 메신저 목록 (주소록 / 대화방 / 오픈대화방 / 클라이언트). 모바일은 '대화' 탭 전체, PC 는 왼쪽 340px 칸으로 쓰고 오른쪽에 대화를 엽니다.
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
@@ -16,6 +17,36 @@ import { Avatar, Empty } from '@/ui/kit';
 import { chatTime, roomTitle, RoomRow } from '@/ui/room-row';
 import { family, font, MAX_WIDTH, radius, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
+import { useLayout } from '@/ui/web-frame';
+
+export const LIST_PANE_WIDTH = 340;
+
+/** PC: 왼쪽 목록 + 오른쪽 대화(children). 대화방을 바꿔도 목록은 그대로 보입니다. */
+export function MessengerSplit({ children }: { children: ReactNode }) {
+  const c = useColors();
+  return (
+    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: c.bg }}>
+      <View style={{ width: LIST_PANE_WIDTH, borderRightWidth: 1, borderRightColor: c.lineStrong }}>
+        <MessengerList />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>{children}</View>
+    </View>
+  );
+}
+
+/** PC 에서 대화를 아직 고르지 않았을 때 오른쪽 칸 */
+export function EmptyPane() {
+  const c = useColors();
+  return (
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.sm, padding: space.xl, backgroundColor: c.page }}>
+      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.bg, borderWidth: 1, borderColor: c.lineStrong, alignItems: 'center', justifyContent: 'center', marginBottom: space.sm }}>
+        <Icon name="chat" color={c.faint} size={28} />
+      </View>
+      <Text style={{ ...family.bold, fontSize: 16, color: c.text }}>대화를 골라 주세요</Text>
+      <Text style={{ ...family.regular, fontSize: 13.5, color: c.sub, textAlign: 'center', lineHeight: 20 }}>왼쪽에서 대화방을 고르거나 「새 대화」로 구성원에게 말을 걸어 보세요.{'\n'}사진·파일은 대화창에 끌어다 놓으면 바로 보내집니다.</Text>
+    </View>
+  );
+}
 
 type RoomFilter = 'all' | 'one' | 'many' | 'case';
 const FILTERS: [RoomFilter, string][] = [['all', '전체'], ['one', '1:1'], ['many', '여러 명'], ['case', '사건수행']];
@@ -36,10 +67,13 @@ const PLACEHOLDER: Record<Tab, string> = {
 
 // 메신저: 주소록 / 대화방 / 오픈대화방 / 클라이언트 (네이버웍스 주소록·메시지 구성 참고)
 // 의뢰인 계정은 자기 사건방만 보는 간단한 화면을 씁니다.
-export default function MessengerScreen() {
+export function MessengerList() {
   const user = useMe();
   return user.role === 'client' ? <ClientMessenger /> : <FirmMessenger />;
 }
+
+// PC 에서 대화방을 바꾸면 이 목록이 다시 만들어지므로, 보고 있던 탭을 기억해 둡니다 (이 창 안에서만)
+const sticky: { tab?: Tab } = {};
 
 function SearchBar({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
   const c = useColors();
@@ -69,10 +103,11 @@ function ClientMessenger() {
   const c = useColors();
   const [q, setQ] = useState('');
   const query = q.trim();
+  const { desktop } = useLayout();
   const rooms = useMemo(() => sortRooms(s.rooms.filter((r) => clientCanSee(r, user) || (isSelfRoom(r, user.id) && !isHidden(r, user.id, s.messages))), user.id, s.messages), [s.rooms, s.messages, user]);
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top', 'left', 'right']}>
-      <View style={{ width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', flex: 1 }}>
+      <View style={{ width: '100%', maxWidth: desktop ? undefined : MAX_WIDTH, alignSelf: 'center', flex: 1 }}>
         <View style={{ paddingHorizontal: space.lg, paddingTop: space.md, gap: space.md }}>
           <Text style={{ ...family.heavy, fontSize: font.title, color: c.text }}>대화</Text>
           <SearchBar value={q} onChange={setQ} placeholder="사건방·메시지 검색" />
@@ -92,15 +127,38 @@ function ClientMessenger() {
 
 function FirmMessenger() {
   const c = useColors();
-  const [tab, setTab] = useState<Tab>('contacts');
+  const { desktop } = useLayout();
+  // PC 는 대화방 탭부터 (오른쪽에 바로 대화를 열어 보도록), 폰은 주소록부터
+  const [tab, setTabState] = useState<Tab>(sticky.tab ?? (desktop ? 'rooms' : 'contacts'));
+  const setTab = (t: Tab) => {
+    sticky.tab = t;
+    setTabState(t);
+  };
   const [q, setQ] = useState('');
   const [selecting, setSelecting] = useState(false);
   const query = q.trim();
+  const newLabel = tab === 'open' ? '오픈대화방 만들기' : '새 대화';
+  const goNew = () => router.push(tab === 'open' ? '/open/new' : '/room/new');
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top', 'left', 'right']}>
-      <View style={{ width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', flex: 1 }}>
+      <View style={{ width: '100%', maxWidth: desktop ? undefined : MAX_WIDTH, alignSelf: 'center', flex: 1 }}>
         <View style={{ paddingHorizontal: space.lg, paddingTop: space.md }}>
+          {desktop ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: space.md, marginTop: 2 }}>
+              <Text style={{ ...family.bold, fontSize: 20, color: c.text, letterSpacing: -0.3 }}>메신저</Text>
+              {tab === 'clients' ? null : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={newLabel}
+                  onPress={goNew}
+                  style={(st) => ({ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 32, borderRadius: radius.sm, borderWidth: 1, borderColor: c.lineStrong, backgroundColor: (st as { hovered?: boolean }).hovered ? c.surface : c.bg })}>
+                  <Icon name="plus" color={c.text} size={16} />
+                  <Text style={{ ...family.semibold, fontSize: 13, color: c.text }}>{newLabel}</Text>
+                </Pressable>
+              )}
+            </View>
+          ) : null}
           <SearchBar value={q} onChange={setQ} placeholder={PLACEHOLDER[tab]} />
           <View style={{ marginTop: space.sm }}>
             <UnderlineTabs
@@ -120,10 +178,10 @@ function FirmMessenger() {
         ) : (
           <RoomsPanel key={tab} query={query} onSelecting={setSelecting} scope={tab === 'clients' ? 'clients' : 'internal'} />
         )}
-        {(tab === 'rooms' || tab === 'clients') && selecting ? null : tab === 'clients' ? null : (
+        {desktop || ((tab === 'rooms' || tab === 'clients') && selecting) || tab === 'clients' ? null : (
         <Pressable
-          accessibilityLabel={tab === 'open' ? '오픈대화방 만들기' : '새 대화'}
-          onPress={() => router.push(tab === 'open' ? '/open/new' : '/room/new')}
+          accessibilityLabel={newLabel}
+          onPress={goNew}
           style={{ position: 'absolute', right: space.lg, bottom: space.lg, width: 56, height: 56, borderRadius: 28, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4 }}>
           <Icon name="plus" color="#FFFFFF" size={28} />
         </Pressable>

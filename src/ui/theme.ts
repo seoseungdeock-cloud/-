@@ -5,10 +5,14 @@ import { Platform, useColorScheme } from 'react-native';
 
 const light = {
   bg: '#FFFFFF',
+  /** PC 화면 바탕(흰 카드가 올라가는 아주 연한 회색) */
+  page: '#F7F8FA',
   surface: '#F2F4F6',
-  line: '#E5E8EB',
+  line: '#EEF0F3',
+  /** 또렷한 선 (입력칸·카드 테두리) */
+  lineStrong: '#E5E8EB',
   text: '#191F28',
-  sub: '#6B7684',
+  sub: '#4E5968',
   faint: '#8B95A1',
   accent: '#A82235', // 대륜 로고 붉은색
   accentSoft: '#FCEBED',
@@ -27,12 +31,14 @@ const light = {
 };
 
 const dark: typeof light = {
-  bg: '#101317',
-  surface: '#1C2026',
-  line: '#2A2F36',
-  text: '#F2F4F6',
-  sub: '#A3ACB8',
-  faint: '#7F8894',
+  bg: '#16181D',
+  page: '#101216',
+  surface: '#1E2026',
+  line: '#262A32',
+  lineStrong: '#3A3F4A',
+  text: '#E9EBEF',
+  sub: '#A6ADBA',
+  faint: '#79818F',
   accent: '#F0505F',
   accentSoft: '#3A1C20',
   secure: '#3CC48E',
@@ -44,7 +50,7 @@ const dark: typeof light = {
   member: '#E0B84A',
   bubbleMine: '#B81428',
   bubbleMineText: '#FFFFFF',
-  bubbleOther: '#1C2026',
+  bubbleOther: '#1E2026',
   mark: '#FFE45C',
   markText: '#191F28',
 };
@@ -108,13 +114,13 @@ export const radius = { sm: 8, md: 14, lg: 20, pill: 999 };
 export const font = { title: 26, h2: 20, body: 16, small: 14, tiny: 12 };
 export const MAX_WIDTH = 720;
 
-/** 글씨체: 웹·PC는 Noto Sans KR (구글 무료 글꼴, 메신저·포털에서 많이 쓰는 깔끔한 고딕). 폰 앱은 기기 기본 고딕. */
-const SYSTEM_WEB = '"Noto Sans KR", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
+/** 글씨체: 웹·PC는 Pretendard (무료 글꼴, 토스·SKYZAI 등에서 쓰는 깔끔한 고딕). 폰 앱은 기기 기본 고딕. */
+const SYSTEM_WEB = '"Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
 if (Platform.OS === 'web' && typeof document !== 'undefined' && !document.getElementById('app-font')) {
   const link = document.createElement('link');
   link.id = 'app-font';
   link.rel = 'stylesheet';
-  link.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap';
+  link.href = 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css';
   document.head.appendChild(link);
   // PC에서 화면 옆 스크롤 막대를 숨김 (휠·터치 스크롤은 그대로)
   const style = document.createElement('style');
@@ -130,9 +136,12 @@ const face = (fontWeight: '400' | '500' | '600' | '700') => (Platform.OS === 'we
 /** 글씨 굵기. 스타일 안에 펼쳐 씁니다: { ...family.bold } */
 export const family = {
   regular: face('400'),
-  semibold: face('500'),
+  semibold: face('600'),
   bold: face('700'),
   heavy: face('700'),
 };
+
+/** 웹 전용 그림자 (폰 앱에서는 빈 객체) */
+export const shadow = Platform.OS === 'web' ? { soft: { boxShadow: '0 2px 8px rgba(10, 20, 35, 0.04)' }, pop: { boxShadow: '0 10px 30px rgba(10, 20, 35, 0.10)' } } : { soft: {}, pop: {} };
 /** SVG 글자용 */
 export const SVG_FONT = Platform.OS === 'web' ? SYSTEM_WEB : undefined;

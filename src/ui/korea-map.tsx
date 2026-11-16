@@ -1,7 +1,14 @@
+import { Platform } from 'react-native';
 import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
 
 import { KOREA_MAP_VIEWBOX, KOREA_REGIONS } from '@/data/korea-map';
 import { SVG_FONT, useColors } from './theme';
+
+/**
+ * SVG 조각 누르기. 웹에서 onPress 를 쓰면 react-native-svg 가 폰용 responder 속성(onResponderTerminate 등)을
+ * DOM 에 그대로 넘겨 콘솔 경고가 나므로, 웹은 onClick 으로 받습니다.
+ */
+const press = (fn: () => void) => (Platform.OS === 'web' ? ({ onClick: fn, style: { cursor: 'pointer' } } as object) : { onPress: fn });
 
 // scripts/build-korea-map.mjs 와 같은 투영
 const lon0 = 124.5, lat0 = 33.0, lat1 = 38.7, lon1 = 131.0;
@@ -32,7 +39,7 @@ export function KoreaMap({ counts, selected, onSelect, pins = [] }: Props) {
             fill={active ? c.accent : has ? c.accentSoft : c.line}
             stroke={c.bg}
             strokeWidth={1.2}
-            onPress={() => onSelect(active ? undefined : r.code)}
+            {...press(() => onSelect(active ? undefined : r.code))}
           />
         );
       })}
@@ -45,7 +52,7 @@ export function KoreaMap({ counts, selected, onSelect, pins = [] }: Props) {
         const n = counts[r.code] ?? 0;
         const active = selected === r.code;
         return (
-          <G key={`l${r.code}`} onPress={() => onSelect(active ? undefined : r.code)}>
+          <G key={`l${r.code}`} {...press(() => onSelect(active ? undefined : r.code))}>
             <SvgText x={r.cx} y={r.cy} fontSize={11} fontFamily={SVG_FONT} fontWeight="700" fill={active ? '#FFFFFF' : c.text} textAnchor="middle">
               {r.short}
             </SvgText>

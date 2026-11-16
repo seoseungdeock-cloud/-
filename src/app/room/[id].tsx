@@ -17,9 +17,11 @@ import { CasePanel } from '@/ui/case-panel';
 import { AiThinking, Bubble, CalendarSheet, DocPickSheet, ContactSheet, DayDivider, ForwardSheet, MessageMenu, NoticeBar, ReactionsSheet, ReadersSheet, RoomDrawer } from '@/ui/chat';
 import { Icon, type IconName } from '@/ui/icons';
 import { Avatar, Button, Empty, enterToSend, Input, ModeBadge, ModeBanner, Notice, Screen, Sub } from '@/ui/kit';
+import { MessengerSplit } from '@/ui/messenger-list';
 import { roomTitle } from '@/ui/room-row';
 import { family, font, radius, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
+import { useLayout } from '@/ui/web-frame';
 
 type Item = Message | { id: string; divider: 'unread' } | { id: string; divider: 'day'; at: string };
 
@@ -44,6 +46,8 @@ export default function RoomScreen() {
   const s = useApp();
   const user = useMe();
   const c = useColors();
+  // 데스크톱: 왼쪽에 대화 목록을 함께 (뒤로 가기 대신 목록에서 다른 방을 고름)
+  const { split } = useLayout();
   const room = s.rooms.find((r) => r.id === id);
   const messages = useMemo(() => visibleMessages(s.messages, id, user.id), [s.messages, id, user.id]);
   // 들어올 때 마지막으로 읽은 시각: '읽지 않은 메시지' 구분선 위치
@@ -147,7 +151,10 @@ export default function RoomScreen() {
     };
   }, [isMember, id]);
 
-  if (!room || (simple && !clientCanSee(room, user))) return <Screen title="대화" back><Empty text="방을 찾을 수 없습니다." /></Screen>;
+  if (!room || (simple && !clientCanSee(room, user))) {
+    const missing = <Screen title="대화" back={!split} wide={split}><Empty text="방을 찾을 수 없습니다." /></Screen>;
+    return split ? <MessengerSplit>{missing}</MessengerSplit> : missing;
+  }
   const members = room.memberIds.map((mid) => s.users.find((u) => u.id === mid)).filter((u): u is User => !!u);
   const muted = notifyLevel(room, user.id) !== 'all';
 
@@ -266,10 +273,10 @@ export default function RoomScreen() {
     </View>
   );
 
-  const inputStyle = { flex: 1, backgroundColor: c.surface, color: c.text, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, fontSize: font.body, ...family.regular, maxHeight: 120 };
+  const inputStyle = { flex: 1, backgroundColor: c.surface, color: c.text, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, fontSize: font.body, ...family.regular, maxHeight: 120, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : null) } as object;
 
-  return (
-    <Screen title={roomTitle(room)} back scroll={false} right={right}>
+  const screen = (
+    <Screen title={roomTitle(room)} back={!split} wide={split} scroll={false} right={right}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={80}>
         {dragging ? (
           <View pointerEvents="none" style={{ position: 'absolute', zIndex: 10, top: 0, left: 0, right: 0, bottom: 0, margin: space.sm, borderRadius: radius.lg, borderWidth: 2, borderStyle: 'dashed', borderColor: c.accent, backgroundColor: 'rgba(255,255,255,0.85)', alignItems: 'center', justifyContent: 'center' }}>
@@ -404,7 +411,7 @@ export default function RoomScreen() {
                 )}
               </View>
             ) : null}
-            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, paddingVertical: space.sm }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, paddingVertical: space.sm, ...(split ? { borderTopWidth: 1, borderTopColor: c.line, marginHorizontal: -space.xl, paddingHorizontal: space.xl, paddingTop: space.md, paddingBottom: space.md } : null) }}>
               <Pressable accessibilityLabel="더하기" onPress={() => setPlus((v) => !v)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: plus ? '45deg' : '0deg' }] }}>
                 <Icon name="plus" color={c.sub} size={24} />
               </Pressable>
@@ -467,6 +474,7 @@ export default function RoomScreen() {
       <RoomDrawer open={drawer} onClose={() => setDrawer(false)} room={room} me={user} users={s.users} messages={messages} onError={setToast} />
     </Screen>
   );
+  return split ? <MessengerSplit>{screen}</MessengerSplit> : screen;
 }
 
 function PlusItem({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {

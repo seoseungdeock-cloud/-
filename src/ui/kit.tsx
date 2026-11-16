@@ -8,19 +8,28 @@ import { ROOM_MODE_INFO } from '@/core/rooms';
 import type { RoomMode } from '@/core/types';
 import { Icon } from './icons';
 import { family, font, MAX_WIDTH, radius, space, useColors } from './theme';
+import { useLayout } from './web-frame';
 
-export function Screen({ title, children, right, back, scroll = true }: { title?: string; children: ReactNode; right?: ReactNode; back?: boolean; scroll?: boolean }) {
+/** PC 구성에서 본문 최대 폭 (모바일 구성은 MAX_WIDTH). SKYZAI 송무와 같이 왼쪽부터 채우고 이 폭을 넘지 않습니다. */
+export const DESKTOP_MAX_WIDTH = 1280;
+
+/**
+ * 화면 틀. 모바일은 제목 + 본문(가운데, 최대 720px). PC 구성은 왼쪽 메뉴 옆에서 왼쪽 정렬로 넓게(최대 1280px, 여백 32px) 펼치고 제목은 20px.
+ * wide: 폭 제한 없이 꽉 채움 (대화방처럼 2단 구성 안에 들어가는 화면)
+ */
+export function Screen({ title, children, right, back, scroll = true, wide }: { title?: string; children: ReactNode; right?: ReactNode; back?: boolean; scroll?: boolean; wide?: boolean }) {
   const c = useColors();
+  const { desktop } = useLayout();
   const body = (
-    <View style={styles.inner}>
+    <View style={[styles.inner, desktop && { paddingHorizontal: space.xxl, maxWidth: wide ? undefined : DESKTOP_MAX_WIDTH, alignSelf: 'flex-start' }]}>
       {title ? (
-        <View style={styles.header}>
+        <View style={[styles.header, desktop && { paddingTop: 22, paddingBottom: 16 }, desktop && wide && { borderBottomWidth: 1, borderBottomColor: c.lineStrong, marginBottom: space.sm, marginHorizontal: -space.xxl, paddingHorizontal: space.xxl, paddingTop: 16, paddingBottom: 12 }]}>
           {back ? (
             <Pressable accessibilityLabel="뒤로" onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} hitSlop={12} style={{ marginRight: space.sm }}>
               <Icon name="back" color={c.text} />
             </Pressable>
           ) : null}
-          <Text style={[styles.title, { color: c.text }]} numberOfLines={1}>
+          <Text style={[styles.title, desktop && { fontSize: 20, letterSpacing: -0.3 }, { color: c.text }]} numberOfLines={1}>
             {title}
           </Text>
           <View style={{ marginLeft: 'auto' }}>{right}</View>

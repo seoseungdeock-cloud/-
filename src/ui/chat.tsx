@@ -120,6 +120,7 @@ export function Bubble({
   current?: boolean;
 }) {
   const c = useColors();
+  const frameW = useFrameWidth();
   if (m.senderId === SYSTEM_SENDER) {
     return (
       <View style={{ alignItems: 'center', marginVertical: space.sm }}>
@@ -165,7 +166,8 @@ export function Bubble({
   const row = (
     <View style={{ flex: 1, flexDirection: 'row', justifyContent: mine ? 'flex-end' : 'flex-start', gap: space.sm, marginVertical: space.xs, backgroundColor: highlight ? c.accentSoft : 'transparent', borderRadius: radius.sm }}>
       {!mine ? <Avatar name={assign ? '배당' : isAi || isBot ? 'AI' : sender?.nickname ?? '?'} size={36} tone={isAi ? c.aiSoft : undefined} uri={isAi || isBot ? undefined : sender?.photo} /> : null}
-      <View style={{ maxWidth: '78%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
+      {/* PC 넓은 화면에서는 말풍선이 끝없이 길어지지 않도록 640px 까지 */}
+      <View style={{ maxWidth: frameW > 900 ? Math.min(640, frameW * 0.72) : '78%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
         {!mine ? (
           <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 13, color: isAi ? c.ai : isBot ? c.accent : c.sub, marginBottom: 2 }}>
             {assign ? '대륜 사건 배당' : isAi || isBot ? nameOf(users, m.senderId) : sender ? displayName(sender) : ''}

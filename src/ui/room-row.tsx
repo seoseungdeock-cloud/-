@@ -1,12 +1,21 @@
-import { router } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
 import { lastMessage, mentionedUnread, notifyLevel, previewText, unreadCount } from '@/core/messenger';
 import type { Room } from '@/core/types';
 import { Icon } from './icons';
 import { Avatar, ModeBadge } from './kit';
-import { family, space, useColors } from './theme';
+import { family, radius, space, useColors } from './theme';
 import { useApp, useMe } from './use-app';
+import { useLayout } from './web-frame';
+
+/** 대화방 열기. PC 2단 구성에서 다른 방을 보고 있었으면 쌓지 않고 바꿉니다. */
+export function openRoom(id: string, params?: Record<string, string>) {
+  const href = { pathname: '/room/[id]' as const, params: { id, ...params } };
+  const path = typeof globalThis.location?.pathname === 'string' ? globalThis.location.pathname : '';
+  if (path.startsWith('/room/') && !path.startsWith('/room/new') && !path.startsWith('/room/create') && !path.startsWith('/room/bundle')) router.replace(href);
+  else router.push(href);
+}
 
 /** '오후 8:47' */
 export function clockTime(iso: string): string {
@@ -37,11 +46,22 @@ export function RoomRow({ room, selecting, selected, onToggle }: { room: Room; s
   const pinned = room.pinnedBy?.includes(user.id);
   const muted = notifyLevel(room, user.id) !== 'all';
   const group = room.memberIds.length > 2;
+  const { desktop } = useLayout();
+  const pathname = usePathname();
+  // PC 2단 구성: 지금 열려 있는 방을 표시
+  const on = desktop && pathname === `/room/${room.id}`;
   return (
     <Pressable
-      onPress={() => (selecting ? onToggle?.() : router.push({ pathname: '/room/[id]', params: { id: room.id } }))}
+      onPress={() => (selecting ? onToggle?.() : desktop ? openRoom(room.id) : router.push({ pathname: '/room/[id]', params: { id: room.id } }))}
       onLongPress={onToggle}
-      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm + 4, paddingVertical: 7, opacity: pressed ? 0.6 : 1 })}>
+      style={(st) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: space.sm + 4,
+        paddingVertical: 7,
+        ...(desktop ? { paddingHorizontal: space.sm, marginHorizontal: -space.sm, borderRadius: radius.md, backgroundColor: on ? c.accentSoft : (st as { hovered?: boolean }).hovered ? c.surface : 'transparent' } : null),
+        opacity: st.pressed ? 0.6 : 1,
+      })}>
       {selecting ? (
         <View style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: selected ? c.accent : c.faint, backgroundColor: selected ? c.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
           {selected ? <Icon name="check" color="#FFFFFF" size={14} /> : null}

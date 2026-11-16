@@ -9,10 +9,29 @@ import { Button, Empty, Screen } from '@/ui/kit';
 import type { Room, User } from '@/core/types';
 import { family, radius, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
+import { useLayout } from '@/ui/web-frame';
 
 // 대륜탑 앱 목록 형식 (게시글 크기): 1줄 당사자, 2줄 사건번호 / 사건명, 3줄 날짜 [D-n] 시간 / 기일
+// PC 구성에서는 한 줄 표 형식: 당사자 | 사건번호 / 사건명 | 다음 기일
 function CaseRow({ top, mid, date, tag, warn, rest, onPress }: { top: string; mid: string; date?: string; tag?: string; warn?: boolean; rest?: string; onPress: () => void }) {
   const c = useColors();
+  const { desktop } = useLayout();
+  if (desktop) {
+    return (
+      <Pressable onPress={onPress} style={(st) => ({ flexDirection: 'row', alignItems: 'center', gap: space.lg, paddingVertical: 11, paddingHorizontal: space.sm, marginHorizontal: -space.sm, borderRadius: radius.sm, borderBottomWidth: 1, borderBottomColor: c.line, backgroundColor: (st as { hovered?: boolean }).hovered ? c.surface : 'transparent', opacity: st.pressed ? 0.6 : 1 })}>
+        <Text numberOfLines={1} style={{ width: '26%', ...family.bold, fontSize: 14.5, color: c.text }}>{top}</Text>
+        <Text numberOfLines={1} style={{ flex: 1, ...family.semibold, fontSize: 13.5, color: c.accent }}>{mid}</Text>
+        {date || rest ? (
+          <Text numberOfLines={1} style={{ width: '32%', textAlign: 'right', ...family.regular, fontSize: 13, color: c.sub }}>
+            {date ? `${date} ` : ''}
+            {tag ? <Text style={{ ...family.semibold, color: warn ? c.warn : c.sub }}>[{tag}]</Text> : null}
+            {rest ? `${date ? ' ' : ''}${rest}` : ''}
+          </Text>
+        ) : null}
+        <Icon name="chevron" color={c.faint} size={16} />
+      </Pressable>
+    );
+  }
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ paddingVertical: space.sm + 2, borderBottomWidth: 1, borderBottomColor: c.line, gap: 2, opacity: pressed ? 0.6 : 1 })}>
       <Text numberOfLines={1} style={{ ...family.bold, fontSize: 15, color: c.text }}>{top}</Text>
@@ -117,33 +136,55 @@ export default function CasesScreen() {
       })
       .sort((a, b) => (nextOf(a)?.date ?? '9999').localeCompare(nextOf(b)?.date ?? '9999'));
   }, [cases, q, scope, s.users]); // eslint-disable-line react-hooks/exhaustive-deps
-  return (
-    <Screen title="사건">
-      {limits.length ? <UrgentLimits limits={limits} onOpen={open} /> : null}
+  const { split: wide } = useLayout();
 
-      <Head title={user.role === 'client' ? '내 사건' : '진행 중인 사건'} />
-      <View style={{ flexDirection: 'row', gap: space.md, marginTop: space.sm }}>
-        {SCOPES.map(([k, label]) => (
-          <Pressable key={k} onPress={() => setScope(k)} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: scope === k ? c.accent : c.line, alignItems: 'center', justifyContent: 'center' }}>
-              {scope === k ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.accent }} /> : null}
-            </View>
-            <Text style={{ ...family.regular, fontSize: 13, color: scope === k ? c.text : c.sub }}>{label}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.surface, borderRadius: radius.md, paddingHorizontal: space.md, marginTop: space.sm }}>
-        <Icon name="search" color={c.faint} size={16} />
-        <TextInput value={q} onChangeText={setQ} placeholder="의뢰인·사건번호·사건명 검색" placeholderTextColor={c.faint} style={{ flex: 1, minWidth: 0, paddingVertical: 9, color: c.text, fontSize: 14, ...family.regular, outlineStyle: 'none' } as object} />
-        {q ? (
-          <Pressable accessibilityLabel="검색어 지우기" hitSlop={8} onPress={() => setQ('')}>
-            <Icon name="close" color={c.faint} size={14} />
-          </Pressable>
-        ) : null}
-      </View>
+  const scopePicker = (
+    <View style={{ flexDirection: 'row', gap: space.md }}>
+      {SCOPES.map(([k, label]) => (
+        <Pressable key={k} onPress={() => setScope(k)} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: scope === k ? c.accent : c.lineStrong, alignItems: 'center', justifyContent: 'center' }}>
+            {scope === k ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.accent }} /> : null}
+          </View>
+          <Text style={{ ...family.regular, fontSize: 13, color: scope === k ? c.text : c.sub }}>{label}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+  const searchBox = (
+    <View style={{ flex: wide ? 1 : undefined, maxWidth: wide ? 420 : undefined, flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.surface, borderRadius: radius.md, paddingHorizontal: space.md }}>
+      <Icon name="search" color={c.faint} size={16} />
+      <TextInput value={q} onChangeText={setQ} placeholder="의뢰인·사건번호·사건명 검색" placeholderTextColor={c.faint} style={{ flex: 1, minWidth: 0, paddingVertical: 9, color: c.text, fontSize: 14, ...family.regular, outlineStyle: 'none' } as object} />
+      {q ? (
+        <Pressable accessibilityLabel="검색어 지우기" hitSlop={8} onPress={() => setQ('')}>
+          <Icon name="close" color={c.faint} size={14} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+  const caseList = (
+    <>
+      {wide ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg, marginTop: space.md }}>
+          {scopePicker}
+          {searchBox}
+        </View>
+      ) : (
+        <>
+          <View style={{ marginTop: space.sm }}>{scopePicker}</View>
+          <View style={{ marginTop: space.sm }}>{searchBox}</View>
+        </>
+      )}
       <Text style={{ ...family.bold, fontSize: 13, color: c.sub, marginTop: space.md, marginBottom: 2 }}>
         Total : <Text style={{ color: c.accent }}>{list.length}</Text> 건
       </Text>
+      {wide && list.length ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.lineStrong }}>
+          <Text style={{ width: '26%', ...family.semibold, fontSize: 12, color: c.faint }}>의뢰인 / 상대방</Text>
+          <Text style={{ flex: 1, ...family.semibold, fontSize: 12, color: c.faint }}>사건번호 / 사건명</Text>
+          <Text style={{ width: '32%', textAlign: 'right', ...family.semibold, fontSize: 12, color: c.faint }}>다음 기일</Text>
+          <View style={{ width: 16 }} />
+        </View>
+      ) : null}
       {list.length ? (
         list.map((r) => {
           const ci = r.caseInfo!;
@@ -158,7 +199,10 @@ export default function CasesScreen() {
       ) : (
         <Empty text={q ? '검색 결과가 없습니다.' : '사건이 없습니다.'} />
       )}
-
+    </>
+  );
+  const consultList = (
+    <>
       <Head title="상담" count={consults.length} />
       {consults.length ? (
         consults.map((r) => <CaseRow key={r.id} top={parties(r, s.users)} mid={`상담 / ${r.title}`} onPress={() => open(r.id)} />)
@@ -168,6 +212,28 @@ export default function CasesScreen() {
           {/* 변호사 계정의 사건 탭은 추후 대륜탑 기능을 붙일 자리라 변호사 찾기를 두지 않습니다. */}
           {user.role !== 'lawyer' ? <Button label="변호사 찾기" kind="soft" onPress={() => router.push('/find')} /> : null}
         </View>
+      )}
+    </>
+  );
+
+  return (
+    <Screen title="사건">
+      {limits.length ? <UrgentLimits limits={limits} onOpen={open} /> : null}
+      {wide ? (
+        // 데스크톱: 왼쪽 넓게 사건 표, 오른쪽에 상담
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.xxl }}>
+          <View style={{ flex: 3, minWidth: 0 }}>
+            <Head title={user.role === 'client' ? '내 사건' : '진행 중인 사건'} />
+            {caseList}
+          </View>
+          <View style={{ flex: 1, minWidth: 280, maxWidth: 400 }}>{consultList}</View>
+        </View>
+      ) : (
+        <>
+          <Head title={user.role === 'client' ? '내 사건' : '진행 중인 사건'} />
+          {caseList}
+          {consultList}
+        </>
       )}
     </Screen>
   );
