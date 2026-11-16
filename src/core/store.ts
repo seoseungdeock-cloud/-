@@ -937,6 +937,21 @@ function meetingText(notes: MeetingNotes): string {
 }
 
 // ---- 사용자 ----
+type DaeryuntopLogin = { ok: true; tokenHash: string } | { ok: false; code: string; reason: string };
+
+/** 대륜탑 사번 로그인 — 서버 함수 daeryuntop-login 호출. 함수가 없거나 연결이 안 되면 code 'unavailable'. */
+async function daeryuntopLogin(loginId: string, password: string): Promise<DaeryuntopLogin> {
+  if (!supabase) return { ok: false, code: 'unavailable', reason: '' };
+  try {
+    const { data, error } = await supabase.functions.invoke('daeryuntop-login', { body: { loginId: loginId.trim(), password } });
+    if (error || !data) return { ok: false, code: 'unavailable', reason: '' };
+    if (data.ok && typeof data.tokenHash === 'string') return { ok: true, tokenHash: data.tokenHash };
+    return { ok: false, code: String(data.code ?? 'failed'), reason: String(data.reason ?? '로그인하지 못했습니다.') };
+  } catch {
+    return { ok: false, code: 'unavailable', reason: '' };
+  }
+}
+
 export const actions = {
   // ---- 로그인 ----
   login(loginId: string, password: string): RoomCheck {
@@ -948,19 +963,31 @@ export const actions = {
     return { ok: true };
   },
 
-  /** 로그인 화면: 서버가 있으면 서버 계정으로, 없으면 기기 안 개발용 계정으로 */
+  /** 로그인 화면: 서버가 있으면 대륜탑 사번 → (안 되면) 서버 계정 순으로, 없으면 기기 안 개발용 계정으로 */
   async signIn(loginId: string, password: string): Promise<RoomCheck> {
     if (!supabase) return actions.login(loginId, password);
     await signingOut;
-    const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail(loginId), password });
-    if (error || !data.user) return { ok: false, reason: reasonOf(error) };
-    try {
-      await enter(data.user.id);
-      return { ok: true };
-    } catch (e) {
-      await supabase.auth.signOut();
-      return { ok: false, reason: reasonOf(e as Error) };
+    const finish = async (userId: string): Promise<RoomCheck> => {
+      try {
+        await enter(userId);
+        return { ok: true };
+      } catch (e) {
+        await supabase!.auth.signOut();
+        return { ok: false, reason: reasonOf(e as Error) };
+      }
+    };
+    // 1) 대륜탑 사번·비밀번호 (2026-11-16) — 서버 함수가 AEGIS 에 확인하고 일회용 토큰을 준다.
+    const dt = await daeryuntopLogin(loginId, password);
+    if (dt.ok) {
+      const { data, error } = await supabase.auth.verifyOtp({ token_hash: dt.tokenHash, type: 'magiclink' });
+      if (error || !data.user) return { ok: false, reason: reasonOf(error) };
+      return finish(data.user.id);
     }
+    if (dt.code && dt.code !== 'not_staff' && dt.code !== 'unavailable') return { ok: false, reason: dt.reason };
+    // 2) 대륜탑에 없는 계정(의뢰인 등): 종전의 서버 계정 로그인
+    const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail(loginId), password });
+    if (error || !data.user) return { ok: false, reason: dt.code === 'unavailable' ? '대륜탑 인증 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.' : reasonOf(error) };
+    return finish(data.user.id);
   },
 
   logout() {

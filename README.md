@@ -9,6 +9,21 @@
 - 서버: Supabase 프로젝트 `jzhzroexavltxrrjcbfa` (Pro, 서울 리전)
 - 기본 가지: `main`
 
+## 로그인 (2026-11-16부터 대륜탑 사번)
+
+구성원은 **대륜탑 사번·비밀번호**로 들어옵니다. 흐름은 이렇습니다.
+
+1. 앱이 서버 함수 `daeryuntop-login` 에 사번·비밀번호를 보냅니다.
+2. 함수가 대륜탑 인증 서버(AEGIS `api/users/loginProc`, SKYZAI 와 같은 호출)에 확인합니다.
+3. 통과하면 그 사번의 Supabase 계정(`사번@rightnow.local`)을 찾거나 새로 만들고(비밀번호는 저장하지 않음), 이름·직위·지점·부서는
+   SKYZAI 의 연결 창구(`/api/bridge/member`, 공유 비밀 `DAERYUNTOP_BRIDGE_KEY`)에서 받아 프로필에 채웁니다. 변호사 직위면 역할 `lawyer`, 아니면 `staff`.
+   이미 있는 계정의 역할(`admin` 등)은 건드리지 않습니다.
+4. 함수가 일회용 로그인 토큰을 돌려주고 앱이 `verifyOtp` 로 세션을 엽니다.
+
+대륜탑에 없는 계정(의뢰인, 옛 발급 계정)은 함수가 `not_staff` 로 답하고 앱이 **종전의 비밀번호 로그인**으로 넘어갑니다. 그래서 백오피스의 계정 발급은 의뢰인용으로 계속 씁니다.
+
+함수 설정값(`supabase secrets set`): `DAERYUNTOP_BRIDGE_URL`(SKYZAI 주소), `DAERYUNTOP_BRIDGE_KEY`(SKYZAI 쪽 `SKYNET_BRIDGE_KEY` 와 같은 값). 둘이 없으면 이름만 AEGIS 응답으로 채우고 역할은 `staff` 가 됩니다.
+
 ## 무엇이 들어 있나
 
 | 기능 | 주요 위치 |
@@ -90,6 +105,7 @@ bash supabase/tests/run.sh   # DB 마이그레이션·보안 규칙 시험 (로�
    | `axiom` | false (함수 안에서 직접 확인) | `bash scripts/deploy-axiom.sh --deploy` — `src/core`를 함께 묶어야 해서 이 스크립트로만 |
    | `push-send` | false (`x-push-secret` 확인) | `supabase functions deploy push-send --no-verify-jwt` |
    | `admin-accounts` | true | `supabase functions deploy admin-accounts` |
+   | `daeryuntop-login` | false (로그인 전이라 JWT 없음) | `supabase functions deploy daeryuntop-login --no-verify-jwt` |
    | `board-upload` | true | `supabase functions deploy board-upload` |
    | `daeryuntop-hearing` | — | 아직 배포 안 함 (대륜탑 쪽 보내기 기능이 준비되면) |
 

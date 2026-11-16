@@ -102,7 +102,7 @@ export default function LoginScreen() {
             <Image source={WORDMARK} accessibilityLabel="법무법인(유한) 대륜" style={{ marginTop: space.xl, width: 220, height: 220 * (175 / 900), tintColor: c.text }} resizeMode="contain" />
           </View>
 
-          <Field icon="me" placeholder="아이디" autoCapitalize="none" autoCorrect={false} autoComplete="username" value={loginId} onChangeText={setLoginId} returnKeyType="next" />
+          <Field icon="me" placeholder="대륜탑 사번(아이디)" autoCapitalize="none" autoCorrect={false} autoComplete="username" value={loginId} onChangeText={setLoginId} returnKeyType="next" />
           <Field
             icon="lock"
             placeholder="비밀번호"
