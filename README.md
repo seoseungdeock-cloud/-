@@ -101,9 +101,23 @@ bash supabase/tests/run.sh   # DB 마이그레이션·보안 규칙 시험 (로�
 | `PUSH_CRON_SECRET` | 예약 작업 → `push-send` 호출 확인값 |
 | `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | PC 웹 푸시 보내기 |
 | `DAERYUNTOP_WEBHOOK_SECRET` | 대륜탑 기일 연동 (아직 미사용) |
+| `DAERYUNTOP_DB_URL` | 대륜탑(ERP) DB 주소 `postgres://계정:비밀번호@호스트:5432/디비` — **읽기 전용 계정**으로 (`admin_user`, `common_code` SELECT 권한만). `daeryuntop-sync` 가 구성원 명단을 읽는 데 씀 |
+| `DAERYUNTOP_SYNC_SECRET` | 예약 작업 → `daeryuntop-sync` 호출 확인값 (Vault `daeryuntop_sync_secret` 과 같은 값) |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase가 자동으로 넣어 줌 |
 
 **DB Vault** (`vault.secrets`): `push_function_url`, `push_cron_secret` — 1분마다 도는 `pg_cron` 작업 `push-send`가 이 값으로 함수를 부릅니다.
+`daeryuntop_sync_url`(= `<SUPABASE_URL>/functions/v1/daeryuntop-sync`), `daeryuntop_sync_secret` — 매일 06:10(한국 시간) 도는 `daeryuntop-sync` 작업이 씁니다.
+
+## 구성원 명단 — 대륜탑 기준 동기화 (2026-11-19)
+주소록·조직도는 스카이넷 `profiles` 를 보여 주는데, 이 표는 **대륜탑 재직 명단을 기준으로 맞춥니다**. 서버 함수 `daeryuntop-sync` 가
+대륜탑 DB 의 `admin_user`(승인·미삭제)와 `common_code`(직위·지점 이름)를 **SELECT 만** 해서:
+- 대륜탑에 있는데 스카이넷에 없는 사번은 계정을 만들어 둡니다 (비밀번호 없음 — 로그인은 늘 대륜탑 인증). 그래서 로그인 전 사람도 주소록에 보입니다.
+- 이름·직위·부서·지점·전화·이메일을 대륜탑 값으로 맞춥니다. 직위에 '변호사'가 들어가면 역할 `lawyer`, 아니면 `staff`. 어드민 역할은 건드리지 않습니다.
+- 대륜탑에서 사라진(퇴사·삭제·미승인) 사번은 사용 중지(`active=false`)합니다. 다시 나타나면 다시 켭니다. 손으로 만든 계정(`profiles.source` 가 비어 있음 — 의뢰인·테스트)은 건드리지 않습니다.
+
+돌리는 방법: 매일 06:10 자동(`pg_cron` `daeryuntop-sync`), 또는 백오피스 → 대륜탑 연동 → 「지금 동기화」(어드민). 결과(새 계정·갱신·중지 수)가 화면에 나오고 함수 로그에도 남습니다.
+
+처음 켤 때 할 일: ① 대륜탑 DB 에 읽기 전용 계정 만들기 ② 서버 `/opt/skynet/.env` 에 `DAERYUNTOP_DB_URL`, `DAERYUNTOP_SYNC_SECRET` ③ Vault 에 `daeryuntop_sync_url`, `daeryuntop_sync_secret` ④ 마이그레이션 `20261119000000_daeryuntop_sync.sql` 적용 ⑤ 함수 `daeryuntop-sync` 배포 ⑥ 백오피스에서 한 번 「지금 동기화」.
 
 **배포하는 사람에게 필요한 것**: 회사 AWS 계정 권한 (서버는 SSH 키 없이 **SSM Session Manager** 로만 들어갑니다).
 첫 관리자 만들 때만: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FIRST_ADMIN_ID`, `FIRST_ADMIN_PASSWORD`, `FIRST_ADMIN_NAME`.
@@ -176,7 +190,7 @@ SKYZAI(송무 플랫폼, `AI-SERVICE/song_mu`)의 메신저 화면은 그대로 
 
 ## 꼭 지킬 것
 
-- **운영 중인 대륜탑은 건드리지 않습니다.** 연동은 대륜탑이 이 앱으로 기일을 보내는 방식(`daeryuntop-hearing`)이고, 앱이 대륜탑 안을 읽지 않습니다.
+- **운영 중인 대륜탑은 바꾸지 않습니다.** 대륜탑 쪽에 쓰는 일은 없습니다 — 기일은 대륜탑이 이 앱으로 보내고(`daeryuntop-hearing`), 구성원 명단은 이 앱이 읽기 전용 계정으로 SELECT 만 합니다(`daeryuntop-sync`).
 - 비밀 키(관리자 키, AI 키)는 Supabase Secrets에만. 저장소·채팅·로그에 넣지 않습니다.
 - 배당 안내(`messages.staff_only`)는 의뢰인에게 보이지 않아야 합니다 (RLS와 푸시 모두에서 제외).
 - AI 규칙: 변호사가 없는 방에서는 일반 정보만, 사건방·상담방에서는 `@AI` 차단(`@AI 띠지`만 예외, AI를 쓰지 않음).

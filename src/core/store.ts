@@ -2032,6 +2032,39 @@ export const actions = {
     return { ok: true, results: rows.map((h) => ({ id: h.id, ...(h.caseNo ? { caseNo: h.caseNo } : {}), result: ingestLocal(h) })) };
   },
 
+  /**
+   * 어드민: 대륜탑 구성원 명단으로 스카이넷 계정을 맞춥니다 (서버 함수 daeryuntop-sync — 대륜탑은 읽기만).
+   * 끝나면 주소록이 바로 새 명단을 보이도록 다시 읽습니다.
+   */
+  async syncDaeryuntopMembers(): Promise<{ ok: true; summary: string } | { ok: false; reason: string }> {
+    if (me().role !== 'admin') return { ok: false, reason: '어드민만 동기화할 수 있습니다.' };
+    if (!supabase) return { ok: false, reason: '서버에 연결된 상태에서만 동기화할 수 있습니다.' };
+    try {
+      const { data, error } = await supabase.functions.invoke('daeryuntop-sync', { body: {} });
+      if ((error as { context?: { status?: number } } | null)?.context?.status === 404) return { ok: false, reason: '서버에 daeryuntop-sync 함수가 아직 배포되지 않았습니다.' };
+      if (error) {
+        const body = await (error as { context?: Response }).context?.json?.().catch(() => undefined);
+        return { ok: false, reason: String(body?.reason ?? (error as Error).message ?? '동기화하지 못했습니다.') };
+      }
+      if (!data?.ok) return { ok: false, reason: String(data?.reason ?? '동기화하지 못했습니다.') };
+      await refresh(true);
+      const parts = [`대륜탑 재직 ${data.total}명`, `새 계정 ${data.added}`, `갱신 ${data.updated}`];
+      if (data.deactivated) parts.push(`사용 중지 ${data.deactivated}`);
+      if (data.reactivated) parts.push(`다시 켬 ${data.reactivated}`);
+      if (data.errors?.length) parts.push(`실패 ${data.errors.length}`);
+      return { ok: true, summary: parts.join(' · ') };
+    } catch (e) {
+      return { ok: false, reason: reasonOf(e as { message?: string }, '동기화하지 못했습니다.') };
+    }
+  },
+  /** 대륜탑 명단과 마지막으로 맞춘 시각·인원 (백오피스 표시용) */
+  async daeryuntopSyncStatus(): Promise<{ syncedAt?: string; active: number; inactive: number } | null> {
+    if (!supabase) return null;
+    const { data } = await supabase.rpc('daeryuntop_sync_status');
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return null;
+    return { syncedAt: row.synced_at ?? undefined, active: Number(row.synced_count ?? 0), inactive: Number(row.inactive_count ?? 0) };
+  },
   /** 어드민: 사건별 불변기간 알림 켜기·끄기 */
   setLimitAlerts(roomId: string, on: boolean): RoomCheck {
     if (me().role !== 'admin') return { ok: false, reason: '어드민만 바꿀 수 있습니다.' };

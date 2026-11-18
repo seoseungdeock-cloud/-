@@ -1,5 +1,5 @@
-// 백오피스 '대륜탑 연동': 앱 사건에 대륜탑 사건번호 연결, 대륜탑 사건 목록 엑셀 올리기 (API가 생기기 전 임시).
-import { useState } from 'react';
+// 백오피스 '대륜탑 연동': 구성원 명단 동기화(대륜탑은 읽기만), 앱 사건에 대륜탑 사건번호 연결, 대륜탑 사건 목록 엑셀 올리기 (API가 생기기 전 임시).
+import { useEffect, useState } from 'react';
 import { Platform, View } from 'react-native';
 
 import { readTableFile, rowsFromTable, summarize } from '@/core/daeryuntop';
@@ -37,6 +37,33 @@ function CaseNoRow({ k, onDone }: { k: DeadlineCase; onDone: (r: { ok: boolean; 
   );
 }
 
+/** 구성원 명단 동기화 카드 — 대륜탑 admin_user 를 읽어 계정을 만들고 이름·직위·부서·지점을 맞춥니다. */
+function MembersSyncCard({ report }: { report: (r: { ok: boolean; reason?: string }, okText: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<{ syncedAt?: string; active: number; inactive: number } | null>(null);
+  const load = () => void actions.daeryuntopSyncStatus().then(setStatus);
+  useEffect(load, []);
+  const run = async () => {
+    setBusy(true);
+    const r = await actions.syncDaeryuntopMembers();
+    setBusy(false);
+    report(r, r.ok ? `명단 동기화 완료 — ${r.summary}` : '');
+    load();
+  };
+  const when = status?.syncedAt ? new Date(status.syncedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
+  return (
+    <Card>
+      <T bold>구성원 명단</T>
+      <Sub>대륜탑 재직 명단을 읽어 계정을 만들고 이름·직위·부서·지점을 맞춥니다. 대륜탑 쪽은 읽기만 하고 바꾸지 않습니다. 매일 아침 6시에 자동으로 돌고, 지금 바로 돌릴 수도 있습니다.</Sub>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.md }}>
+        <View style={{ flex: 1 }}>
+          <Sub>{status ? `${when ? `마지막 동기화 ${when}` : '아직 동기화한 적 없음'} · 재직 ${status.active}명${status.inactive ? ` · 중지 ${status.inactive}명` : ''}` : '서버에 연결되면 상태가 보입니다.'}</Sub>
+        </View>
+        <Button label={busy ? '동기화 중…' : '지금 동기화'} small disabled={busy} onPress={() => void run()} />
+      </View>
+    </Card>
+  );
+}
 export function DaeryuntopSection({ report }: { report: (r: { ok: boolean; reason?: string }, okText: string) => void }) {
   const s = useApp();
   const user = useMe();
@@ -65,6 +92,7 @@ export function DaeryuntopSection({ report }: { report: (r: { ok: boolean; reaso
 
   return (
     <View style={{ marginTop: space.md }}>
+      <MembersSyncCard report={report} />
       {Platform.OS === 'web' && canManageOpen(user) ? (
         <View style={{ marginBottom: space.md, gap: space.xs }}>
           <Button label={busy ? '올리는 중…' : '대륜탑 사건 목록 엑셀 올리기'} disabled={busy} onPress={() => void upload()} />
