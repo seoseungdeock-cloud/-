@@ -82,10 +82,10 @@ fi
 EOS
 )
 
-echo "· 서버에서 실행 (SSM)"
+echo "· 서버에서 실행 (SSM — 서버 기본 셸이 sh 라 bash 로 넘겨 실행)"
 CMD_ID=$(aws ssm send-command --region "$REGION" --instance-ids "$INSTANCE" --document-name AWS-RunShellScript \
   --comment "deploy daeryuntop-sync $STAMP" --timeout-seconds 600 \
-  --parameters "$(jq -n --arg c "$REMOTE" '{commands: [$c], executionTimeout: ["600"]}')" \
+  --parameters "$(jq -n --arg c "$REMOTE" '{commands: [("cat > /tmp/ds.sh <<'"'"'DSEOF'"'"'\n" + $c + "\nDSEOF\nbash /tmp/ds.sh; rc=$?; rm -f /tmp/ds.sh; exit $rc")], executionTimeout: ["600"]}')" \
   --query 'Command.CommandId' --output text)
 for _ in $(seq 1 90); do
   STATUS=$(aws ssm get-command-invocation --region "$REGION" --command-id "$CMD_ID" --instance-id "$INSTANCE" --query Status --output text 2>/dev/null || echo Pending)

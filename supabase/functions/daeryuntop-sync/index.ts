@@ -29,11 +29,25 @@ type TopMember = {
   admin_tel: string | null; admin_email: string | null; created_at: string | null;
 };
 
+/** AWS RDS 인증서 발급기관 묶음 — 런타임 기본 신뢰 목록에 없어 직접 받아 TLS 검증에 씁니다 (한 번 받아 두고 재사용). */
+let rdsCa: string | undefined;
+async function rdsCaBundle(): Promise<string | undefined> {
+  if (rdsCa) return rdsCa;
+  try {
+    const res = await fetch('https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem', { signal: AbortSignal.timeout(10_000) });
+    if (res.ok) rdsCa = await res.text();
+  } catch (e) {
+    console.warn('[daeryuntop-sync] rds ca bundle', String(e));
+  }
+  return rdsCa;
+}
+
 /** 대륜탑에서 재직 중(승인·미삭제) 구성원. SELECT 만. */
 async function readDaeryuntop(): Promise<TopMember[]> {
   const url = Deno.env.get('DAERYUNTOP_DB_URL');
   if (!url) throw new Error('DAERYUNTOP_DB_URL 이 설정되지 않았습니다');
-  const sql = postgres(url, { max: 1, idle_timeout: 5, connect_timeout: 10, prepare: false, ssl: 'prefer' });
+  const ca = await rdsCaBundle();
+  const sql = postgres(url, { max: 1, idle_timeout: 5, connect_timeout: 10, prepare: false, ssl: ca ? { ca } : 'prefer' });
   try {
     const rows = await sql<TopMember[]>`
       select au.admin_id, au.admin_name, au.department, au.admin_tel, au.admin_email, au.created_at,
@@ -109,7 +123,7 @@ Deno.serve(async (req) => {
     const lawyer = isLawyer(m.position_name);
     const fields = {
       nickname, title: clean(m.position_name), dept: clean(m.department), branch: clean(m.branch_name),
-      phone: clean(m.admin_tel, 30), email: clean(m.admin_email, 120), joined_at: m.created_at ? String(m.created_at).slice(0, 10) : null,
+      phone: clean(m.admin_tel, 30), email: clean(m.admin_email, 120), joined_at: m.created_at ? new Date(m.created_at).toISOString().slice(0, 10) : null,
     };
     try {
       if (!prof) {
