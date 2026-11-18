@@ -117,7 +117,13 @@ bash supabase/tests/run.sh   # DB 마이그레이션·보안 규칙 시험 (로�
 
 돌리는 방법: 매일 06:10 자동(`pg_cron` `daeryuntop-sync`), 또는 백오피스 → 대륜탑 연동 → 「지금 동기화」(어드민). 결과(새 계정·갱신·중지 수)가 화면에 나오고 함수 로그에도 남습니다.
 
-처음 켤 때 할 일: ① 대륜탑 DB 에 읽기 전용 계정 만들기 ② 서버 `/opt/skynet/.env` 에 `DAERYUNTOP_DB_URL`, `DAERYUNTOP_SYNC_SECRET` ③ Vault 에 `daeryuntop_sync_url`, `daeryuntop_sync_secret` ④ 마이그레이션 `20261119000000_daeryuntop_sync.sql` 적용 ⑤ 함수 `daeryuntop-sync` 배포 ⑥ 백오피스에서 한 번 「지금 동기화」.
+처음 켤 때는 한 번에 올리는 스크립트가 있습니다 (AWS 자격 증명 있는 터미널에서, MFA 는 묻는 대로):
+```bash
+DAERYUNTOP_DB_URL='postgresql://계정:비밀번호@호스트:5432/디비' bash scripts/deploy-daeryuntop-sync.sh
+```
+서버 `.env` 설정 → 마이그레이션 → Vault → 함수 배포 → 첫 동기화까지 하고 결과(재직 수·새 계정·갱신 수)를 보여 줍니다.
+손으로 하려면: ① 서버 `/opt/skynet/.env` 에 `DAERYUNTOP_DB_URL`, `DAERYUNTOP_SYNC_SECRET` ② Vault 에 `daeryuntop_sync_url`, `daeryuntop_sync_secret` ③ 마이그레이션 `20261119000000_daeryuntop_sync.sql` ④ 함수 `daeryuntop-sync` 복사 후 `docker compose restart functions` ⑤ 백오피스 「지금 동기화」.
+대륜탑 DB 쪽에서는 스카이넷 서버 IP(13.209.254.132)가 접속 허용 목록에 있어야 하고, 계정은 읽기 전용(`admin_user`, `common_code` SELECT)이면 가장 좋습니다. 2026-11-19 기준 대륜탑 재직 673명.
 
 **배포하는 사람에게 필요한 것**: 회사 AWS 계정 권한 (서버는 SSH 키 없이 **SSM Session Manager** 로만 들어갑니다).
 첫 관리자 만들 때만: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FIRST_ADMIN_ID`, `FIRST_ADMIN_PASSWORD`, `FIRST_ADMIN_NAME`.

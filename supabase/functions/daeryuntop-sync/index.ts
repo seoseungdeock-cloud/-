@@ -33,7 +33,7 @@ type TopMember = {
 async function readDaeryuntop(): Promise<TopMember[]> {
   const url = Deno.env.get('DAERYUNTOP_DB_URL');
   if (!url) throw new Error('DAERYUNTOP_DB_URL 이 설정되지 않았습니다');
-  const sql = postgres(url, { max: 1, idle_timeout: 5, connect_timeout: 10, prepare: false });
+  const sql = postgres(url, { max: 1, idle_timeout: 5, connect_timeout: 10, prepare: false, ssl: 'prefer' });
   try {
     const rows = await sql<TopMember[]>`
       select au.admin_id, au.admin_name, au.department, au.admin_tel, au.admin_email, au.created_at,
