@@ -1,13 +1,15 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { calendarEvents, monthGrid, todayKst, type CalEvent } from '@/core/calendar';
 import { dateLabel, dDay, dDayLabel } from '@/core/hearings';
 import { timeLabel } from '@/ui/hearing';
 import { Icon } from '@/ui/icons';
 import { Empty, Screen } from '@/ui/kit';
-import { family, radius, space, useColors } from '@/ui/theme';
+import { Appear, Fade, Pop, Press } from '@/ui/motion';
+import { SegmentBar } from '@/ui/segments';
+import { family, radius, space, tracking, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
@@ -43,34 +45,27 @@ export default function CalendarScreen() {
   const list = byDay[picked] ?? [];
 
   const navBtn = (dir: 1 | -1) => (
-    <Pressable accessibilityLabel={dir < 0 ? '이전 달' : '다음 달'} onPress={() => shift(dir)} hitSlop={10} style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}>
+    <Press accessibilityLabel={dir < 0 ? '이전 달' : '다음 달'} onPress={() => shift(dir)} hitSlop={10} scale={0.85} style={({ hovered }) => ({ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: hovered ? c.surface : 'transparent' })}>
       <Icon name={dir < 0 ? 'back' : 'chevron'} color={c.text} size={20} />
-    </Pressable>
+    </Press>
   );
 
-  const toggle = (
-    <View style={{ flexDirection: 'row', backgroundColor: c.surface, borderRadius: radius.pill, padding: 3 }}>
-      {([['list', '목록'], ['month', '달력']] as const).map(([k, label]) => (
-        <Pressable key={k} onPress={() => setView(k)} style={{ paddingHorizontal: space.md, paddingVertical: 5, borderRadius: radius.pill, backgroundColor: view === k ? c.bg : 'transparent' }}>
-          <Text style={{ ...(view === k ? family.bold : family.regular), fontSize: 13, color: view === k ? c.text : c.sub }}>{label}</Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-
+  const toggle = <SegmentBar items={[['list', '목록'], ['month', '달력']]} value={view} onChange={setView} />;
   return (
     <Screen title="캘린더" right={toggle}>
       {view === 'list' ? (
-        <Agenda events={events} today={today} />
+        <Fade key="list"><Agenda events={events} today={today} /></Fade>
       ) : (
-        <>
+        <Fade key="month">
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: space.md }}>
         {navBtn(-1)}
-        <Text style={{ ...family.bold, fontSize: 20, color: c.text, marginHorizontal: space.sm }}>{ym.y}년 {ym.m}월</Text>
+        <Fade key={monthKey}>
+          <Text style={{ ...family.bold, fontSize: 20, color: c.text, marginHorizontal: space.sm, letterSpacing: tracking.h3 }}>{ym.y}년 {ym.m}월</Text>
+        </Fade>
         {navBtn(1)}
-        <Pressable onPress={goToday} style={{ marginLeft: 'auto', borderWidth: 1, borderColor: c.line, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 5 }}>
+        <Press onPress={goToday} scale={0.92} style={({ hovered }) => ({ marginLeft: 'auto', backgroundColor: hovered ? c.lineStrong : c.surface, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 6 })}>
           <Text style={{ ...family.semibold, fontSize: 13, color: c.text }}>오늘</Text>
-        </Pressable>
+        </Press>
       </View>
 
       <View style={{ flexDirection: 'row' }}>
@@ -78,7 +73,7 @@ export default function CalendarScreen() {
           <Text key={w} style={{ flex: 1, textAlign: 'center', ...family.semibold, fontSize: 12, color: i === 0 ? SUN : i === 6 ? SAT : c.sub, paddingBottom: space.xs }}>{w}</Text>
         ))}
       </View>
-      <View style={{ borderTopWidth: 1, borderTopColor: c.line }}>
+      <Fade key={`grid-${monthKey}`} style={{ borderTopWidth: 1, borderTopColor: c.line }}>
         {[0, 1, 2, 3, 4, 5].map((row) => (
           <View key={row} style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: c.line }}>
             {grid.slice(row * 7, row * 7 + 7).map((d, i) => {
@@ -88,9 +83,10 @@ export default function CalendarScreen() {
               const items = byDay[d] ?? [];
               const dayColor = i === 0 ? SUN : i === 6 ? SAT : c.text;
               return (
-                <Pressable key={d} onPress={() => setPicked(d)} style={{ flex: 1, minHeight: 74, paddingTop: 4, paddingHorizontal: 2, gap: 2, backgroundColor: on ? c.accentSoft : 'transparent', opacity: inMonth ? 1 : 0.35 }}>
-                  <View style={{ alignSelf: 'center', width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: isToday ? c.accent : 'transparent' }}>
-                    <Text style={{ ...(isToday ? family.bold : family.semibold), fontSize: 13, color: isToday ? '#FFFFFF' : dayColor }}>{Number(d.slice(8))}</Text>
+                <Press key={d} onPress={() => setPicked(d)} scale={0.94} style={({ hovered }) => ({ flex: 1, minHeight: 74, paddingTop: 4, paddingHorizontal: 2, gap: 2, borderRadius: radius.sm, backgroundColor: on ? c.accentSoft : hovered ? c.hover : 'transparent', opacity: inMonth ? 1 : 0.35 })}>
+                  <View style={{ alignSelf: 'center', width: 26, height: 26, alignItems: 'center', justifyContent: 'center' }}>
+                    {on || isToday ? <Pop key={on ? 'on' : 'today'} style={{ position: 'absolute', width: 26, height: 26, borderRadius: 13, backgroundColor: isToday ? c.accent : c.navBg }}><View /></Pop> : null}
+                    <Text style={{ ...(isToday || on ? family.bold : family.semibold), fontSize: 13, color: isToday || on ? '#FFFFFF' : dayColor }}>{Number(d.slice(8))}</Text>
                   </View>
                   {items.slice(0, 2).map((e) => (
                     <View key={e.id} style={{ borderRadius: 4, paddingHorizontal: 3, paddingVertical: 1, backgroundColor: e.kind === 'limit' ? c.accent : c.text, opacity: e.done ? 0.45 : 1 }}>
@@ -98,25 +94,27 @@ export default function CalendarScreen() {
                     </View>
                   ))}
                   {items.length > 2 ? <Text style={{ ...family.semibold, fontSize: 10, color: c.sub, textAlign: 'center' }}>+{items.length - 2}</Text> : null}
-                </Pressable>
+                </Press>
               );
             })}
           </View>
         ))}
-      </View>
+      </Fade>
 
       <View style={{ flexDirection: 'row', gap: space.md, marginTop: space.sm }}>
         <Legend color={c.text} label="기일" />
         {user.role !== 'client' ? <Legend color={c.accent} label="불변기간" /> : null}
       </View>
 
+      <Fade key={`day-${picked}`}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.sm, marginTop: space.xl, marginBottom: space.sm }}>
-        <Text style={{ ...family.bold, fontSize: 17, color: c.text }}>{dateLabel(picked)}</Text>
+        <Text style={{ ...family.bold, fontSize: 17, color: c.text, letterSpacing: tracking.h3 }}>{dateLabel(picked)}</Text>
         <Text style={{ ...family.semibold, fontSize: 13, color: c.sub }}>{dDayLabel(dDay(picked))}</Text>
       </View>
       {list.length ? (
-        list.map((e) => (
-          <Pressable key={e.id} onPress={() => router.push({ pathname: '/room/[id]', params: { id: e.roomId } })} style={({ pressed }) => ({ flexDirection: 'row', gap: space.md, paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: c.line, opacity: pressed ? 0.7 : 1 })}>
+        list.map((e, i) => (
+          <Appear key={e.id} index={i}>
+          <Press onPress={() => router.push({ pathname: '/room/[id]', params: { id: e.roomId } })} scale={0.98} style={({ hovered }) => ({ flexDirection: 'row', gap: space.md, paddingVertical: space.md, paddingHorizontal: space.md, marginHorizontal: -space.md, borderRadius: radius.md, backgroundColor: hovered ? c.hover : 'transparent' })}>
             <View style={{ width: 4, borderRadius: 2, backgroundColor: e.kind === 'limit' ? c.accent : c.text, opacity: e.done ? 0.3 : 1 }} />
             <View style={{ width: 52 }}>
               <Text style={{ ...family.bold, fontSize: 15, color: tone(e) }}>{e.time ?? '종일'}</Text>
@@ -127,12 +125,14 @@ export default function CalendarScreen() {
               <Text numberOfLines={1} style={{ ...family.regular, fontSize: 13, color: c.sub }}>{[e.caseTitle, e.place, e.done ? '조치 완료' : ''].filter(Boolean).join(' · ')}</Text>
             </View>
             <Icon name="chevron" color={c.faint} size={18} />
-          </Pressable>
+          </Press>
+          </Appear>
         ))
       ) : (
         <Empty text="이 날은 일정이 없습니다." />
       )}
-        </>
+      </Fade>
+        </Fade>
       )}
     </Screen>
   );
@@ -164,6 +164,7 @@ function Agenda({ events, today }: { events: CalEvent[]; today: string }) {
   };
   if (!days.length) return <Empty text="다가오는 일정이 없습니다." />;
   let month = '';
+  let idx = 0;
   return (
     <View>
       {days.map(([date, items]) => {
@@ -183,13 +184,15 @@ function Agenda({ events, today }: { events: CalEvent[]; today: string }) {
               </View>
               <View style={{ flex: 1, gap: 6 }}>
                 {items.map((e) => (
-                  <Pressable key={e.id} onPress={() => router.push({ pathname: '/room/[id]', params: { id: e.roomId } })} style={({ pressed }) => ({ backgroundColor: c.surface, borderRadius: radius.sm + 2, paddingVertical: space.sm + 2, paddingHorizontal: space.md, borderLeftWidth: 3, borderLeftColor: e.kind === 'limit' ? c.accent : c.text, opacity: pressed ? 0.7 : 1 })}>
+                  <Appear key={e.id} index={idx++}>
+                  <Press onPress={() => router.push({ pathname: '/room/[id]', params: { id: e.roomId } })} scale={0.98} style={({ hovered }) => ({ backgroundColor: hovered ? c.lineStrong : c.surface, borderRadius: radius.md, paddingVertical: space.sm + 2, paddingHorizontal: space.md, borderLeftWidth: 3, borderLeftColor: e.kind === 'limit' ? c.accent : c.navBg })}>
                     <Text numberOfLines={2} style={{ ...family.bold, fontSize: 15, lineHeight: 21, color: c.text }}>{e.label}, {e.caseTitle}{lawyersOf(e.roomId)}</Text>
                     <Text numberOfLines={1} style={{ ...family.regular, fontSize: 13, color: c.sub, marginTop: 3 }}>
                       {e.kind === 'limit' ? '불변기간 · 24:00 만료' : timeLabel(e.time) || '종일'}
                       {e.place ? `  |  ${e.place}` : ''}
                     </Text>
-                  </Pressable>
+                  </Press>
+                  </Appear>
                 ))}
               </View>
             </View>

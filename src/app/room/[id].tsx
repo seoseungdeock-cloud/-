@@ -17,6 +17,7 @@ import { CasePanel } from '@/ui/case-panel';
 import { AiThinking, Bubble, CalendarSheet, DocPickSheet, ContactSheet, DayDivider, ForwardSheet, MessageMenu, NoticeBar, ReactionsSheet, ReadersSheet, RoomDrawer } from '@/ui/chat';
 import { Icon, type IconName } from '@/ui/icons';
 import { Avatar, Button, Empty, enterToSend, Input, ModeBadge, ModeBanner, Notice, Screen, Sub } from '@/ui/kit';
+import { Appear, Pop, Press } from '@/ui/motion';
 import { MessengerSplit } from '@/ui/messenger-list';
 import { roomTitle } from '@/ui/room-row';
 import { family, font, radius, space, useColors } from '@/ui/theme';
@@ -40,6 +41,15 @@ function withDays(list: Item[]): Item[] {
   return out;
 }
 
+/** 같은 사람이 5분 안에 연달아 보낸 메시지는 한 묶음: 첫 것에만 이름·사진, 마지막 것에만 시각 */
+const GROUP_GAP_MS = 5 * 60 * 1000;
+function groupable(it: Item): it is Message {
+  return !('divider' in it) && it.senderId !== SYSTEM_SENDER && !it.recalled;
+}
+function sameGroup(a: Item | undefined, b: Item | undefined): boolean {
+  if (!a || !b || !groupable(a) || !groupable(b)) return false;
+  return a.senderId === b.senderId && Math.abs(new Date(b.at).getTime() - new Date(a.at).getTime()) < GROUP_GAP_MS;
+}
 export default function RoomScreen() {
   // q·focus: 대화 탭 전체 검색에서 메시지를 눌러 들어온 경우
   const { id, q, focus } = useLocalSearchParams<{ id: string; q?: string; focus?: string }>();
@@ -71,6 +81,9 @@ export default function RoomScreen() {
   const [toast, setToast] = useState('');
   const [promote, setPromote] = useState({ open: false, title: '', field: '', error: '' });
   const list = useRef<FlatList<Item>>(null);
+  // 처음 열 때 있던 메시지는 그대로, 그 뒤 들어온 것만 떠오르며 나타납니다
+  const seen = useRef<Set<string> | null>(null);
+  if (seen.current === null) seen.current = new Set(messages.map((m) => m.id));
   const isMember = !!room?.memberIds.includes(user.id);
 
   useEffect(() => {
@@ -273,10 +286,12 @@ export default function RoomScreen() {
     </View>
   );
 
-  const inputStyle = { flex: 1, backgroundColor: c.surface, color: c.text, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, fontSize: font.body, ...family.regular, maxHeight: 120, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : null) } as object;
+  const inputStyle = { flex: 1, color: c.text, paddingHorizontal: space.sm, paddingVertical: 10, fontSize: font.body, lineHeight: 20, ...family.regular, maxHeight: 120, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : null) } as object;
 
+  const headAvatar = <Avatar name={room.title} size={36} group={members.length > 2} uri={room.photo ?? (room.kind === 'direct' ? members.find((u) => u.id !== user.id)?.photo : undefined)} />;
+  const subtitle = isSelfRoom(room, user.id) ? '나만 보는 메모' : members.length > 2 ? `참여 ${members.length}명 · ${ROOM_KIND_LABEL[room.kind]}` : ROOM_KIND_LABEL[room.kind];
   const screen = (
-    <Screen title={roomTitle(room)} back={!split} wide={split} scroll={false} right={right}>
+    <Screen title={room.memberIds.length > 2 ? room.title : roomTitle(room)} subtitle={subtitle} leading={headAvatar} back={!split} wide={split} scroll={false} right={right}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={80}>
         {dragging ? (
           <View pointerEvents="none" style={{ position: 'absolute', zIndex: 10, top: 0, left: 0, right: 0, bottom: 0, margin: space.sm, borderRadius: radius.lg, borderWidth: 2, borderStyle: 'dashed', borderColor: c.accent, backgroundColor: 'rgba(255,255,255,0.85)', alignItems: 'center', justifyContent: 'center' }}>
@@ -309,7 +324,11 @@ export default function RoomScreen() {
             if (!query && !highlight) list.current?.scrollToEnd({ animated: false });
           }}
           onScrollToIndexFailed={({ averageItemLength, index }) => list.current?.scrollToOffset({ offset: averageItemLength * index, animated: true })}
-          renderItem={({ item }) =>
+          renderItem={({ item, index }) => {
+            const head = !sameGroup(items[index - 1], item);
+            const tail = !sameGroup(item, items[index + 1]);
+            const fresh = !('divider' in item) && !seen.current!.has(item.id);
+            const node =
             'divider' in item && item.divider === 'day' ? (
               <DayDivider at={item.at} />
             ) : 'divider' in item ? (
@@ -334,14 +353,17 @@ export default function RoomScreen() {
                   picking={!!picking && !item.recalled && item.senderId !== SYSTEM_SENDER}
                   picked={picking?.includes(item.id)}
                   onPick={() => togglePick(item.id)}
+                  head={head}
+                  tail={tail}
                   onLongPress={(at) => {
                     if (!isMember || item.senderId === AI_SENDER || item.senderId === BOT_SENDER) return;
                     setMenuAt(at);
                     setMenuFor(item);
                   }}
                 />
-            )
-          }
+            );
+            return fresh ? <Appear layout={false}>{node}</Appear> : node;
+          }}
         />
         {toast ? (
           <View style={{ alignSelf: 'center', backgroundColor: c.text, borderRadius: radius.pill, paddingHorizontal: space.lg, paddingVertical: space.sm, marginBottom: space.sm }}>
@@ -397,37 +419,53 @@ export default function RoomScreen() {
             ) : null}
             {plus ? (
               <View style={{ flexDirection: 'row', gap: space.lg, paddingVertical: space.md }}>
-                <PlusItem icon="image" label="사진" onPress={() => void pickPhotos()} />
-                <PlusItem icon="file" label="파일" onPress={() => void pickFiles()} />
+                <Appear index={0} layout={false}><PlusItem icon="image" label="사진" onPress={() => void pickPhotos()} /></Appear>
+                <Appear index={1} layout={false}><PlusItem icon="file" label="파일" onPress={() => void pickFiles()} /></Appear>
                 {simple ? null : (
-                  <PlusItem
-                    icon="contact"
-                    label="연락처"
-                    onPress={() => {
-                      setPlus(false);
-                      setContactPick(true);
-                    }}
-                  />
+                  <Appear index={2} layout={false}>
+                    <PlusItem
+                      icon="contact"
+                      label="연락처"
+                      onPress={() => {
+                        setPlus(false);
+                        setContactPick(true);
+                      }}
+                    />
+                  </Appear>
                 )}
               </View>
             ) : null}
-            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, paddingVertical: space.sm, ...(split ? { borderTopWidth: 1, borderTopColor: c.line, marginHorizontal: -space.xl, paddingHorizontal: space.xl, paddingTop: space.md, paddingBottom: space.md } : null) }}>
-              <Pressable accessibilityLabel="더하기" onPress={() => setPlus((v) => !v)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: plus ? '45deg' : '0deg' }] }}>
-                <Icon name="plus" color={c.sub} size={24} />
-              </Pressable>
-              <TextInput
-                value={text}
-                onChangeText={setText}
-                placeholder={aiAnswerLevel(room, room.memberIds.map((id) => s.users.find((u) => u.id === id)).filter((u): u is User => !!u)) !== 'none' ? '메시지 입력 · @AI 도움말' : '메시지 입력'}
-                placeholderTextColor={c.faint}
-                multiline
-                onSubmitEditing={send}
-                {...enterToSend(send)}
-                style={inputStyle}
-              />
-              <Pressable accessibilityLabel="보내기" onPress={send} style={{ backgroundColor: c.accent, borderRadius: 22, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="send" color="#FFFFFF" size={20} />
-              </Pressable>
+            <View style={{ paddingVertical: space.sm, ...(split ? { borderTopWidth: 1, borderTopColor: c.line, marginHorizontal: -space.xl, paddingHorizontal: space.xl, paddingTop: space.md, paddingBottom: space.md } : null) }}>
+              {/* 입력 칸 하나에 + · 글 · 보내기를 넣고, 글이 있을 때만 보내기 버튼이 톡 나타납니다 */}
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4, backgroundColor: c.surface, borderRadius: 24, paddingLeft: 4, paddingRight: 6, paddingVertical: 4, minHeight: 48 }}>
+                <Press accessibilityLabel="더하기" onPress={() => setPlus((v) => !v)} scale={0.85} style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: plus ? c.lineStrong : 'transparent' }}>
+                  <View style={{ transform: [{ rotate: plus ? '45deg' : '0deg' }] }}>
+                    <Icon name="plus" color={plus ? c.text : c.sub} size={24} />
+                  </View>
+                </Press>
+                <TextInput
+                  value={text}
+                  onChangeText={setText}
+                  placeholder={aiAnswerLevel(room, room.memberIds.map((id) => s.users.find((u) => u.id === id)).filter((u): u is User => !!u)) !== 'none' ? '메시지 입력 · @AI 도움말' : '메시지 입력'}
+                  placeholderTextColor={c.faint}
+                  multiline
+                  numberOfLines={1}
+                  onSubmitEditing={send}
+                  {...enterToSend(send)}
+                  style={inputStyle}
+                />
+                {text.trim() ? (
+                  <Pop>
+                    <Press accessibilityLabel="보내기" onPress={send} scale={0.85} style={{ backgroundColor: c.accent, borderRadius: 20, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name="send" color="#FFFFFF" size={19} />
+                    </Press>
+                  </Pop>
+                ) : (
+                  <View style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name="send" color={c.mute} size={19} />
+                  </View>
+                )}
+              </View>
             </View>
           </View>
         ) : (
@@ -480,12 +518,12 @@ export default function RoomScreen() {
 function PlusItem({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
   const c = useColors();
   return (
-    <Pressable accessibilityLabel={`${label} 보내기`} onPress={onPress} style={{ alignItems: 'center', gap: 6 }}>
-      <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name={icon} color={c.text} size={24} />
+    <Press accessibilityLabel={`${label} 보내기`} onPress={onPress} scale={0.9} style={{ alignItems: 'center', gap: 6 }}>
+      <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: c.navBg, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name={icon} color={c.navText} size={24} />
       </View>
       <Text style={{ ...family.regular, fontSize: 12, color: c.text }}>{label}</Text>
-    </Pressable>
+    </Press>
   );
 }
 

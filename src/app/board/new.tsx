@@ -7,7 +7,7 @@ import { View } from 'react-native';
 import { BOARD_LABEL, boardsFor, canWriteBoard, MAX_ATTACHMENTS, needsField } from '@/core/board';
 import { actions } from '@/core/store';
 import type { Attachment, BoardKind } from '@/core/types';
-import home from '@/data/home.json';
+import { BOARD_FIELDS } from '@/core/board-fields';
 import { Attachments } from '@/ui/board';
 import { Button, Chip, Chips, Input, Notice, Screen, Section } from '@/ui/kit';
 import { space } from '@/ui/theme';
@@ -53,7 +53,7 @@ export default function NewPostScreen() {
       {needsField(board) ? (
         <Section title="분야">
           <Chips>
-            {home.fields.map((f) => <Chip key={f} label={f} active={field === f} onPress={() => setField(f)} />)}
+            {BOARD_FIELDS.map((f) => <Chip key={f} label={f} active={field === f} onPress={() => setField(f)} />)}
           </Chips>
         </Section>
       ) : null}

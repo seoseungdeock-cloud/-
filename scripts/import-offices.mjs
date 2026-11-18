@@ -44,7 +44,7 @@ const idx = (name) => {
   if (i < 0) throw new Error(`머리글에 '${name}'이 없습니다`);
   return i;
 };
-const col = Object.fromEntries(['사무소명', '시도', '주소', '전화', '위도', '경도', '변호사명', '분야', '경력', '상담료'].map((n) => [n, idx(n)]));
+const col = Object.fromEntries(['사무소명', '주소', '전화', '변호사명', '분야'].map((n) => [n, idx(n)]));
 
 const offices = new Map();
 rows.forEach((r, n) => {
@@ -54,10 +54,8 @@ rows.forEach((r, n) => {
     offices.set(name, {
       id: `of_${offices.size + 1}`,
       name,
-      regionCode: regionCode(get('시도')),
       address: get('주소'),
       phone: get('전화'),
-      ...(get('위도') && get('경도') ? { lat: Number(get('위도')), lon: Number(get('경도')) } : {}),
       lawyers: [],
     });
   }
@@ -67,13 +65,10 @@ rows.forEach((r, n) => {
       id: `lw_${n + 1}`,
       name: lawyerName,
       fields: get('분야').split(';').map((s) => s.trim()).filter(Boolean),
-      careerYears: Number(get('경력')) || 0,
-      consultFee: Number(get('상담료').replace(/[^\d]/g, '')) || 0,
-      intro: '',
     });
   }
 });
 
-const out = { _안내: '법대륜 데이터 (scripts/import-offices.mjs 로 생성)', offices: [...offices.values()] };
+const out = { _안내: '사무소·담당 변호사 목록 (scripts/import-offices.mjs 로 생성)', offices: [...offices.values()] };
 writeFileSync(new URL('../src/data/offices.json', import.meta.url), JSON.stringify(out, null, 2) + '\n');
 console.log(`사무소 ${offices.size}곳, 변호사 ${out.offices.reduce((s, o) => s + o.lawyers.length, 0)}명 저장`);

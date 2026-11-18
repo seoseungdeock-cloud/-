@@ -56,17 +56,13 @@ export default function RootLayout() {
           <Stack.Screen name="profile" />
           <Stack.Screen name="open/new" />
           <Stack.Screen name="open/[id]" />
-          <Stack.Screen name="lawyer/[id]" />
           <Stack.Screen name="agent/meeting" />
           <Stack.Screen name="agent/images" />
           <Stack.Screen name="marketing" />
-          <Stack.Screen name="membership" />
           <Stack.Screen name="backoffice" />
           <Stack.Screen name="suggest/index" />
           <Stack.Screen name="auth-codes" />
           <Stack.Screen name="suggest/inbox" />
-          <Stack.Screen name="recommend" />
-          <Stack.Screen name="service/[name]" />
           <Stack.Screen name="board/[id]" />
           <Stack.Screen name="board/new" />
           <Stack.Screen name="board/notes" />

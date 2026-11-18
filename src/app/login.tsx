@@ -1,16 +1,16 @@
 import { router } from 'expo-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 
 import { autoLoginNow, saveLoginPrefs, savedLoginId, savedLoginIdNow } from '@/core/login-prefs';
 import { actions, me } from '@/core/store';
 import { serverEnabled } from '@/core/supabase';
-import { AppMark } from '@/ui/brand';
+import { AppMark, Wordmark } from '@/ui/brand';
 import { Icon, type IconName } from '@/ui/icons';
 import { Sub } from '@/ui/kit';
-import { family, font, radius, space, useColors, useScheme } from '@/ui/theme';
+import { family, font, radius, space, tracking, useColors, useScheme } from '@/ui/theme';
 
 /** 웹은 JS 드라이버, 폰은 네이티브 드라이버 (transform·opacity 전용) */
 const NATIVE = Platform.OS !== 'web';
@@ -140,6 +140,28 @@ function Check({ label, on, onPress }: { label: string; on: boolean; onPress: ()
   );
 }
 
+/** PC 넓은 창: 왼쪽 브랜드 판 (짙은 파랑, 로고·한 줄 소개) */
+function BrandPanel() {
+  return (
+    <View style={{ width: '42%', maxWidth: 560, minWidth: 360, backgroundColor: '#1F3FD6', overflow: 'hidden', ...({ backgroundImage: 'linear-gradient(160deg, #3D6BFF 0%, #1A33B8 100%)' } as object) }}>
+      <Glow color="#9DB8FF" size={620} opacity={0.4} top={-260} right={-220} drift={30} />
+      <Glow color="#DCE6FF" size={420} opacity={0.2} bottom={-200} left={-160} drift={-22} />
+      <View style={{ flex: 1, padding: 48, justifyContent: 'space-between' }}>
+        <Reveal delay={0}>
+          <Wordmark height={26} color="#FFFFFF" />
+        </Reveal>
+        <Reveal delay={120}>
+          <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 15, ...family.semibold, marginBottom: 14 }}>업무 메신저</Text>
+          <Text style={{ color: '#FFFFFF', fontSize: 40, lineHeight: 50, letterSpacing: tracking.title, ...family.heavy }}>모든 대화,{'\n'}한 곳에서.</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 15, lineHeight: 24, marginTop: 20, ...family.regular }}>사건방·기일 알림·배당 안내·게시판까지.{'\n'}의뢰인과 구성원이 같은 자리에서 일합니다.</Text>
+        </Reveal>
+        <Reveal delay={240}>
+          <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, ...family.regular }}>© SKYNET · 임직원 전용</Text>
+        </Reveal>
+      </View>
+    </View>
+  );
+}
 /** 16진 색에 투명도를 더한 rgba 문자열 */
 function rgba(hex: string, alpha: number) {
   const n = parseInt(hex.slice(1), 16);
@@ -149,6 +171,8 @@ function rgba(hex: string, alpha: number) {
 export default function LoginScreen() {
   const c = useColors();
   const dark = useScheme() === 'dark';
+  const { width } = useWindowDimensions();
+  const split = Platform.OS === 'web' && width >= 960;
   const [loginId, setLoginId] = useState(savedLoginIdNow);
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(() => !!savedLoginIdNow());
@@ -192,22 +216,26 @@ export default function LoginScreen() {
       return;
     }
     await saveLoginPrefs(remember ? loginId.trim() : null, auto);
-    router.replace(me().role === 'client' ? '/home' : '/');
+    router.replace('/');
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
-      <Glow color={c.accent} size={420} opacity={dark ? 0.32 : 0.22} top={-150} right={-140} drift={24} />
-      <Glow color={c.ai} size={360} opacity={dark ? 0.26 : 0.16} bottom={-120} left={-150} drift={-18} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg, flexDirection: 'row' }}>
+      {split ? <BrandPanel /> : null}
+      <View style={{ flex: 1, overflow: 'hidden' }}>
+      {split ? null : <Glow color={c.accent} size={420} opacity={dark ? 0.32 : 0.22} top={-150} right={-140} drift={24} />}
+      {split ? null : <Glow color={c.ai} size={360} opacity={dark ? 0.26 : 0.16} bottom={-120} left={-150} drift={-18} />}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: space.xl, paddingVertical: space.xxl, width: '100%', maxWidth: 440, alignSelf: 'center' }}>
             <Reveal delay={0} style={{ marginBottom: space.xxl }}>
-              <View style={{ width: 72, height: 72, borderRadius: 22, backgroundColor: c.accentSoft, alignItems: 'center', justifyContent: 'center', boxShadow: `0 10px 30px ${rgba(c.accent, dark ? 0.28 : 0.16)}` }}>
-                <AppMark width={44} />
-              </View>
-              <Text style={{ marginTop: space.xl, color: c.sub, fontSize: font.small, ...family.semibold }}>법무법인(유한) 대륜</Text>
-              <Text style={{ marginTop: space.xs, color: c.text, fontSize: 30, lineHeight: 40, letterSpacing: -0.5, ...family.bold }}>스카이넷에{'\n'}로그인하세요</Text>
+              {split ? null : (
+                <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', boxShadow: `0 10px 30px ${rgba(c.accent, dark ? 0.28 : 0.22)}` }}>
+                  <AppMark width={34} color="#FFFFFF" />
+                </View>
+              )}
+              <Text style={{ marginTop: split ? 0 : space.xl, color: c.sub, fontSize: font.small + 1, ...family.semibold }}>{split ? '대륜탑 사번으로 로그인' : '업무 메신저'}</Text>
+              <Text style={{ marginTop: space.xs, color: c.text, fontSize: 32, lineHeight: 42, letterSpacing: tracking.title, ...family.heavy }}>{split ? '안녕하세요,\n다시 만나 반가워요' : '스카이넷에\n로그인하세요'}</Text>
             </Reveal>
 
             <Animated.View style={{ transform: [{ translateX: shake }] }}>
@@ -291,11 +319,14 @@ export default function LoginScreen() {
               </View>
             ) : null}
           </View>
-          <Reveal delay={420}>
-            <Text style={{ textAlign: 'center', color: c.faint, fontSize: font.tiny, ...family.regular, paddingBottom: space.lg }}>© 법무법인(유한) 대륜 · 임직원 전용</Text>
-          </Reveal>
+          {split ? null : (
+            <Reveal delay={420}>
+              <Text style={{ textAlign: 'center', color: c.faint, fontSize: font.tiny, ...family.regular, paddingBottom: space.lg }}>© SKYNET · 임직원 전용</Text>
+            </Reveal>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }

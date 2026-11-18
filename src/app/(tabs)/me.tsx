@@ -1,18 +1,18 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, Text, View } from 'react-native';
+import { Platform, Text, View } from 'react-native';
 
 import { presenceOf } from '@/core/messenger';
-import { canJoinMembership, canSeeSuggestions } from '@/core/rooms';
+import { canSeeSuggestions } from '@/core/rooms';
 import { actions } from '@/core/store';
 import { enableWebPush, webPushState } from '@/core/web-push';
 import { callerEntries } from '@/core/caller-names';
 import { callerNamesOn, callerSyncSupported, clearCallerNames, syncCallerNames } from '@/ui/caller-sync';
-import { HonorsCard } from '@/ui/honors';
 import { Icon } from '@/ui/icons';
 import { usePresenceBadge } from '@/ui/presence';
 import { Avatar, Badge, Button, Card, Chip, Chips, Screen, Section, Sub, T } from '@/ui/kit';
-import { family, setThemeMode, space, THEME_MODES, useColors, useThemeMode } from '@/ui/theme';
+import { Appear, Press } from '@/ui/motion';
+import { family, font, radius, setThemeMode, space, THEME_MODES, tracking, useColors, useThemeMode } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 import { FRAME_SIZES, setFrameSize, useFrameSize, useLayout } from '@/ui/web-frame';
 import { promptInstall, useInstallState } from '@/core/install';
@@ -28,49 +28,56 @@ export default function MeScreen() {
   const open = s.suggestions.filter((x) => x.status === 'open').length;
   return (
     <Screen title="MY">
-      <Card onPress={() => router.push('/profile')}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-          <Avatar name={user.nickname} uri={user.photo} badge={user.role === 'client' ? undefined : dot(user)} />
-          <View style={{ flex: 1 }}>
-            <T size="h2" bold>{user.nickname}</T>
-            <T size="small">{[user.role === 'client' ? '' : presenceOf(user).label, user.status].filter(Boolean).join(' · ')}</T>
-            <Sub>{[user.title, account?.loginId].filter(Boolean).join(' · ')}</Sub>
-            <View style={{ flexDirection: 'row', gap: space.xs, marginTop: space.xs, flexWrap: 'wrap' }}>
-              <Badge label={ROLE_LABEL[user.role]} tone="plain" />
-              {user.membership === 'rightnow' ? <Badge label="대륜 아너스" tone="member" /> : null}
-              {user.superAdmin && user.role === 'admin' ? <Badge label="관리자어드민" tone="accent" /> : null}
+      {/* 프로필: 남색 판 위에 사진·이름·직위. 누르면 편집으로 */}
+      <Appear>
+        <Press onPress={() => router.push('/profile')} scale={0.985} style={{ borderRadius: radius.xl, padding: space.lg + 4, marginBottom: space.md, backgroundColor: c.navBg, overflow: 'hidden' }}>
+          <View style={{ position: 'absolute', right: -40, top: -50, width: 180, height: 180, borderRadius: 90, backgroundColor: c.navActive }} />
+          <View style={{ position: 'absolute', right: 40, bottom: -80, width: 140, height: 140, borderRadius: 70, backgroundColor: c.navHover }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg }}>
+            <View style={{ borderRadius: 40, borderWidth: 3, borderColor: 'rgba(255,255,255,0.25)' }}>
+              <Avatar name={user.nickname} uri={user.photo} size={64} badge={user.role === 'client' ? undefined : dot(user)} />
+            </View>
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={{ ...family.heavy, fontSize: font.h2, color: c.navText, letterSpacing: tracking.h2 }}>{user.nickname}</Text>
+              <Text style={{ ...family.regular, fontSize: font.small, color: c.navMute }}>{[user.role === 'client' ? '' : presenceOf(user).label, user.status].filter(Boolean).join(' · ') || ROLE_LABEL[user.role]}</Text>
+              <Text style={{ ...family.regular, fontSize: font.tiny, color: c.navMute }}>{[user.title, user.dept, account?.loginId].filter(Boolean).join(' · ')}</Text>
+            </View>
+            <View style={{ paddingHorizontal: 12, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ ...family.semibold, fontSize: 13, color: c.navText }}>편집</Text>
             </View>
           </View>
-          <Text style={{ ...family.semibold, fontSize: 14, color: c.accent }}>편집</Text>
-        </View>
-      </Card>
-      <Card onPress={() => router.push({ pathname: '/room/[id]', params: { id: actions.openSelfChat() } })}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-          <Icon name="chat" color={c.accent} size={22} />
-          <View style={{ flex: 1 }}>
-            <T bold>나와의 메시지</T>
-            <Sub>메모·파일을 나에게 보내 두는 대화방</Sub>
+          <View style={{ flexDirection: 'row', gap: space.xs, marginTop: space.md, flexWrap: 'wrap' }}>
+            <Tag label={ROLE_LABEL[user.role]} />
+            {user.superAdmin && user.role === 'admin' ? <Tag label="관리자어드민" /> : null}
           </View>
-          <Icon name="chevron" color={c.faint} size={18} />
-        </View>
-      </Card>
-      {canJoinMembership(user) ? (
-        <Section title="멤버십">
-          <Pressable accessibilityRole="button" onPress={() => router.push('/membership')} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
-            <HonorsCard name={user.nickname} member={user.membership === 'rightnow'} compact />
-          </Pressable>
-        </Section>
-      ) : null}
+        </Press>
+      </Appear>
+      <Appear index={1}>
+        <Card onPress={() => router.push({ pathname: '/room/[id]', params: { id: actions.openSelfChat() } })}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+            <View style={{ width: 36, height: 36, borderRadius: radius.md, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="chat" color={c.accent} size={20} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <T bold>나와의 메시지</T>
+              <Sub>메모·파일을 나에게 보내 두는 대화방</Sub>
+            </View>
+            <Icon name="chevron" color={c.faint} size={18} />
+          </View>
+        </Card>
+      </Appear>
       <WebPushCard />
       <InstallCard />
       <CallerNamesCard />
       <ThemeModeCard />
       <FrameSizeCard />
+      <Appear index={2}>
       <Section title="스카이넷 건의사항">
         <Card onPress={() => router.push('/suggest')}>
           <T bold>건의사항 쓰기</T>
         </Card>
       </Section>
+      </Appear>
       {user.role === 'admin' ? (
         <Section title="관리">
           <Card onPress={() => router.push('/backoffice')}>
@@ -93,6 +100,15 @@ export default function MeScreen() {
   );
 }
 
+/** 남색 판 위의 작은 표 */
+function Tag({ label }: { label: string }) {
+  const c = useColors();
+  return (
+    <View style={{ paddingHorizontal: 8, height: 22, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.14)', justifyContent: 'center' }}>
+      <Text style={{ ...family.semibold, fontSize: font.tiny, color: c.navText }}>{label}</Text>
+    </View>
+  );
+}
 /** PC·웹 브라우저에서만: 이 브라우저로 새 메시지·기일 알림 받기 */
 function WebPushCard() {
   const [state, setState] = useState(webPushState());

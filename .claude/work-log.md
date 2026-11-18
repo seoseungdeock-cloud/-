@@ -74,3 +74,11 @@
 ## 2026-11-16 15:51:52
 - 요청: 일단 여기까지만 하고 스톱 
 - 응답: 알겠습니다. 여기서 멈춥니다.  **지금 상태** - 변경은 모두 로컬 작업본에만 있고 커밋하지 않았습니다. 올리라고 하시면 그때 커밋·푸시하겠습니다. - 로컬 개발 서버(http://localhost:8081)는 켜 둔 채로 두었습니다. 끄려면 터미널에서 `pkill -f "expo start"` 하시면 됩니다.  **다음에 이어서 할 거리** - 옛 Supabase 데이터 이전(옛 DB 비밀번호 필요) → 운영 웹·APK 재빌드 → 옛 Supabase 해지 - 게시판·캘린더 PC 화면 다듬기 - admin 비밀번호 변경, 서버 .env 의 AI 키 채
+
+## 2026-11-16 15:52:40
+- 요청: develop브랜치 만들어서 올려라 
+- 응답: **develop 가지를 만들어 올렸습니다.** 저장소 seoseungdeock-cloud/- 에 `develop` 이 새로 생겼고, 로컬도 그 가지를 따라갑니다. main 은 손대지 않았습니다.  올라간 커밋 3개 (main 의 566a25b 위):  | 커밋 | 내용 | |---|---| | d7299fc feat(server) | 서버를 회사 AWS 셀프호스팅 Supabase 로 전환 (.env 공개 값, README 운영 절, push-send 환경변수, aws_resources.txt) | | 4637ef8 feat(login) | 로그인 화면 새 디자인·애니메이션, 대륜 상징 분리, 404 안내 문구 | | b8bd206 feat(ui) | 웹·PC 앱·모바일 화�
+
+## 2026-11-16 16:26:04
+- 요청: develop에 올렸다는거지? 
+- 응답: 네, develop 에 올렸습니다.  - 저장소: https://github.com/seoseungdeock-cloud/- 의 `develop` 가지 (새로 만듦) - main 은 그대로이고, develop 에만 커밋 3개가 더 있습니다. - 웹 배포(GitHub Pages)나 APK 빌드는 돌지 않았습니다. 운영에 반영하려면 따로 말씀해 주세요. 

@@ -1,10 +1,11 @@
 import { router, usePathname } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { lastMessage, mentionedUnread, notifyLevel, previewText, unreadCount } from '@/core/messenger';
 import type { Room } from '@/core/types';
 import { Icon } from './icons';
 import { Avatar, ModeBadge } from './kit';
+import { Bounce, Pop, Press } from './motion';
 import { family, radius, space, useColors } from './theme';
 import { useApp, useMe } from './use-app';
 import { useLayout } from './web-frame';
@@ -35,7 +36,7 @@ export function roomTitle(room: Room): string {
   return room.memberIds.length > 2 ? `${room.title} (${room.memberIds.length})` : room.title;
 }
 
-// 대화 목록 한 줄 (웍스 메시지 목록 구성: 고정·알림 끄기 표시, 시간, 미리보기, 안 읽은 수, 멘션 알림)
+// 대화 목록 한 줄 (고정·알림 끄기 표시, 시간, 미리보기, 안 읽은 수, 멘션 알림). 누르면 살짝 눌리고 PC 에서는 열린 방이 회색 칸으로 표시됩니다.
 export function RoomRow({ room, selecting, selected, onToggle }: { room: Room; selecting?: boolean; selected?: boolean; onToggle?: () => void }) {
   const s = useApp();
   const user = useMe();
@@ -51,51 +52,56 @@ export function RoomRow({ room, selecting, selected, onToggle }: { room: Room; s
   // PC 2단 구성: 지금 열려 있는 방을 표시
   const on = desktop && pathname === `/room/${room.id}`;
   return (
-    <Pressable
+    <Press
       onPress={() => (selecting ? onToggle?.() : desktop ? openRoom(room.id) : router.push({ pathname: '/room/[id]', params: { id: room.id } }))}
       onLongPress={onToggle}
-      style={(st) => ({
+      scale={0.98}
+      style={({ hovered }) => ({
         flexDirection: 'row',
         alignItems: 'center',
-        gap: space.sm + 4,
-        paddingVertical: 7,
-        ...(desktop ? { paddingHorizontal: space.sm, marginHorizontal: -space.sm, borderRadius: radius.md, backgroundColor: on ? c.accentSoft : (st as { hovered?: boolean }).hovered ? c.surface : 'transparent' } : null),
-        opacity: st.pressed ? 0.6 : 1,
+        gap: space.md,
+        paddingVertical: 10,
+        paddingHorizontal: space.md,
+        marginHorizontal: -space.md,
+        borderRadius: radius.lg - 2,
+        backgroundColor: on ? c.surface : hovered ? c.hover : 'transparent',
       })}>
       {selecting ? (
         <View style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: selected ? c.accent : c.faint, backgroundColor: selected ? c.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-          {selected ? <Icon name="check" color="#FFFFFF" size={14} /> : null}
+          {selected ? <Pop><Icon name="check" color="#FFFFFF" size={14} /></Pop> : null}
         </View>
       ) : null}
       <View>
-        <Avatar name={room.title} size={38} group={group} uri={room.photo ?? (room.kind === 'direct' ? s.users.find((u) => u.id !== user.id && room.memberIds.includes(u.id))?.photo : undefined)} />
+        <Avatar name={room.title} size={50} group={group} uri={room.photo ?? (room.kind === 'direct' ? s.users.find((u) => u.id !== user.id && room.memberIds.includes(u.id))?.photo : undefined)} />
         {pinned ? (
           <View style={{ position: 'absolute', left: -4, top: -4, width: 20, height: 20, borderRadius: 10, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="pin" color={c.accent} size={13} />
           </View>
         ) : null}
       </View>
-      <View style={{ flex: 1, gap: 2 }}>
+      <View style={{ flex: 1, gap: 3 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
-          <Text numberOfLines={1} style={{ flexShrink: 1, ...family.bold, fontSize: 13.5, color: c.text }}>{roomTitle(room)}</Text>
-          {muted ? <Icon name="mute" color={c.faint} size={15} /> : null}
+          <Text numberOfLines={1} style={{ flexShrink: 1, ...(unread ? family.bold : family.semibold), fontSize: 15, color: c.text, letterSpacing: -0.2 }}>{roomTitle(room)}</Text>
+          {muted ? <Icon name="mute" color={c.faint} size={14} /> : null}
+          {room.kind === 'case' ? <ModeBadge mode="private" /> : null}
           <View style={{ marginLeft: 'auto', paddingLeft: space.sm }}>
-            <Text style={{ ...family.regular, fontSize: 11, color: c.faint }}>{last ? chatTime(last.at) : ''}</Text>
+            <Text style={{ ...family.regular, fontSize: 12, color: unread ? c.accent : c.faint }}>{last ? chatTime(last.at) : ''}</Text>
           </View>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
           <View style={{ flex: 1 }}>
-            <Text numberOfLines={mentioned ? 1 : 2} style={{ ...family.regular, fontSize: 12.5, lineHeight: 17, color: c.sub }}>{previewText(last, s.users)}</Text>
-            {mentioned ? <Text style={{ ...family.semibold, fontSize: 12, color: c.accent }}>멘션되었습니다.</Text> : null}
+            <Text numberOfLines={mentioned ? 1 : 2} style={{ ...family.regular, fontSize: 13, lineHeight: 18, color: unread ? c.text : c.sub }}>{previewText(last, s.users)}</Text>
+            {mentioned ? <Text style={{ ...family.semibold, fontSize: 12, color: c.accent }}>나를 불렀습니다</Text> : null}
           </View>
-          {room.kind === 'case' ? <ModeBadge mode="private" /> : null}
           {unread ? (
-            <View style={{ minWidth: 18, height: 18, borderRadius: 9, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
-              <Text style={{ color: '#FFFFFF', ...family.bold, fontSize: 11 }}>{unread > 99 ? '99+' : unread}</Text>
-            </View>
+            <Bounce keyOf={unread}>
+              <View style={{ minWidth: 22, height: 22, borderRadius: 11, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7 }}>
+                <Text style={{ color: '#FFFFFF', ...family.bold, fontSize: 11.5 }}>{unread > 99 ? '99+' : unread}</Text>
+              </View>
+            </Bounce>
           ) : null}
         </View>
       </View>
-    </Pressable>
+    </Press>
   );
 }

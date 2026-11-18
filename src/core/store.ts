@@ -35,13 +35,14 @@ import { classify, type DtHearing, type DtResult } from './daeryuntop';
 import { alertText, CHANGE_LABEL, recipientsOf, whenLabel } from './hearings';
 import { isSelfRoom, SELF_ROOM_TITLE } from './calendar';
 import { boardOf, canSeeBoard, canWriteBoard, formatUntil, MAX_ATTACHMENTS, needsField, reportTarget, restrictedUntil, toggleVote } from './board';
+import { demoMessages, demoReads, demoRooms, demoUsers } from './demo';
 import { displayName, isMaster, parseMentions, roomMasters, type Reads } from './messenger';
 import { findLawyer } from './offices';
 import { aliasOf, canManageOpen, canUseOpenChat, checkAlias, checkOpenPassword, isOpenMember, OPEN_MAX_OPTIONS, parseTags } from './open-chat';
 import { keepSession } from './login-prefs';
 import { procedureReply } from './procedures';
 import { roomAiInput, roomAiSystem } from './room-ai';
-import { aiAnswerLevel, canCreateRoom, canJoinMembership, canSeeSuggestions, canUseAgents, type RoomCheck } from './rooms';
+import { aiAnswerLevel, canCreateRoom, canSeeSuggestions, canUseAgents, type RoomCheck } from './rooms';
 import { latest, parseRows, refreshTemplate, type DataRow, type ImageTemplate } from './templates';
 import {
   AI_SENDER,
@@ -129,6 +130,8 @@ const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOStr
 export const TEST_PREFIX = '[테스트]';
 const kstDay = (n: number) => new Date(Date.now() + 9 * 3_600_000 + n * 86_400_000).toISOString().slice(0, 10);
 
+/** 단위 테스트(jest)에서는 샘플 내용을 섞지 않습니다 — 테스트가 기본 시드의 방·메시지 수를 전제로 합니다. */
+const DEMO = typeof process === 'undefined' || !process.env?.JEST_WORKER_ID;
 export function initialState(): State {
   const users: User[] = [
     { id: 'u_admin', superAdmin: true, executive: true, nickname: '승덕', role: 'admin', firm: '대륜', agentAccess: true, membership: 'basic', title: 'Admin', dept: '경영지원본부', branch: '본사', phone: '010-0000-0001', email: 'admin@example.com', joinedAt: '2026-06-15' },
@@ -191,6 +194,11 @@ export function initialState(): State {
     { id: 'mc2', roomId: 'r_case1', senderId: 'u_lawyer', kind: 'text', text: '네, 이번 주 안에 소장 초안 보내드리겠습니다. 계약서 원본은 보관해 두세요.', at: ago(5.5) },
     { id: 'mt5', roomId: 'r_team', senderId: 'u_l2', kind: 'text', text: '@승덕 대표님 확인 부탁드립니다.', at: ago(0.5), mentions: ['u_admin'] },
   ];
+  if (DEMO) {
+    users.push(...demoUsers);
+    rooms.push(...demoRooms);
+    messages.push(...demoMessages);
+  }
   const s: State = {
     booted: true,
     currentUserId: null,
@@ -320,7 +328,7 @@ export function initialState(): State {
     ],
     reports: [{ id: 'rp1', postId: 'p2', reporterId: 'u_lawyer', reason: '개인정보 노출', at: ago(1), status: 'open' }],
     boardBans: {},
-    reads: { r_team: { u_lawyer: ago(26.95), u_staff: ago(26.9), u_m1: ago(1), u_l2: ago(0.5), u_admin: ago(28) } },
+    reads: { r_team: { u_lawyer: ago(26.95), u_staff: ago(26.9), u_m1: ago(1), u_l2: ago(0.5), u_admin: ago(28) }, ...(DEMO ? demoReads : {}) },
     favorites: { u_lawyer: ['u_staff'], u_admin: ['u_lawyer'] },
     openRooms: [
       {
@@ -555,7 +563,7 @@ async function startLive(sb: SupabaseClient) {
   const token = (await sb.auth.getSession()).data.session?.access_token;
   if (!token || live) return;
   await sb.realtime.setAuth(token);
-  const ch = sb.channel('rightnow-live');
+  const ch = sb.channel('skynet-live');
   const kick = () => {
     clearTimeout(liveTimer);
     liveTimer = setTimeout(() => void refresh(), 300);
@@ -1066,12 +1074,6 @@ export const actions = {
     return { ok: true };
   },
 
-  /** 멤버십 결제가 붙기 전까지는 기기 안에서만 바뀝니다 (서버에서는 어드민·결제만 바꿈). */
-  setMembership(level: User['membership']) {
-    if (!canJoinMembership(me())) return;
-    const id = me().id;
-    set((s) => ({ users: s.users.map((u) => (u.id === id ? { ...u, membership: level } : u)) }));
-  },
 
   // ---- 메신저 ----
   createRoom(input: { kind: RoomKind; mode: RoomMode; title: string; memberIds: string[] }): RoomCheck & { roomId?: string } {

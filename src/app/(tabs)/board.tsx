@@ -1,14 +1,16 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 
 import { authorView, BEST_MIN, BOARD_LABEL, BOARD_TAB, boardOf, boardsFor, canSeeBoard, canWriteBoard, needsField, pinNotices, unseenNotices, isBest as isBestPost, BOARD_SORT_LABEL, formatUntil, notesFor, restrictedUntil, score, searchPosts, sortPosts, timeAgo, unreadIn, type BoardSort } from '@/core/board';
 import { actions } from '@/core/store';
-import home from '@/data/home.json';
+import { BOARD_FIELDS } from '@/core/board-fields';
 import type { BoardKind, BoardPost } from '@/core/types';
 import { UnderlineTabs } from '@/ui/contacts';
 import { Icon } from '@/ui/icons';
 import { Badge, Button, Empty, Notice, Screen } from '@/ui/kit';
+import { Appear, Fade, Press } from '@/ui/motion';
+import { ChipBar, SegmentBar } from '@/ui/segments';
 import { family, radius, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 
@@ -65,53 +67,62 @@ export default function BoardScreen() {
         </View>
       ) : null}
       {until ? <Notice tone="warn" text={`게시판 이용이 제한되었습니다. (${formatUntil(until)}까지)`} /> : null}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.surface, borderRadius: radius.pill, paddingHorizontal: space.md, marginBottom: space.md }}>
-        <Icon name="search" color={c.faint} size={18} />
-        <TextInput
-          value={q}
-          onChangeText={setQ}
-          placeholder="게시판 검색"
-          placeholderTextColor={c.faint}
-          style={{ flex: 1, paddingVertical: space.sm + 2, fontSize: 15, ...family.regular, color: c.text }}
-        />
-      </View>
-      <View style={{ flexDirection: 'row', gap: space.lg, marginBottom: space.sm }}>
-        {(Object.keys(BOARD_SORT_LABEL) as BoardSort[]).map((k) => (
-          <Pressable key={k} onPress={() => setSort(k)}>
-            <Text style={{ ...(sort === k ? family.bold : family.regular), fontSize: 15, color: sort === k ? c.accent : c.faint }}>{BOARD_SORT_LABEL[k]}</Text>
-          </Pressable>
-        ))}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.md }}>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.surface, borderRadius: radius.md + 2, paddingHorizontal: space.md + 2, height: 44 }}>
+          <Icon name="search" color={c.mute} size={18} />
+          <TextInput
+            value={q}
+            onChangeText={setQ}
+            placeholder="게시판 검색"
+            placeholderTextColor={c.mute}
+            style={{ flex: 1, height: '100%', fontSize: 15, ...family.regular, color: c.text, ...({ outlineStyle: 'none' } as object) }}
+          />
+        </View>
+        <SegmentBar items={(Object.keys(BOARD_SORT_LABEL) as BoardSort[]).map((k) => [k, BOARD_SORT_LABEL[k]] as [BoardSort, string])} value={sort} onChange={setSort} />
       </View>
       {needsField(board) ? (
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.xs, paddingBottom: space.md }}>
-        {[undefined, ...home.fields].map((f) => (
-          <Pressable key={f ?? 'all'} onPress={() => setField(f)} style={{ paddingHorizontal: space.md, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: field === f ? c.accent : c.line, backgroundColor: field === f ? c.accentSoft : c.bg }}>
-            <Text style={{ ...family.semibold, fontSize: 13, color: field === f ? c.accent : c.sub }}>{f ?? '전체'}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+        <View style={{ marginHorizontal: -space.lg, marginBottom: space.md }}>
+          <ChipBar items={[['', '전체'], ...BOARD_FIELDS.map((f) => [f, f] as [string, string])]} value={field ?? ''} onChange={(f) => setField(f || undefined)} size="sm" />
+        </View>
       ) : null}
-      {posts.length ? (
-        posts.map((p) => {
-          const votes = score(p.votes);
-          const who = authorView(user, p, p.authorId, s.users);
-          return (
-            // DC인사이드 목록처럼: 제목만, 댓글 수는 색을 달리, 추천 10개 이상은 빨간 테두리 별, 20개 이상은 꽉 찬 별. 추천은 글 안에서만.
-            <Pressable key={p.id} onPress={() => router.push({ pathname: '/board/[id]', params: { id: p.id } })} style={({ pressed }) => ({ paddingVertical: space.sm + 2, borderBottomWidth: 1, borderBottomColor: c.line, gap: 3, opacity: pressed ? 0.6 : 1 })}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                {p.notice ? <Badge label="공지" /> : <Icon name={votes >= 20 ? 'starFill' : votes >= 10 ? 'star' : 'board'} color={votes >= 10 ? c.accent : c.faint} size={16} />}
-                <Text numberOfLines={1} style={{ flexShrink: 1, ...family.semibold, fontSize: 15, color: c.text }}>{p.title}</Text>
-                {p.comments.length ? <Text style={{ ...family.bold, fontSize: 13, color: c.accent }}>[{p.comments.length}]</Text> : null}
-              </View>
-              <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.faint, paddingLeft: 22 }}>
-                {[who.real ? `${who.alias} (${who.real})` : who.alias, timeAgo(p.at), p.field, `추천 ${votes}`, sort !== 'best' && isBestPost(p) ? '베스트' : ''].filter(Boolean).join(' · ')}
-              </Text>
-            </Pressable>
-          );
-        })
-      ) : (
-        <Empty text={q ? '검색 결과가 없습니다.' : sort === 'best' ? `추천 ${BEST_MIN}개 이상인 글이 아직 없습니다.` : '아직 글이 없습니다.'} />
-      )}
+      <Fade key={`${board}-${sort}-${field ?? ''}-${q}`}>
+        {posts.length ? (
+          posts.map((p, i) => {
+            const votes = score(p.votes);
+            const who = authorView(user, p, p.authorId, s.users);
+            const hot = votes >= 10;
+            return (
+              // 카드 한 장 = 글 하나. 제목, 작성자·시각·분야, 댓글 수 배지. 추천 10개 이상은 별(20개 이상은 꽉 찬 별)
+              <Appear key={p.id} index={i}>
+                <Press
+                  onPress={() => router.push({ pathname: '/board/[id]', params: { id: p.id } })}
+                  scale={0.985}
+                  style={({ hovered }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md, paddingHorizontal: space.lg, marginBottom: space.sm, borderRadius: radius.lg, backgroundColor: hovered ? c.lineStrong : c.surface })}>
+                  <View style={{ width: 40, height: 40, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: p.notice ? c.navBg : hot ? c.accentSoft : c.bg }}>
+                    <Icon name={p.notice ? 'notice' : votes >= 20 ? 'starFill' : hot ? 'star' : 'board'} color={p.notice ? c.navText : hot ? c.accent : c.faint} size={18} />
+                  </View>
+                  <View style={{ flex: 1, gap: 3, minWidth: 0 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {p.notice ? <Badge label="공지" /> : null}
+                      <Text numberOfLines={1} style={{ flexShrink: 1, ...family.semibold, fontSize: 15, color: c.text, letterSpacing: -0.2 }}>{p.title}</Text>
+                    </View>
+                    <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12.5, color: c.faint }}>
+                      {[who.real ? `${who.alias} (${who.real})` : who.alias, timeAgo(p.at), p.field, `추천 ${votes}`, sort !== 'best' && isBestPost(p) ? '베스트' : ''].filter(Boolean).join(' · ')}
+                    </Text>
+                  </View>
+                  {p.comments.length ? (
+                    <View style={{ minWidth: 30, height: 30, borderRadius: 15, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: c.bg }}>
+                      <Text style={{ ...family.bold, fontSize: 12.5, color: c.accent }}>{p.comments.length}</Text>
+                    </View>
+                  ) : null}
+                </Press>
+              </Appear>
+            );
+          })
+        ) : (
+          <Empty text={q ? '검색 결과가 없습니다.' : sort === 'best' ? `추천 ${BEST_MIN}개 이상인 글이 아직 없습니다.` : '아직 글이 없습니다.'} />
+        )}
+      </Fade>
     </Screen>
   );
 }

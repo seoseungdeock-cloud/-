@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="SKYNET">
+  <title>SKYNET icon</title>
+  <desc>Wordmark drawn from Pretendard Bold (orioncactus), SIL Open Font License 1.1, converted to outlines. Symbol original — slash cut family (SKYZ).</desc>
+  <rect width="200" height="200" rx="0" fill="#FFFFFF"/>
+  <defs><clipPath id="disc-s"><circle cx="100" cy="100" r="92"/></clipPath></defs>
+  <g transform="translate(40.00,40.00) scale(0.6000)"><g clip-path="url(#disc-s)">
+    <path d="M-129.4,351.3 L170.6,-168.3 L200.1,-151.3 L-99.9,368.3 Z" fill="#0B1220"/>
+    <path d="M-64.7,351.3 L235.3,-168.3 L264.7,-151.3 L-35.3,368.3 Z" fill="#2E5BFF"/>
+    <path d="M-0.1,351.3 L299.9,-168.3 L329.4,-151.3 L29.4,368.3 Z" fill="#0B1220"/>
+  </g></g>
+</svg>

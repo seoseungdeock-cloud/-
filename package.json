@@ -58,6 +58,7 @@
     "testMatch": [
       "**/__tests__/**/*.test.ts?(x)"
     ],
+    "resolver": "react-native-worklets/jest/resolver.js",
     "setupFiles": [
       "./jest.setup.js"
     ]

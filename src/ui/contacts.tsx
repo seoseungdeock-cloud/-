@@ -7,7 +7,9 @@ import { actions } from '@/core/store';
 import type { User } from '@/core/types';
 import { Icon } from './icons';
 import { Avatar, Empty } from './kit';
+import { Slide } from './motion';
 import { usePresenceBadge } from './presence';
+import { useBoxes } from './segments';
 import { family, space, useColors } from './theme';
 import { useApp, useMe } from './use-app';
 
@@ -97,21 +99,24 @@ export function OrgBrowser({ people, dept, onDept, renderMember }: { people: Use
 // 밑줄 탭 (조직도/외부 연락처, 전체/구성원/조직·그룹 등)
 export function UnderlineTabs<K extends string>({ tabs, value, onChange, dots, scroll }: { tabs: [K, string][]; value: K; onChange: (k: K) => void; dots?: Partial<Record<K, boolean>>; scroll?: boolean }) {
   const c = useColors();
+  const { boxes, measure } = useBoxes<K>();
+  const on = boxes[value];
   const row = (
-    <View style={{ flexDirection: 'row', borderBottomWidth: scroll ? 0 : 1, borderBottomColor: c.line }}>
+    <View style={{ flexDirection: 'row', borderBottomWidth: scroll ? 0 : 1, borderBottomColor: c.lineStrong, position: 'relative' }}>
       {tabs.map(([k, label]) => (
-        <Pressable key={k} onPress={() => onChange(k)} style={{ paddingVertical: space.sm, marginRight: space.lg + 2, borderBottomWidth: 2.5, borderBottomColor: value === k ? c.accent : 'transparent', marginBottom: -1, flexDirection: 'row' }}>
-          <Text style={{ ...(value === k ? family.bold : family.regular), fontSize: 14, color: value === k ? c.accent : c.sub }}>{label}</Text>
+        <Pressable key={k} accessibilityRole="tab" accessibilityState={{ selected: value === k }} onLayout={measure(k)} onPress={() => onChange(k)} style={({ pressed }) => ({ paddingVertical: space.sm + 2, marginRight: space.lg + 4, flexDirection: 'row', opacity: pressed ? 0.6 : 1 })}>
+          <Text style={{ ...family.semibold, fontSize: 15, color: value === k ? c.text : c.faint, letterSpacing: -0.2 }}>{label}</Text>
           {dots?.[k] ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.accent, marginLeft: 2, marginTop: 2 }} /> : null}
         </Pressable>
       ))}
+      {/* 고른 탭 아래 밑줄이 미끄러져 따라갑니다 */}
+      <Slide x={on?.x ?? 0} width={on?.w ?? 0} height={2} color={c.text} radius={1} style={{ top: undefined, bottom: -1 }} />
     </View>
   );
   // 탭이 많으면 가로로 밀어 보거나 양옆 화살표로 넘깁니다.
   if (!scroll) return row;
   return <ScrollTabs>{row}</ScrollTabs>;
 }
-
 function ScrollTabs({ children }: { children: ReactNode }) {
   const c = useColors();
   const ref = useRef<ScrollView>(null);

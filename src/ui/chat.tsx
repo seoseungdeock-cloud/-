@@ -98,6 +98,8 @@ export function Bubble({
   onPick,
   mark,
   current,
+  head = true,
+  tail = true,
 }: {
   m: Message;
   me: User;
@@ -118,6 +120,9 @@ export function Bubble({
   mark?: string;
   /** 지금 보고 있는 검색 결과 */
   current?: boolean;
+  /** 같은 사람이 연달아 보낸 묶음에서 첫 번째(이름·사진 표시) / 마지막(시각·읽음 표시) */
+  head?: boolean;
+  tail?: boolean;
 }) {
   const c = useColors();
   const frameW = useFrameWidth();
@@ -149,7 +154,7 @@ export function Bubble({
   const myReaction = m.reactions?.[me.id];
 
   const meta = (
-    <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', justifyContent: 'flex-end', paddingHorizontal: 4 }}>
+    <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', justifyContent: 'flex-end', paddingHorizontal: 4, opacity: tail ? 1 : 0, width: tail ? undefined : 0 }}>
       {read > 0 ? (
         <Pressable accessibilityLabel="읽은 사람 보기" disabled={!onReads} onPress={onReads} hitSlop={6}>
           <Text style={{ ...family.semibold, fontSize: 11, color: c.accent }}>읽음 {read}</Text>
@@ -164,11 +169,11 @@ export function Bubble({
   // 사진·동영상·파일만 보낸 메시지는 말풍선 테두리 없이 (파일은 자기 말풍선)
   const bare = !card && !quoted && !m.text && !!m.attachments?.length;
   const row = (
-    <View style={{ flex: 1, flexDirection: 'row', justifyContent: mine ? 'flex-end' : 'flex-start', gap: space.sm, marginVertical: space.xs, backgroundColor: highlight ? c.accentSoft : 'transparent', borderRadius: radius.sm }}>
-      {!mine ? <Avatar name={assign ? '배당' : isAi || isBot ? 'AI' : sender?.nickname ?? '?'} size={36} tone={isAi ? c.aiSoft : undefined} uri={isAi || isBot ? undefined : sender?.photo} /> : null}
-      {/* PC 넓은 화면에서는 말풍선이 끝없이 길어지지 않도록 640px 까지 */}
-      <View style={{ maxWidth: frameW > 900 ? Math.min(640, frameW * 0.72) : '78%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
-        {!mine ? (
+    <View style={{ flex: 1, flexDirection: 'row', justifyContent: mine ? 'flex-end' : 'flex-start', gap: space.sm, marginTop: head ? space.sm : 2, marginBottom: 1, backgroundColor: highlight ? c.accentSoft : 'transparent', borderRadius: radius.sm }}>
+      {!mine ? (head ? <Avatar name={assign ? '배당' : isAi || isBot ? 'AI' : sender?.nickname ?? '?'} size={36} tone={isAi ? c.aiSoft : undefined} uri={isAi || isBot ? undefined : sender?.photo} /> : <View style={{ width: 36 }} />) : null}
+      {/* PC 넓은 화면에서는 말풍선이 끝없이 길어지지 않도록 560px 까지 */}
+      <View style={{ maxWidth: frameW > 900 ? Math.min(560, frameW * 0.62) : '78%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
+        {!mine && head ? (
           <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 13, color: isAi ? c.ai : isBot ? c.accent : c.sub, marginBottom: 2 }}>
             {assign ? '대륜 사건 배당' : isAi || isBot ? nameOf(users, m.senderId) : sender ? displayName(sender) : ''}
           </Text>
@@ -193,8 +198,10 @@ export function Bubble({
               backgroundColor: bare ? 'transparent' : assign ? c.surface : card ? c.bg : mine ? c.bubbleMine : isAi ? c.aiSoft : isBot ? c.accentSoft : c.bubbleOther,
               borderWidth: current || assign ? 2 : card ? 1 : 0,
               borderColor: current ? c.mark : assign ? c.accent : c.line,
-              borderRadius: radius.lg,
-              paddingHorizontal: bare ? 0 : space.md,
+              // 묶음의 첫 말풍선은 사진 쪽 모서리만 살짝 각지게 (말꼬리 느낌)
+              borderRadius: radius.lg + 2,
+              ...(bare ? null : mine ? { borderTopRightRadius: head ? 6 : radius.lg + 2 } : { borderTopLeftRadius: head ? 6 : radius.lg + 2 }),
+              paddingHorizontal: bare ? 0 : space.md + 2,
               paddingVertical: bare ? 0 : space.sm + 2,
               gap: space.xs,
             }}>
@@ -1146,7 +1153,7 @@ function AssignCard({ notice, m }: { notice: AssignNotice; m: Message }) {
             </View>
             <ScrollView contentContainerStyle={{ padding: space.lg }}>
               <Text selectable style={{ ...family.regular, fontSize: 14, lineHeight: 22, color: c.text }}>{notice.full}</Text>
-              <Text style={{ ...family.regular, fontSize: 11, color: c.faint, marginTop: space.md }}>법무법인(유한) 대륜 · 의뢰인에게는 보이지 않는 안내입니다.</Text>
+              <Text style={{ ...family.regular, fontSize: 11, color: c.faint, marginTop: space.md }}>의뢰인에게는 보이지 않는 안내입니다.</Text>
             </ScrollView>
           </Pressable>
         </Pressable>

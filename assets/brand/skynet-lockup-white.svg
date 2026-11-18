@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10787 2244" width="10787" height="2244" role="img" aria-label="SKYNET">
+  <title>SKYNET horizontal lockup</title>
+  <desc>Wordmark drawn from Pretendard Bold (orioncactus), SIL Open Font License 1.1, converted to outlines. Symbol original — slash cut family (SKYZ).</desc>
+  <defs><clipPath id="disc-s"><circle cx="100" cy="100" r="92"/></clipPath></defs>
+  <g transform="translate(154.75,154.75) scale(9.6720)"><g clip-path="url(#disc-s)">
+    <path d="M-129.4,351.3 L170.6,-168.3 L200.1,-151.3 L-99.9,368.3 Z" fill="#FFFFFF"/>
+    <path d="M-64.7,351.3 L235.3,-168.3 L264.7,-151.3 L-35.3,368.3 Z" fill="#7D9BFF"/>
+    <path d="M-0.1,351.3 L299.9,-168.3 L329.4,-151.3 L29.4,368.3 Z" fill="#FFFFFF"/>
+  </g></g>
+  <g transform="translate(2553.4,378.0)">
+  <!--SKYNET wordmark — Pretendard Bold, outlined-->
+  <g transform="translate(0,1468) scale(1,-1)">
+    <g transform="translate(0,0)" fill="#FFFFFF">
+      <g transform="translate(0,0)"><path d="M907 1034Q901 1092 870.5 1133.0Q840 1174 786.0 1195.0Q732 1216 657 1216Q584 1216 530.5 1195.0Q477 1174 449.0 1136.5Q421 1099 421 1051Q420 978 481.5 937.0Q543 896 652 869L782 838Q988 792 1101.5 689.5Q1215 587 1216 413Q1216 282 1149.0 184.0Q1082 86 956.0 33.0Q830 -20 655 -20Q480 -20 350.5 34.0Q221 88 150.0 193.5Q79 299 74 452H366Q372 381 409.0 332.0Q446 283 509.0 258.0Q572 233 652 233Q730 233 789.0 256.0Q848 279 880.0 320.5Q912 362 912 415Q912 463 884.0 496.5Q856 530 802.5 553.5Q749 577 665 598L506 636Q316 683 214.5 779.5Q113 876 113 1031Q113 1160 183.5 1259.0Q254 1358 378.5 1413.0Q503 1468 660 1468Q818 1468 939.0 1413.5Q1060 1359 1127.0 1260.5Q1194 1162 1196 1034Z"/></g>
+      <g transform="translate(1298,0)"><path d="M123 1448H423V806H442L968 1448H1330L789 800L1336 0H975L574 599L423 414V0H123Z"/></g>
+      <g transform="translate(2663,0)"><path d="M372 1448 706 824H719L1053 1448H1391L862 516V0H563V516L35 1448Z"/></g>
+    </g>
+    <g transform="translate(4088,0)" fill="#7D9BFF">
+      <g transform="translate(0,0)"><path d="M1330 0H1070L434 920H423V0H123V1448H387L1018 529H1031V1448H1330Z"/></g>
+      <g transform="translate(1461,0)"><path d="M123 1448H1095V1200H423V848H1044V601H423V248H1097V0H123Z"/></g>
+      <g transform="translate(2674,0)"><path d="M65 1448H1251V1200H807V0H510V1200H65Z"/></g>
+    </g>
+  </g>
+  </g>
+</svg>

@@ -1,4 +1,5 @@
-// 메신저 목록 (주소록 / 대화방 / 오픈대화방 / 클라이언트). 모바일은 '대화' 탭 전체, PC 는 왼쪽 340px 칸으로 쓰고 오른쪽에 대화를 엽니다.
+// 대화 목록. 모바일은 '대화' 탭 전체(위에 남색 띠: 제목·주소록·오픈대화방·새 대화·검색), PC 는 왼쪽 340px 칸으로 쓰고 오른쪽에 대화를 엽니다.
+// 대화방이 한 목록이고 칩(전체·안 읽음·1:1·그룹·의뢰인)으로만 걸러 봅니다. 주소록·오픈대화방은 위 아이콘으로 열고 ← 로 돌아옵니다.
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
@@ -6,16 +7,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isSelfRoom, SELF_ROOM_TITLE } from '@/core/calendar';
 import { contactsFor } from '@/core/contacts';
-import { clientCanSee, externalContacts, hasClient, isHidden, markParts, searchAll, sortRooms, unreadCount, searchDirectory, type DirectoryHit } from '@/core/messenger';
+import { clientCanSee, externalContacts, hasClient, isHidden, markParts, searchAll, searchDirectory, sortRooms, unreadCount, type DirectoryHit } from '@/core/messenger';
 import { actions } from '@/core/store';
 import type { Message, Room } from '@/core/types';
-import { ContactRow, OrgBrowser, UnderlineTabs } from '@/ui/contacts';
-import { Icon } from '@/ui/icons';
 import { AuthBotRow } from '@/ui/auth-bot';
-import { OpenPanel } from '@/ui/open-chat';
+import { ContactRow, OrgBrowser, UnderlineTabs } from '@/ui/contacts';
+import { Icon, type IconName } from '@/ui/icons';
 import { Avatar, Empty } from '@/ui/kit';
-import { chatTime, roomTitle, RoomRow } from '@/ui/room-row';
-import { family, font, MAX_WIDTH, radius, space, useColors } from '@/ui/theme';
+import { Appear, Fade, Press } from '@/ui/motion';
+import { OpenPanel } from '@/ui/open-chat';
+import { chatTime, RoomRow, roomTitle } from '@/ui/room-row';
+import { ChipBar } from '@/ui/segments';
+import { family, font, MAX_WIDTH, radius, space, tracking, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 import { useLayout } from '@/ui/web-frame';
 
@@ -38,61 +41,120 @@ export function MessengerSplit({ children }: { children: ReactNode }) {
 export function EmptyPane() {
   const c = useColors();
   return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.sm, padding: space.xl, backgroundColor: c.page }}>
-      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.bg, borderWidth: 1, borderColor: c.lineStrong, alignItems: 'center', justifyContent: 'center', marginBottom: space.sm }}>
-        <Icon name="chat" color={c.faint} size={28} />
-      </View>
-      <Text style={{ ...family.bold, fontSize: 16, color: c.text }}>대화를 골라 주세요</Text>
-      <Text style={{ ...family.regular, fontSize: 13.5, color: c.sub, textAlign: 'center', lineHeight: 20 }}>왼쪽에서 대화방을 고르거나 「새 대화」로 구성원에게 말을 걸어 보세요.{'\n'}사진·파일은 대화창에 끌어다 놓으면 바로 보내집니다.</Text>
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.sm, padding: space.xl, backgroundColor: c.bg }}>
+      <Appear>
+        <View style={{ width: 72, height: 72, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: space.sm, backgroundColor: c.navBg, alignSelf: 'center' }}>
+          <Icon name="chat" color={c.navText} size={30} />
+        </View>
+      </Appear>
+      <Appear index={1}>
+        <Text style={{ ...family.bold, fontSize: 18, color: c.text, letterSpacing: tracking.h3, textAlign: 'center' }}>대화를 골라 주세요</Text>
+      </Appear>
+      <Appear index={2}>
+        <Text style={{ ...family.regular, fontSize: 13.5, color: c.sub, textAlign: 'center', lineHeight: 20 }}>왼쪽에서 대화방을 고르거나 「새 대화」로 구성원에게 말을 걸어 보세요.{'\n'}사진·파일은 대화창에 끌어다 놓으면 바로 보내집니다.</Text>
+      </Appear>
     </View>
   );
 }
 
-type RoomFilter = 'all' | 'one' | 'many' | 'case';
-const FILTERS: [RoomFilter, string][] = [['all', '전체'], ['one', '1:1'], ['many', '여러 명'], ['case', '사건수행']];
-const TEST: Record<RoomFilter, (r: Room) => boolean> = {
-  all: () => true,
-  one: (r) => r.memberIds.length <= 2 && r.kind !== 'meeting' && r.kind !== 'marketing',
-  many: (r) => r.memberIds.length > 2,
-  case: (r) => r.kind === 'case' || r.kind === 'consult',
-};
+type RoomFilter = 'all' | 'unread' | 'one' | 'many' | 'client';
+const FILTERS: [RoomFilter, string][] = [['all', '전체'], ['unread', '안 읽음'], ['one', '1:1'], ['many', '그룹'], ['client', '의뢰인']];
 
-type Tab = 'contacts' | 'rooms' | 'open' | 'clients';
-const PLACEHOLDER: Record<Tab, string> = {
+type View_ = 'rooms' | 'contacts' | 'open';
+const TITLE: Record<View_, string> = { rooms: '대화', contacts: '주소록', open: '오픈대화방' };
+const PLACEHOLDER: Record<View_, string> = {
+  rooms: '대화방·메시지·파일 검색',
   contacts: '이름·부서·직책 검색',
-  rooms: '대화방·메시지 검색',
   open: '오픈대화방 검색 (#태그)',
-  clients: '의뢰인·사건방·메시지 검색',
 };
 
-// 메신저: 주소록 / 대화방 / 오픈대화방 / 클라이언트 (네이버웍스 주소록·메시지 구성 참고)
 // 의뢰인 계정은 자기 사건방만 보는 간단한 화면을 씁니다.
 export function MessengerList() {
   const user = useMe();
   return user.role === 'client' ? <ClientMessenger /> : <FirmMessenger />;
 }
 
-// PC 에서 대화방을 바꾸면 이 목록이 다시 만들어지므로, 보고 있던 탭을 기억해 둡니다 (이 창 안에서만)
-const sticky: { tab?: Tab } = {};
+// PC 에서 대화방을 바꾸면 이 목록이 다시 만들어지므로, 보고 있던 화면·칩을 기억해 둡니다 (이 창 안에서만)
+const sticky: { view?: View_; filter?: RoomFilter } = {};
+
+/** 위 띠. 폰은 남색(상태 막대까지), PC 목록 칸은 흰색. */
+function Head({ title, back, right, children }: { title: string; back?: () => void; right?: ReactNode; children?: ReactNode }) {
+  const c = useColors();
+  const { desktop } = useLayout();
+  const fg = desktop ? c.text : c.navText;
+  return (
+    <View style={{ backgroundColor: desktop ? c.bg : c.navBg, paddingHorizontal: space.lg, paddingTop: desktop ? space.md + 2 : space.sm, paddingBottom: desktop ? space.sm : space.lg + 10, gap: space.md }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', height: 40, gap: 2 }}>
+        {back ? (
+          <Press accessibilityLabel="대화 목록으로" onPress={back} scale={0.9} style={{ width: 36, height: 36, marginLeft: -10, borderRadius: 18, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="back" color={fg} size={22} />
+          </Press>
+        ) : null}
+        <Fade key={title}>
+          <Text style={{ ...family.heavy, fontSize: desktop ? font.h2 : font.title - 2, color: fg, letterSpacing: desktop ? tracking.h2 : tracking.title }}>{title}</Text>
+        </Fade>
+        <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 2 }}>{right}</View>
+      </View>
+      {children}
+    </View>
+  );
+}
+
+/** 띠 위의 동그란 아이콘 버튼 */
+function HeadButton({ icon, label, onPress, on, primary }: { icon: IconName; label: string; onPress: () => void; on?: boolean; primary?: boolean }) {
+  const c = useColors();
+  const { desktop } = useLayout();
+  const bg = primary ? (desktop ? c.accent : c.navAccent) : on ? (desktop ? c.surface : c.navActive) : 'transparent';
+  const fg = primary ? '#FFFFFF' : desktop ? c.text : c.navText;
+  return (
+    <Press
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      scale={0.88}
+      style={({ hovered }) => ({ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: hovered && !primary ? (desktop ? c.surface : c.navHover) : bg })}>
+      <Icon name={icon} color={fg} size={primary ? 20 : 21} />
+    </Press>
+  );
+}
 
 function SearchBar({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
   const c = useColors();
+  const { desktop } = useLayout();
+  const onNav = !desktop;
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.surface, borderRadius: radius.pill, paddingHorizontal: space.md }}>
-      <Icon name="search" color={c.faint} size={18} />
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: onNav ? 'rgba(255,255,255,0.12)' : c.surface, borderRadius: radius.md + 2, paddingHorizontal: space.md + 2, height: 44 }}>
+      <Icon name="search" color={onNav ? c.navMute : c.mute} size={18} />
       <TextInput
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}
-        placeholderTextColor={c.faint}
-        style={{ flex: 1, paddingVertical: space.sm + 2, fontSize: font.body, ...family.regular, color: c.text }}
+        placeholderTextColor={onNav ? c.navMute : c.mute}
+        style={{ flex: 1, height: '100%', fontSize: font.body, ...family.regular, color: onNav ? c.navText : c.text, ...({ outlineStyle: 'none' } as object) }}
       />
       {value ? (
         <Pressable accessibilityLabel="검색어 지우기" onPress={() => onChange('')} hitSlop={8}>
-          <Icon name="close" color={c.faint} size={16} />
+          <Icon name="close" color={onNav ? c.navMute : c.faint} size={16} />
         </Pressable>
       ) : null}
     </View>
+  );
+}
+
+/** 띠 아래 흰 본문 (폰은 위 모서리를 둥글게 띠 위로 올림) */
+function Body({ children }: { children: ReactNode }) {
+  const c = useColors();
+  const { desktop } = useLayout();
+  return <View style={{ flex: 1, backgroundColor: c.bg, ...(desktop ? null : { borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, marginTop: -radius.xl + 6 }) }}>{children}</View>;
+}
+
+function Frame({ children }: { children: ReactNode }) {
+  const c = useColors();
+  const { desktop } = useLayout();
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: desktop ? c.bg : c.navBg }} edges={['top', 'left', 'right']}>
+      <View style={{ width: '100%', maxWidth: desktop ? undefined : MAX_WIDTH, alignSelf: 'center', flex: 1 }}>{children}</View>
+    </SafeAreaView>
   );
 }
 
@@ -100,94 +162,62 @@ function SearchBar({ value, onChange, placeholder }: { value: string; onChange: 
 function ClientMessenger() {
   const s = useApp();
   const user = useMe();
-  const c = useColors();
   const [q, setQ] = useState('');
   const query = q.trim();
-  const { desktop } = useLayout();
   const rooms = useMemo(() => sortRooms(s.rooms.filter((r) => clientCanSee(r, user) || (isSelfRoom(r, user.id) && !isHidden(r, user.id, s.messages))), user.id, s.messages), [s.rooms, s.messages, user]);
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top', 'left', 'right']}>
-      <View style={{ width: '100%', maxWidth: desktop ? undefined : MAX_WIDTH, alignSelf: 'center', flex: 1 }}>
-        <View style={{ paddingHorizontal: space.lg, paddingTop: space.md, gap: space.md }}>
-          <Text style={{ ...family.heavy, fontSize: font.title, color: c.text }}>대화</Text>
-          <SearchBar value={q} onChange={setQ} placeholder="사건방·메시지 검색" />
-        </View>
+    <Frame>
+      <Head title="대화">
+        <SearchBar value={q} onChange={setQ} placeholder="사건방·메시지 검색" />
+      </Head>
+      <Body>
         {query ? (
           <SearchResults query={query} scope={(r) => clientCanSee(r, user)} />
         ) : (
-          <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: 96 }}>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: 96 }}>
             <SelfChatRow />
-            {rooms.length ? rooms.map((r) => <RoomRow key={r.id} room={r} />) : <Empty text="진행 중인 사건방이 없습니다." />}
+            {rooms.length ? rooms.map((r, i) => <Appear key={r.id} index={i}><RoomRow room={r} /></Appear>) : <Empty text="진행 중인 사건방이 없습니다." />}
           </ScrollView>
         )}
-      </View>
-    </SafeAreaView>
+      </Body>
+    </Frame>
   );
 }
 
 function FirmMessenger() {
   const c = useColors();
   const { desktop } = useLayout();
-  // PC 는 대화방 탭부터 (오른쪽에 바로 대화를 열어 보도록), 폰은 주소록부터
-  const [tab, setTabState] = useState<Tab>(sticky.tab ?? (desktop ? 'rooms' : 'contacts'));
-  const setTab = (t: Tab) => {
-    sticky.tab = t;
-    setTabState(t);
+  const [view, setViewState] = useState<View_>(sticky.view ?? 'rooms');
+  const setView = (v: View_) => {
+    sticky.view = v;
+    setViewState(v);
+    setQ('');
   };
   const [q, setQ] = useState('');
-  const [selecting, setSelecting] = useState(false);
+  const [, setSelecting] = useState(false);
   const query = q.trim();
-  const newLabel = tab === 'open' ? '오픈대화방 만들기' : '새 대화';
-  const goNew = () => router.push(tab === 'open' ? '/open/new' : '/room/new');
+  const newLabel = view === 'open' ? '오픈대화방 만들기' : '새 대화';
+  const goNew = () => router.push(view === 'open' ? '/open/new' : '/room/new');
+
+  const right = (
+    <>
+      {view === 'rooms' ? <HeadButton icon="contact" label="주소록" onPress={() => setView('contacts')} /> : null}
+      {view === 'rooms' ? <HeadButton icon="people" label="오픈대화방" onPress={() => setView('open')} /> : null}
+      {view === 'contacts' ? null : <HeadButton icon="plus" label={newLabel} onPress={goNew} primary />}
+    </>
+  );
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top', 'left', 'right']}>
-      <View style={{ width: '100%', maxWidth: desktop ? undefined : MAX_WIDTH, alignSelf: 'center', flex: 1 }}>
-        <View style={{ paddingHorizontal: space.lg, paddingTop: space.md }}>
-          {desktop ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: space.md, marginTop: 2 }}>
-              <Text style={{ ...family.bold, fontSize: 20, color: c.text, letterSpacing: -0.3 }}>메신저</Text>
-              {tab === 'clients' ? null : (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={newLabel}
-                  onPress={goNew}
-                  style={(st) => ({ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 32, borderRadius: radius.sm, borderWidth: 1, borderColor: c.lineStrong, backgroundColor: (st as { hovered?: boolean }).hovered ? c.surface : c.bg })}>
-                  <Icon name="plus" color={c.text} size={16} />
-                  <Text style={{ ...family.semibold, fontSize: 13, color: c.text }}>{newLabel}</Text>
-                </Pressable>
-              )}
-            </View>
-          ) : null}
-          <SearchBar value={q} onChange={setQ} placeholder={PLACEHOLDER[tab]} />
-          <View style={{ marginTop: space.sm }}>
-            <UnderlineTabs
-              tabs={[['contacts', '주소록'], ['rooms', '대화방'], ['open', '오픈대화방'], ['clients', '클라이언트']]}
-              value={tab}
-              onChange={(t) => {
-                setTab(t);
-                setSelecting(false);
-              }}
-            />
-          </View>
-        </View>
-        {tab === 'contacts' ? (
-          <ContactsPanel query={query} />
-        ) : tab === 'open' ? (
-          <OpenPanel query={query} />
-        ) : (
-          <RoomsPanel key={tab} query={query} onSelecting={setSelecting} scope={tab === 'clients' ? 'clients' : 'internal'} />
-        )}
-        {desktop || ((tab === 'rooms' || tab === 'clients') && selecting) || tab === 'clients' ? null : (
-        <Pressable
-          accessibilityLabel={newLabel}
-          onPress={goNew}
-          style={{ position: 'absolute', right: space.lg, bottom: space.lg, width: 56, height: 56, borderRadius: 28, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4 }}>
-          <Icon name="plus" color="#FFFFFF" size={28} />
-        </Pressable>
-        )}
-      </View>
-    </SafeAreaView>
+    <Frame>
+      <Head title={TITLE[view]} back={view === 'rooms' ? undefined : () => setView('rooms')} right={right}>
+        <SearchBar value={q} onChange={setQ} placeholder={PLACEHOLDER[view]} />
+      </Head>
+      <Body>
+        <Fade key={view} style={{ flex: 1 }}>
+          {view === 'contacts' ? <ContactsPanel query={query} /> : view === 'open' ? <OpenPanel query={query} /> : <RoomsPanel query={query} onSelecting={setSelecting} />}
+        </Fade>
+      </Body>
+    </Frame>
   );
 }
 
@@ -209,15 +239,15 @@ function ContactsPanel({ query }: { query: string }) {
       (h) => hitTab === 'all' || (hitTab === 'member' ? h.type === 'member' : h.type !== 'member'),
     );
     return (
-      <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 96 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: 96 }}>
         <UnderlineTabs tabs={[['all', '전체'], ['member', '구성원'], ['group', '조직/그룹']]} value={hitTab} onChange={setHitTab} />
-        {hits.length ? hits.map((h, i) => <HitRow key={i} h={h} onDept={(d) => { setDept(d); setView('org'); }} />) : <Empty text="검색 결과가 없습니다." />}
+        {hits.length ? hits.map((h, i) => <Appear key={i} index={i}><HitRow h={h} onDept={(d) => { setDept(d); setView('org'); }} /></Appear>) : <Empty text="검색 결과가 없습니다." />}
       </ScrollView>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 96 }}>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: 96 }}>
       <ContactRow u={user} me />
       {isFirm ? (
         <>
@@ -233,7 +263,7 @@ function ContactsPanel({ query }: { query: string }) {
               <OrgBrowser people={people} dept={dept} onDept={setDept} renderMember={(u) => <ContactRow u={u} me={u.id === user.id} />} />
             </>
           ) : external.length ? (
-            external.map((u) => <ContactRow key={u.id} u={u} />)
+            external.map((u, i) => <Appear key={u.id} index={i}><ContactRow u={u} /></Appear>)
           ) : (
             <Empty text="외부 연락처가 없습니다." />
           )}
@@ -263,23 +293,33 @@ function HitRow({ h, onDept }: { h: DirectoryHit; onDept: (d: string) => void })
   );
 }
 
-// 대화방 탭은 내부 대화만, 클라이언트 탭은 의뢰인이 있는 방만 (변호사·직원 기준)
-function RoomsPanel({ query, onSelecting, scope }: { query: string; onSelecting: (v: boolean) => void; scope: 'internal' | 'clients' }) {
+// 내 대화방 전부를 한 목록으로. 칩으로 걸러 봅니다 (의뢰인 = 의뢰인이 있는 방, 변호사·직원 기준).
+function RoomsPanel({ query, onSelecting }: { query: string; onSelecting: (v: boolean) => void }) {
   const s = useApp();
   const user = useMe();
   const c = useColors();
-  const [filter, setFilter] = useState<RoomFilter>('all');
+  const [filter, setFilterState] = useState<RoomFilter>(sticky.filter ?? 'all');
+  const setFilter = (f: RoomFilter) => {
+    sticky.filter = f;
+    setFilterState(f);
+  };
   const [selected, setSelected] = useState<string[]>([]);
   const selecting = selected.length > 0;
   useEffect(() => onSelecting(selecting), [selecting, onSelecting]);
 
-  const inScope = (r: Room) => r.memberIds.includes(user.id) && hasClient(r, s.users) === (scope === 'clients');
-  const mine = useMemo(() => s.rooms.filter(inScope), [s.rooms, user.id, s.users, scope]); // eslint-disable-line react-hooks/exhaustive-deps
+  const inScope = (r: Room) => r.memberIds.includes(user.id);
+  const mine = useMemo(() => s.rooms.filter(inScope), [s.rooms, user.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const visible = useMemo(() => mine.filter((r) => !isHidden(r, user.id, s.messages)), [mine, user.id, s.messages]);
-  const dots = Object.fromEntries(FILTERS.map(([k]) => [k, visible.some((r) => TEST[k](r) && unreadCount(r, user.id, s.messages, s.reads) > 0)])) as Record<RoomFilter, boolean>;
-  const rooms = useMemo(() => {
-    return sortRooms(visible.filter((r) => TEST[filter](r)), user.id, s.messages);
-  }, [visible, filter, s.messages, user.id]);
+  const unreadOf = (r: Room) => unreadCount(r, user.id, s.messages, s.reads);
+  const test: Record<RoomFilter, (r: Room) => boolean> = {
+    all: () => true,
+    unread: (r) => unreadOf(r) > 0,
+    one: (r) => r.memberIds.length <= 2 && r.kind !== 'meeting' && r.kind !== 'marketing' && !hasClient(r, s.users),
+    many: (r) => r.memberIds.length > 2 && !hasClient(r, s.users),
+    client: (r) => hasClient(r, s.users),
+  };
+  const dots = Object.fromEntries(FILTERS.map(([k]) => [k, k !== 'all' && k !== 'unread' && visible.some((r) => test[k](r) && unreadOf(r) > 0)])) as Record<RoomFilter, boolean>;
+  const rooms = useMemo(() => sortRooms(visible.filter((r) => test[filter](r)), user.id, s.messages), [visible, filter, s.messages, user.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = (id: string) => setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   const apply = (fn: (id: string) => unknown) => {
@@ -294,43 +334,42 @@ function RoomsPanel({ query, onSelecting, scope }: { query: string; onSelecting:
   return (
     <View style={{ flex: 1 }}>
       {selecting ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingVertical: space.md }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, height: 50 }}>
           <Text style={{ ...family.bold, fontSize: 16, color: c.text }}>{selected.length}개 선택</Text>
           <Pressable onPress={() => setSelected([])} style={{ marginLeft: 'auto' }} hitSlop={8}>
             <Text style={{ ...family.semibold, fontSize: 15, color: c.sub }}>모두 취소</Text>
           </Pressable>
         </View>
-      ) : scope === 'clients' ? (
-        <View style={{ height: space.sm }} />
       ) : (
-        <View style={{ flexDirection: 'row', gap: space.lg, paddingHorizontal: space.lg, paddingVertical: space.md }}>
-          {FILTERS.map(([k, label]) => (
-            <Pressable key={k} onPress={() => setFilter(k)} style={{ flexDirection: 'row' }}>
-              <Text style={{ ...(filter === k ? family.bold : family.regular), fontSize: 13, color: filter === k ? c.text : c.faint }}>{label}</Text>
-              {dots[k] ? <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: c.accent, marginLeft: 2 }} /> : null}
-            </Pressable>
-          ))}
+        <View style={{ paddingVertical: space.sm, height: 50, justifyContent: 'center' }}>
+          <ChipBar items={FILTERS} value={filter} onChange={setFilter} dots={dots} size="sm" />
         </View>
       )}
       <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 96 }}>
-        {scope === 'internal' && filter === 'all' && !selecting ? <AuthBotRow /> : null}
-        {scope === 'internal' && filter === 'all' && !selecting ? <SelfChatRow /> : null}
+        {filter === 'all' && !selecting ? <AuthBotRow /> : null}
+        {filter === 'all' && !selecting ? <SelfChatRow /> : null}
         {rooms.length ? (
-          rooms.map((r) => <RoomRow key={r.id} room={r} selecting={selecting} selected={selected.includes(r.id)} onToggle={() => toggle(r.id)} />)
+          rooms.map((r, i) => (
+            <Appear key={r.id} index={i}>
+              <RoomRow room={r} selecting={selecting} selected={selected.includes(r.id)} onToggle={() => toggle(r.id)} />
+            </Appear>
+          ))
         ) : (
-          <Empty text={scope === 'clients' ? '의뢰인과의 대화방이 없습니다.' : '대화가 없습니다.'} />
+          <Empty text={filter === 'unread' ? '안 읽은 대화가 없습니다.' : filter === 'client' ? '의뢰인과의 대화방이 없습니다.' : '대화가 없습니다.'} hint={filter === 'all' ? '위의 + 로 구성원에게 말을 걸어 보세요.' : undefined} />
         )}
       </ScrollView>
       {selecting ? (
-        <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingVertical: space.md, borderTopWidth: 1, borderTopColor: c.line, backgroundColor: c.bg }}>
-          <BarButton icon="pin" label={allPinned ? '고정 해제' : '고정'} onPress={() => apply((id) => {
-            const pinned = mine.find((r) => r.id === id)?.pinnedBy?.includes(user.id);
-            if (pinned === allPinned) actions.togglePin(id);
-          })} />
-          <BarButton icon="mute" label={allMuted ? '알림 켜기' : '알림 끄기'} onPress={() => apply((id) => actions.setNotify(id, allMuted ? 'all' : 'off'))} />
-          <BarButton icon="hide" label="숨기기" onPress={() => apply((id) => actions.hideRoom(id))} />
-          <BarButton icon="exit" label="나가기" onPress={() => apply((id) => actions.leaveRoom(id))} />
-        </View>
+        <Appear layout={false}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingVertical: space.md, borderTopWidth: 1, borderTopColor: c.line, backgroundColor: c.bg }}>
+            <BarButton icon="pin" label={allPinned ? '고정 해제' : '고정'} onPress={() => apply((id) => {
+              const pinned = mine.find((r) => r.id === id)?.pinnedBy?.includes(user.id);
+              if (pinned === allPinned) actions.togglePin(id);
+            })} />
+            <BarButton icon="mute" label={allMuted ? '알림 켜기' : '알림 끄기'} onPress={() => apply((id) => actions.setNotify(id, allMuted ? 'all' : 'off'))} />
+            <BarButton icon="hide" label="숨기기" onPress={() => apply((id) => actions.hideRoom(id))} />
+            <BarButton icon="exit" label="나가기" onPress={() => apply((id) => actions.leaveRoom(id))} />
+          </View>
+        </Appear>
       ) : null}
     </View>
   );
@@ -339,10 +378,10 @@ function RoomsPanel({ query, onSelecting, scope }: { query: string; onSelecting:
 function BarButton({ icon, label, onPress }: { icon: 'pin' | 'mute' | 'hide' | 'exit'; label: string; onPress: () => void }) {
   const c = useColors();
   return (
-    <Pressable onPress={onPress} style={{ alignItems: 'center', gap: 2, minWidth: 64 }}>
+    <Press onPress={onPress} scale={0.9} style={{ alignItems: 'center', gap: 2, minWidth: 64 }}>
       <Icon name={icon} color={c.accent} size={22} />
       <Text style={{ ...family.semibold, fontSize: 12, color: c.sub }}>{label}</Text>
-    </Pressable>
+    </Press>
   );
 }
 

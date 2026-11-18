@@ -510,6 +510,49 @@ reset role;
 select kick_axiom();
 select tst.check('AXIOM: 정기 보고 깨우기 함수가 오류 없이 돎', true);
 
+-- ── SKYZAI 메신저 연결 (skyzai_* 함수, 2026-11-18) ──
+reset role;
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000d'); -- 직원
+select tst.check('SKYZAI: 사번→계정 (볼 수 있는 사람만)', (select skyzai_profile_ids(array['lawyer', 'client2', 'nobody']) ->> 'lawyer' = '00000000-0000-0000-0000-00000000000c'
+  and skyzai_profile_ids(array['lawyer', 'client2']) ? 'client2' = false));
+select tst.check('SKYZAI: 1:1 방 열기', skyzai_open_direct('00000000-0000-0000-0000-00000000000c') is not null);
+select tst.check('SKYZAI: 같은 상대는 같은 방', skyzai_open_direct('00000000-0000-0000-0000-00000000000c') = skyzai_open_direct('00000000-0000-0000-0000-00000000000c'));
+select tst.throws('SKYZAI: 자기 자신과 1:1 막힘', $$select skyzai_open_direct(auth.uid())$$, '대화 상대');
+create temp table tst_dm as select skyzai_open_direct('00000000-0000-0000-0000-00000000000c') as id;
+select post_message(gen_random_uuid(), (select id from tst_dm), 'text', '첫 글');
+select post_message(gen_random_uuid(), (select id from tst_dm), 'text', '둘째 글');
+select tst.check('SKYZAI: 글에 순번이 붙고 커짐', (select bool_and(seq > 0) and count(distinct seq) = 2 from messages where room_id = (select id from tst_dm)));
+select tst.check('SKYZAI: 방 목록에 1:1 방·구성원 사번·마지막 글', (select j ->> 'kind' = 'direct' and j -> 'members' @> '[{"login":"lawyer"}]' and j -> 'last_message' ->> 'text' = '둘째 글' and (j ->> 'unread')::int = 0
+  from jsonb_array_elements(skyzai_rooms()) j where (j ->> 'id')::uuid = (select id from tst_dm)));
+select tst.check('SKYZAI: 글 읽기 (순번 순)', (select (r -> 'items' -> 0 ->> 'text', r -> 'items' -> 1 ->> 'text', (r ->> 'more')::boolean) = ('첫 글', '둘째 글', false) from skyzai_messages((select id from tst_dm)) r));
+select tst.check('SKYZAI: 한 쪽씩 (more)', (select jsonb_array_length(r -> 'items') = 1 and (r ->> 'more')::boolean from skyzai_messages((select id from tst_dm), null, null, 1) r));
+select tst.check('SKYZAI: 글 하나 (순번)', (select skyzai_message((select max(seq) from messages where room_id = (select id from tst_dm))) ->> 'sender' = 'staff'));
+select skyzai_react((select id from messages where text = '첫 글'), '👍');
+select tst.check('SKYZAI: 공감 켜기', (select skyzai_message((select seq from messages where text = '첫 글')) -> 'reactions' @> '[{"emoji":"👍","login":"staff"}]'));
+select tst.check('SKYZAI: 공감이 글의 updated_at 을 올림', (select updated_at > created_at from messages where text = '첫 글'));
+select skyzai_react((select id from messages where text = '첫 글'), '👍');
+select tst.check('SKYZAI: 같은 공감 다시 누르면 꺼짐', (select jsonb_array_length(skyzai_message((select seq from messages where text = '첫 글')) -> 'reactions') = 0));
+select edit_message((select id from messages where text = '둘째 글'), '둘째 글 (고침)');
+select tst.check('SKYZAI: 내 글 고치기', (select edited_at is not null and text = '둘째 글 (고침)' from messages where room_id = (select id from tst_dm) and seq = (select max(seq) from messages where room_id = (select id from tst_dm))));
+select tst.throws('SKYZAI: 남의 글은 못 고침', $$select edit_message((select id from messages where text = '안녕하세요'), 'x')$$, '고칠 수 없는');
+-- 상대(변호사) 시점: 안 읽은 수 2, 읽음 처리 뒤 0
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select tst.check('SKYZAI: 상대에게 안 읽은 글 2', (select (skyzai_unread() -> 'rooms' ->> (select id from tst_dm)::text)::int = 2));
+select tst.check('SKYZAI: sync 가 새 글·읽음 위치를 줌', (select jsonb_array_length(s -> 'messages') = 2 and (s -> 'read' ->> 'staff')::bigint = (select max(seq) from messages where room_id = (select id from tst_dm)) and (s -> 'unread' -> 'total')::int >= 2
+  from skyzai_sync((select id from tst_dm), 0, null) s));
+select skyzai_mark_read((select id from tst_dm), (select max(seq) from messages where room_id = (select id from tst_dm)));
+select tst.check('SKYZAI: 읽음 처리 뒤 안 읽은 수 0', (select coalesce((skyzai_unread() -> 'rooms' ->> (select id from tst_dm)::text)::int, 0) = 0));
+select tst.check('SKYZAI: sync 가 이미 받은 글 중 바뀐 것(updated)을 줌', (select jsonb_array_length(s -> 'updated') >= 1 from skyzai_sync((select id from tst_dm), (select max(seq) from messages where room_id = (select id from tst_dm)), now() - interval '1 hour') s));
+-- 남의 방
+select tst.as_user('00000000-0000-0000-0000-00000000000b');
+select tst.throws('SKYZAI: 남의 방 글 못 읽음', $$select skyzai_messages((select id from tst_dm))$$, '참여 중인 방이 아닙니다');
+select tst.check('SKYZAI: 남의 방 순번은 null', skyzai_message((select max(seq) from messages where room_id = (select id from tst_dm))) is null);
+select tst.check('SKYZAI: 남의 방은 sync 에 left', (skyzai_sync((select id from tst_dm), 0, null) ->> 'left')::boolean);
+reset role;
+set role anon;
+select tst.throws('SKYZAI: 비로그인 못 부름', $$select skyzai_rooms()$$, 'permission denied');
+reset role;
 -- ── 로그인 안 한 사람 ──
 reset role;
 set role anon;

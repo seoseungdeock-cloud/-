@@ -1,15 +1,19 @@
 # 스카이넷 (SKYNET) — 대륜 업무 메신저
 
-옛 이름은 대륜톡(그 전엔 라잇나우)입니다. 2026-11-16 스카이넷으로 바꿨습니다. 코드 안의 `rightnow` 가 붙은 식별자(로그인 도메인 `rightnow.local`, 멤버십 값, 저장소 키, 의뢰인 표시 `대륜톡 의뢰인`)는 **이미 운영 DB 와 기기에 저장된 값이라 그대로 둡니다** — 바꾸면 기존 계정·설정이 끊깁니다.
+2026-11-16 스카이넷으로 이름을 정했습니다. 코드 안의 `rightnow` 가 붙은 식별자(로그인 도메인 `rightnow.local`, 멤버십 값, 저장소 키, 의뢰인 표시 `대륜톡 의뢰인`)는 이전 운영 때 **이미 운영 DB 와 기기에 저장된 값이라 그대로 둡니다** — 바꾸면 기존 계정·설정이 끊깁니다. 이 식별자는 내부 키일 뿐 화면이나 문서에서 이전 이름을 쓰지 않습니다.
 
 의뢰인·변호사·직원이 함께 쓰는 사내 메신저 겸 업무 앱입니다. 하나의 코드로 웹(PC·폰 브라우저), PC 앱(브라우저에서 설치하는 PWA), 안드로이드 앱이 나옵니다.
 
-**화면 구성** (2026-11-16, SKYZAI 송무 화면 구성 참고) — 창 폭에 따라 자동으로 고르며 MY 탭 「화면 구성」에서 고정할 수 있습니다.
+**화면 구성** (2026-11-17 개편 — 슬랙식 진한 남색 메뉴, 대화 중심) — 창 폭에 따라 자동으로 고르며 MY 탭 「화면 구성」에서 고정할 수 있습니다.
 | 구성 | 언제 | 모습 |
 |---|---|---|
-| 데스크톱 | 창 폭 1024px 이상 | 왼쪽 240px 메뉴(`src/ui/shell.tsx`) + 본문. 메신저는 「방 목록 340px | 대화」 2단(`src/ui/messenger-list.tsx`), 다른 화면은 가운데 흰 본문 칸(최대 960px) |
-| 태블릿 | 768~1023px | 왼쪽 64px 아이콘 메뉴, 메신저는 1단 |
-| 모바일 | 767px 이하, 폰 앱 | 아래 탭. PC 에서 '모바일'을 고르면 504px 폰 틀을 가운데에 띄움 |
+| 데스크톱 | 창 폭 1024px 이상 | 왼쪽 240px 남색 메뉴(`src/ui/shell.tsx`, 현재 항목 표시가 미끄러져 따라감) + 흰 본문. 메신저는 「방 목록 340px | 대화」 2단(`src/ui/messenger-list.tsx`) |
+| 태블릿 | 768~1023px | 왼쪽 64px 남색 아이콘 메뉴, 메신저는 1단 |
+| 모바일 | 767px 이하, 폰 앱 | 아래 탭(`src/ui/tab-bar.tsx`, 미끄러지는 표시·튀는 아이콘). 대화 탭 위는 남색 띠(제목·주소록·오픈대화방·새 대화·검색). PC 에서 '모바일'을 고르면 504px 폰 틀을 가운데에 띄움 |
+
+메뉴는 **대화 · 게시판 · 캘린더 · MY**(권한자는 업무)입니다. 사건 탭은 없고 사건 정보는 사건방 안(`src/ui/case-panel.tsx`)에서 봅니다.
+대화 목록은 한 목록이며 칩(전체·안 읽음·1:1·그룹·의뢰인)으로 걸러 봅니다. 대화방은 같은 사람이 5분 안에 연달아 보낸 메시지를 한 묶음으로 보여 줍니다(첫 것에 이름·사진, 마지막 것에 시각).
+움직임은 모두 `src/ui/motion.tsx`(react-native-reanimated)의 부품(Appear·Press·Pop·Slide·Fade)만 씁니다. 고르기 부품(칩·세그먼트)은 `src/ui/segments.tsx`.
 이 문서는 개발팀 인수인계용입니다. 비밀 키 값은 이 저장소에 없고, 이름만 적어 두었습니다.
 
 - 운영 웹: https://seoseungdeock-cloud.github.io/-/ (GitHub Pages, `gh-pages` 가지)
@@ -44,7 +48,8 @@
 | `@AI` (방 안 AI, PDF·HWP·HWPX 읽기, `@AI 띠지`, `@AI 오타`) | `src/core/room-ai.ts`, `src/core/hwp-text.ts`, `supabase/functions/axiom` |
 | AXIOM 경영관리(위원회, 작업지시, 회의 정리) — 업무 탭, 어드민 전용 | `src/core/axiom`, `src/app/axiom`, `supabase/functions/axiom` |
 | 푸시(폰 Expo 푸시, PC 웹 푸시), 08:30 요약 | `supabase/functions/push-send`, `src/core/push.ts`, `src/core/web-push.ts` |
-| 변호사 찾기 지도, 대륜 아너스 멤버십, 캘린더 | `src/app/(tabs)`, `src/core/offices.ts`, `src/core/membership.ts`, `src/core/calendar.ts` |
+| 캘린더, 사무소·담당 변호사 목록(백오피스·배당 안내용) | `src/app/(tabs)/calendar.tsx`, `src/core/calendar.ts`, `src/core/offices.ts` |
+| SKYZAI(song_mu) 메신저 연결 — SKYZAI 의 메신저 화면이 이 서버의 방·글·파일을 그대로 쓴다 (2026-11-18) | `supabase/migrations/20261118000000_skyzai_messenger.sql`, `supabase/functions/skyzai-bridge` |
 
 ## 폴더
 
@@ -56,7 +61,7 @@ src/ui/               공통 부품, 디자인 토큰(theme.ts), 시트·채팅 
 supabase/migrations/  DB 구조·보안 규칙(RLS)·서버 함수(RPC)·예약 작업. 날짜순으로 적용
 supabase/functions/   Edge Functions (Deno)
 supabase/tests/       로컬 Postgres로 마이그레이션·보안 규칙 시험
-scripts/              웹 배포, AXIOM 함수 배포, 첫 관리자 만들기, 지도·사무소 데이터
+scripts/              웹 배포, AXIOM 함수 배포, 첫 관리자 만들기, 사무소 데이터 변환
 .github/workflows/    안드로이드 APK 빌드
 ```
 
@@ -159,6 +164,15 @@ PC 앱 설치: 크롬·엣지에서 왼쪽 메뉴 아래 또는 MY 탭의 「PC 
 GitHub Actions의 `android-apk` 작업이 만듭니다. Actions 화면에서 직접 실행(workflow_dispatch)하거나, 커밋 메시지에 `[apk]`를 넣으면 돕니다.
 결과는 실행 화면의 `rightnow-apk` 파일(30일 보관)입니다. 지금은 임시 서명 키라서, 정식 키로 바꾸면 폰에서 한 번 지우고 다시 설치해야 합니다.
 폰 푸시는 Expo 계정과 Firebase 프로젝트, 아이폰은 Apple 개발자 계정이 추가로 필요합니다.
+
+## SKYZAI(song_mu) 메신저 연결 (2026-11-18)
+SKYZAI(송무 플랫폼, `AI-SERVICE/song_mu`)의 메신저 화면은 그대로 두고 **저장소를 이 서버로 바꿨습니다.** SKYZAI 에서 나눈 대화가 스카이넷 앱에 그대로 보이고, 반대도 같습니다 — 같은 `rooms`·`messages` 입니다.
+- 사람: 대륜탑 사번이 공통 키. SKYZAI 는 사번(소문자 `profiles.login_id`)으로 주고받고 이름·직위는 자기 ERP 에서 붙입니다.
+- 세션: SKYZAI 서버가 함수 `skyzai-bridge` 에 공유 비밀(`DAERYUNTOP_BRIDGE_KEY`, SKYZAI 쪽 이름 `SKYNET_BRIDGE_KEY`)을 보이면 그 사번의 계정을 찾거나 만들고 **그 사람의 세션 토큰**을 줍니다. SKYZAI 는 그 토큰으로 PostgREST(`rpc/skyzai_*`)·Storage 를 '그 사람으로서' 부르므로 권한은 앱과 똑같이 RLS·`auth.uid()` 가 지킵니다. 서비스 키·JWT 비밀은 SKYZAI 에 주지 않습니다.
+- DB: `messages.seq`(커지는 정수 — SKYZAI 화면이 글 번호를 정수로 가정), `messages.edited_at` + `edit_message`(글 고치기, 앱은 바뀐 글을 그대로 보여 줌), 공감이 바뀌면 `updated_at` 을 올리는 트리거, 화면 모양으로 묶어 주는 `skyzai_rooms`·`skyzai_messages`·`skyzai_sync` 등. 시험은 `supabase/tests/rls_test.sql` 의 'SKYZAI:' 항목.
+- SKYZAI 가 올린 파일은 `room-files/<방 id>/skyzai/<첨부 id>.<확장자>`. 공지·초대·나가기·이름 바꾸기는 방에 `system` 글 한 줄을 남겨 두 앱 모두에 보입니다.
+- SKYZAI 쪽 코드: `build/integrated/services/skynet.py`(연결), `services/messenger.py`(화면 모양), 환경변수 `SKYNET_URL`·`SKYNET_ANON_KEY`·`SKYNET_BRIDGE_KEY`.
+배포 순서: (1) 위 마이그레이션을 서버 DB 에 적용 (2) `skyzai-bridge/index.ts` 를 `/opt/skynet/volumes/functions/skyzai-bridge/` 에 복사하고 `docker compose restart functions` (3) SKYZAI 에 환경변수 3개 넣고 재배포.
 
 ## 꼭 지킬 것
 

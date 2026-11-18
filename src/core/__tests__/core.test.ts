@@ -8,13 +8,11 @@ import { opinionFor } from '../knowledge';
 import { searchOpenRooms, splitOpenRooms } from '../open-chat';
 import { planFromCommand, rankPerformance, mostSimilar } from '../marketing';
 import { summarizeMeeting } from '../meeting';
-import { officeCountByRegion, searchLawyers } from '../offices';
-import { aiAnswerLevel, canCreateRoom, canJoinMembership, canSeeSuggestions, canSeeWorkTab, canUseAgents } from '../rooms';
+import { aiAnswerLevel, canCreateRoom, canSeeSuggestions, canSeeWorkTab, canUseAgents } from '../rooms';
 import { actions, deadlineCases, getState, me, resetState } from '../store';
 import { layoutChart, parseRows } from '../templates';
 import { similarity } from '../text';
 import type { Room, User } from '../types';
-import { KOREA_REGIONS } from '../../data/korea-map';
 import { myCodes, secondsLeft, unreadCodes } from '../auth-codes';
 import { ackStatus, alertText, clientUnackedHours, dDay, demoUpdate, pendingFor, reminderPlan, whenLabel } from '../hearings';
 import { digestPosts, LAW_BOT, nextDigestAt, shortGist } from '../law-digest';
@@ -119,18 +117,6 @@ describe('메신저 흐름', () => {
   });
 });
 
-describe('지도·검색', () => {
-  it('시·도 17개 경로가 있다', () => {
-    expect(KOREA_REGIONS).toHaveLength(17);
-    expect(KOREA_REGIONS.every((r) => r.d.startsWith('M'))).toBe(true);
-  });
-  it('지역·분야 필터와 고객이 고른 정렬', () => {
-    expect(officeCountByRegion()['11']).toBe(1);
-    const rows = searchLawyers({ field: '형사', sort: 'career' });
-    expect(rows.map((r) => r.id)).toEqual(['lw_5', 'lw_2']);
-    expect(searchLawyers({ regionCode: '21', sort: 'name' })).toHaveLength(1);
-  });
-});
 
 describe('경영 에이전트', () => {
   const transcript = `승덕: 검색광고 예산을 20% 늘리기로 결정합니다.
@@ -805,15 +791,11 @@ describe('게시판 분리 (익명 / 변호사)', () => {
 describe('15차: 탭 정리, 공지·사건자문·SKYZAI, 건의사항', () => {
   const st = () => getState();
 
-  it('멤버십은 의뢰인만, 업무 탭은 어드민만', () => {
+  it('업무 탭은 어드민만', () => {
     as('client');
-    expect(canJoinMembership(me())).toBe(true);
     expect(canSeeWorkTab(me())).toBe(false);
     as('lawyer');
-    expect(canJoinMembership(me())).toBe(false);
     expect(canSeeWorkTab(me())).toBe(false);
-    actions.setMembership('rightnow');
-    expect(me().membership).toBe('basic');
     as('staff');
     expect(canSeeWorkTab(me())).toBe(false);
     as('admin');
