@@ -15,6 +15,7 @@ import { ClientPhonesSection } from '@/ui/client-phones-panel';
 import { DaeryuntopSection } from '@/ui/daeryuntop-panel';
 import { ResourcesSection } from '@/ui/resources-panel';
 import { BotsSection } from '@/ui/bots-panel';
+import { AuditSection } from '@/ui/audit-panel';
 import { LimitTestSection } from '@/ui/limit-test-panel';
 import { useFrameWidth } from '@/ui/web-frame';
 import { useApp, useMe } from '@/ui/use-app';
@@ -39,6 +40,7 @@ const MENU: { key: string; label: string; sub: (s: AppState) => string; superOnl
   { key: 'daeryuntop', label: '대륜탑 연동', sub: () => '사건번호 연결, 사건 목록 엑셀 올리기' },
   { key: 'resources', label: '회의실·설비', sub: () => '캘린더에서 예약할 회의실 목록' },
   { key: 'bots', label: '봇', sub: () => '바깥 시스템이 대화방에 알림을 보내는 토큰·방 관리' },
+  { key: 'audit', label: '감사 기록', sub: () => '누가 무엇을 바꿨는지 · 대화 내보내기', superOnly: true },
 ];
 
 /** 백오피스: 계정 발급과 관리. 지금은 앱 안 화면이고, 서버가 붙으면 별도 웹 관리자 페이지로 분리할 수 있습니다. */
@@ -201,6 +203,7 @@ export default function BackofficeScreen() {
       {sec === 'daeryuntop' ? <DaeryuntopSection report={report} /> : null}
       {sec === 'resources' ? <ResourcesSection report={report} /> : null}
       {sec === 'bots' ? <BotsSection report={report} /> : null}
+      {sec === 'audit' ? <AuditSection report={report} /> : null}
       {sec === 'limitTest' ? <LimitTestSection report={report} /> : null}
 
       {sec === 'accounts' ? (
