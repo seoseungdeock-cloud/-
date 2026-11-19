@@ -37,24 +37,27 @@ const fmt = (iso: string) => new Date(iso).toLocaleString('ko-KR', { year: 'nume
 export function AuditSection({ report }: { report: (r: { ok: boolean; reason?: string }, okText: string) => void }) {
   const c = useColors();
   const [filter, setFilter] = useState('');
-  const [entries, setEntries] = useState<Entry[]>();
+  // 서버가 없으면(목업) 빈 목록으로 시작
+  const [entries, setEntries] = useState<Entry[] | undefined>(supabase ? undefined : []);
   const [rooms, setRooms] = useState<AdminRoom[]>([]);
   const [roomQ, setRoomQ] = useState('');
   const [room, setRoom] = useState<AdminRoom>();
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [busy, setBusy] = useState(false);
-  const load = async () => {
-    if (!supabase) return setEntries([]);
-    const { data, error } = await supabase.rpc('audit_recent', { p_limit: 300, p_action: filter || null });
-    if (error) return report({ ok: false, reason: error.message }, '');
-    setEntries((data ?? []).map((r: Record<string, any>) => ({ id: r.id, at: r.at, actorName: r.actor_name ?? undefined, action: r.action, targetKind: r.target_kind ?? undefined, targetId: r.target_id ?? undefined, roomTitle: r.room_title ?? undefined, detail: r.detail ?? {} })));
+  const load = () => {
+    if (!supabase) return;
+    void supabase.rpc('audit_recent', { p_limit: 300, p_action: filter || null }).then(({ data, error }) => {
+      if (error) return report({ ok: false, reason: error.message }, '');
+      setEntries((data ?? []).map((r: Record<string, any>) => ({ id: r.id, at: r.at, actorName: r.actor_name ?? undefined, action: r.action, targetKind: r.target_kind ?? undefined, targetId: r.target_id ?? undefined, roomTitle: r.room_title ?? undefined, detail: r.detail ?? {} })));
+    });
   };
-  useEffect(() => { void load(); }, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
+  useEffect(load, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
+  const loadRooms = () => {
     if (!supabase) return;
     void supabase.rpc('admin_rooms').then(({ data }) => setRooms((data ?? []).map((r: Record<string, any>) => ({ id: r.id, title: r.title, kind: r.kind, memberCount: r.member_count, lastAt: r.last_at ?? undefined }))));
-  }, []);
+  };
+  useEffect(loadRooms, []);
   const candidates = useMemo(() => (roomQ.trim() ? rooms.filter((r) => r.title.includes(roomQ.trim())).slice(0, 8) : []), [rooms, roomQ]);
   const exportCsv = async () => {
     if (!supabase || !room) return;
@@ -65,7 +68,7 @@ export function AuditSection({ report }: { report: (r: { ok: boolean; reason?: s
     const rows: unknown[][] = [['시각', '보낸 사람', '종류', '내용', '첨부 수', '회수'], ...(data ?? []).map((m: Record<string, any>) => [fmt(m.at), m.sender, m.kind, m.text, m.attachments, m.recalled ? 'Y' : ''])];
     download(`skynet-${room.title.replace(/[\\/:*?"<>|]/g, '_')}-${from || '처음'}~${to || '지금'}.csv`, toCsv(rows));
     report({ ok: true }, `「${room.title}」 대화 ${(data ?? []).length}건을 내려받았습니다. (이 내보내기도 감사 기록에 남습니다)`);
-    void load();
+    load();
   };
   const exportAudit = () => {
     if (!entries?.length) return;
