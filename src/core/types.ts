@@ -167,6 +167,8 @@ export type Message = {
   mentions?: string[];
   /** 기일 알람 카드 */
   hearingAlertId?: string;
+  /** 바깥 봇(bot-send)이 보낸 메시지의 봇 이름 */
+  botName?: string;
   /** 연락처 공유 메시지의 대상 */
   contactId?: string;
   /** '나에게서 삭제'한 사용자 */

@@ -175,7 +175,7 @@ export function Bubble({
       <View style={{ maxWidth: frameW > 900 ? Math.min(560, frameW * 0.62) : '78%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
         {!mine && head ? (
           <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 13, color: isAi ? c.ai : isBot ? c.accent : c.sub, marginBottom: 2 }}>
-            {assign ? '대륜 사건 배당' : isAi || isBot ? nameOf(users, m.senderId) : sender ? displayName(sender) : ''}
+            {assign ? '대륜 사건 배당' : isBot && m.botName ? `🤖 ${m.botName}` : isAi || isBot ? nameOf(users, m.senderId) : sender ? displayName(sender) : ''}
           </Text>
         ) : null}
         <View style={{ flexDirection: mine ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 2 }}>

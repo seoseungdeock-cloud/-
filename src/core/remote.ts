@@ -138,6 +138,7 @@ export function messageFromRow(m: Row, meId: string, reactions: Row[] | undefine
   return {
     id: m.id, roomId: m.room_id, senderId: m.sender_kind === 'user' ? m.sender_id ?? '' : m.sender_kind, kind: m.kind, text: m.text, at: m.created_at,
     ...(m.reply_to ? { replyTo: m.reply_to } : {}),
+    ...(m.bot_name ? { botName: m.bot_name } : {}),
     ...(m.forward_of ? { forwardOf: m.forward_of } : {}),
     ...(m.bundle ? { bundle: m.bundle } : {}),
     ...(m.recalled ? { recalled: true } : {}),
