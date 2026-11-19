@@ -9,8 +9,8 @@ import { useMe } from '@/ui/use-app';
 import { useLayout } from '@/ui/web-frame';
 
 // 모바일(폰 앱·좁은 창)은 하단 탭(ui/tab-bar.tsx, 미끄러지는 표시). PC 구성은 왼쪽 메뉴(ui/shell.tsx)가 붙으므로 탭 막대를 숨깁니다.
-// 하단 탭: 대화 / 게시판 / 캘린더 / MY. 어드민·권한 있는 직원은 업무 포함. (사건은 사건방 안에서 봅니다)
-const ICONS: Record<string, IconName> = { index: 'chat', board: 'board', calendar: 'calendar', work: 'work', me: 'me' };
+// 하단 탭: 대화 / 게시판 / 캘린더 / 할 일 / MY. 어드민·권한 있는 직원은 업무 포함. 의뢰인은 할 일 없음. (사건은 사건방 안에서 봅니다)
+const ICONS: Record<string, IconName> = { index: 'chat', board: 'board', calendar: 'calendar', tasks: 'check', work: 'work', me: 'me' };
 
 export default function TabLayout() {
   const user = useMe();
@@ -24,6 +24,7 @@ export default function TabLayout() {
       <Tabs.Screen name="index" options={{ title: '대화' }} />
       <Tabs.Screen name="board" options={{ title: '게시판' }} />
       <Tabs.Screen name="calendar" options={{ title: '캘린더' }} />
+      <Tabs.Screen name="tasks" options={{ title: '할 일', href: user.role === 'client' ? null : undefined }} />
       <Tabs.Screen name="work" options={{ title: '업무', href: canSeeWorkTab(user) ? undefined : null }} />
       <Tabs.Screen name="me" options={{ title: 'MY' }} />
     </Tabs>

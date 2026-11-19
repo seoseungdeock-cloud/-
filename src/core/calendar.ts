@@ -2,7 +2,16 @@
 import { SELF_ROOM_TITLE, selfRoomLike } from './room-ai';
 import type { Room, User } from './types';
 
-export type CalEvent = { id: string; date: string; time?: string; label: string; kind: 'hearing' | 'limit'; roomId: string; caseTitle: string; place?: string; done?: boolean };
+export type CalEvent = {
+  id: string; date: string; time?: string; label: string;
+  /** hearing 기일 · limit 불변기간 · event 손으로 넣은 일정(캘린더 일정·회의실 예약) */
+  kind: 'hearing' | 'limit' | 'event';
+  roomId: string; caseTitle: string; place?: string; done?: boolean;
+  /** 끝나는 시각 'HH:MM' (event) */
+  endTime?: string;
+  /** 일정 범위 표시 (event) */
+  scopeLabel?: string;
+};
 
 /** 의뢰인은 '확인용·상대측' 기일과 불변기간을 보지 않습니다. */
 export function calendarEvents(user: User, rooms: Room[]): CalEvent[] {

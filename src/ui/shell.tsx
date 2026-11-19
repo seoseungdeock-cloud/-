@@ -21,7 +21,7 @@ import { family, radius, setThemeMode, THEME_MODES, useColors, useThemeMode, typ
 import { useApp, useMe } from './use-app';
 import { useLayout } from './web-frame';
 
-type Href = '/' | '/board' | '/calendar' | '/work' | '/me';
+type Href = '/' | '/board' | '/calendar' | '/tasks' | '/work' | '/me';
 type NavItem = { href: Href; label: string; icon: IconName; /** 이 경로들로 시작하면 이 메뉴가 켜진 것으로 */ also?: string[] };
 
 export function navItems(user: User): NavItem[] {
@@ -29,6 +29,7 @@ export function navItems(user: User): NavItem[] {
   items.push({ href: '/', label: '대화', icon: 'chat', also: ['/room', '/contact', '/open'] });
   items.push({ href: '/board', label: '게시판', icon: 'board' });
   items.push({ href: '/calendar', label: '캘린더', icon: 'calendar' });
+  if (user.role !== 'client') items.push({ href: '/tasks', label: '할 일', icon: 'check' });
   if (canSeeWorkTab(user)) items.push({ href: '/work', label: '업무', icon: 'work', also: ['/axiom', '/backoffice', '/auth-codes', '/marketing'] });
   return items;
 }

@@ -36,6 +36,7 @@ import { alertText, CHANGE_LABEL, recipientsOf, whenLabel } from './hearings';
 import { isSelfRoom, SELF_ROOM_TITLE } from './calendar';
 import { boardOf, canSeeBoard, canWriteBoard, formatUntil, MAX_ATTACHMENTS, needsField, reportTarget, restrictedUntil, toggleVote } from './board';
 import { demoMessages, demoReads, demoRooms, demoUsers } from './demo';
+import { startWork } from './work';
 import { displayName, isMaster, parseMentions, roomMasters, type Reads } from './messenger';
 import { findLawyer } from './offices';
 import { aliasOf, canManageOpen, canUseOpenChat, checkAlias, checkOpenPassword, isOpenMember, OPEN_MAX_OPTIONS, parseTags } from './open-chat';
@@ -596,6 +597,7 @@ async function enter(userId: string): Promise<void> {
   syncedAt = snap.syncedAt;
   set({ ...snap, currentUserId: userId, syncError: undefined });
   void goLive();
+  void startWork(userId);
 }
 
 let started = false;
@@ -970,6 +972,7 @@ export const actions = {
     if (!acc.active) return { ok: false, reason: '사용이 중지된 계정입니다. 관리자에게 문의하세요.' };
     const at = nowIso();
     set((s) => ({ currentUserId: acc.userId, accounts: s.accounts.map((a) => (a.userId === acc.userId ? { ...a, lastLoginAt: at } : a)) }));
+    void startWork(acc.userId);
     return { ok: true };
   },
 
@@ -1013,9 +1016,11 @@ export const actions = {
         .then(() => supabase!.auth.signOut())
         .then(() => undefined, () => undefined);
       set({ ...serverState(), booted: true });
+      void startWork(null);
       return;
     }
     set({ currentUserId: null });
+    void startWork(null);
   },
 
   // ---- 백오피스: 계정 관리 (어드민 전용) ----

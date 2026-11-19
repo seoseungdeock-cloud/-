@@ -3,10 +3,12 @@ import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { calendarEvents, monthGrid, todayKst, type CalEvent } from '@/core/calendar';
+import { kstDate, kstTime, occurrences, useWork, visibleEvents, type WorkEvent } from '@/core/work';
+import { EventDetail, EventEditor } from '@/ui/event-sheet';
 import { dateLabel, dDay, dDayLabel } from '@/core/hearings';
 import { timeLabel } from '@/ui/hearing';
 import { Icon } from '@/ui/icons';
-import { Empty, Screen } from '@/ui/kit';
+import { Button, Empty, Screen } from '@/ui/kit';
 import { Appear, Fade, Pop, Press } from '@/ui/motion';
 import { SegmentBar } from '@/ui/segments';
 import { family, radius, space, tracking, useColors } from '@/ui/theme';
@@ -25,7 +27,30 @@ export default function CalendarScreen() {
   const [ym, setYm] = useState(() => ({ y: Number(today.slice(0, 4)), m: Number(today.slice(5, 7)) }));
   const [picked, setPicked] = useState(today);
   const [view, setView] = useState<'list' | 'month'>('list');
-  const events = useMemo(() => calendarEvents(user, s.rooms), [user, s.rooms]);
+  const w = useWork();
+  const [editor, setEditor] = useState<{ open: boolean; initial?: WorkEvent }>({ open: false });
+  const [detail, setDetail] = useState<WorkEvent>();
+  // 손으로 넣은 일정: 이번 달 앞뒤 한 달 + 목록 보기용 90일을 펼쳐서 기일·불변기간과 섞습니다
+  const workItems = useMemo(() => {
+    const myRooms = new Set(s.rooms.filter((r) => r.memberIds.includes(user.id)).map((r) => r.id));
+    const vis = visibleEvents(w, { id: user.id, dept: user.dept, firm: user.role !== 'client' }, myRooms);
+    const from = `${ym.y}-${String(ym.m).padStart(2, '0')}-01`;
+    const lo = from < today ? from : today;
+    const hi = new Date(Date.UTC(ym.y, ym.m + 1, 0)).toISOString().slice(0, 10);
+    const hi2 = new Date(Date.now() + 120 * 86_400_000).toISOString().slice(0, 10);
+    const occ = vis.flatMap((e) => occurrences(e, lo, hi > hi2 ? hi : hi2));
+    const scopeLabel = { personal: '내 일정', dept: '부서', firm: '회사', room: '대화방' } as const;
+    return occ.map((e): CalEvent & { source: WorkEvent } => ({
+      id: e.id, date: kstDate(e.startsAt), time: e.allDay ? undefined : kstTime(e.startsAt), endTime: e.allDay ? undefined : kstTime(e.endsAt),
+      label: e.title, kind: 'event', roomId: e.roomId ?? '', caseTitle: '', place: e.place ?? w.resources.find((r) => r.id === e.resourceId)?.name, scopeLabel: scopeLabel[e.scope], source: e,
+    }));
+  }, [w, s.rooms, user, ym, today]);
+  const events = useMemo(() => [...calendarEvents(user, s.rooms), ...workItems].sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? '')), [user, s.rooms, workItems]);
+  const openItem = (e: CalEvent) => {
+    const src = (e as CalEvent & { source?: WorkEvent }).source;
+    if (src) setDetail(src);
+    else if (e.roomId) router.push({ pathname: '/room/[id]', params: { id: e.roomId } });
+  };
   const byDay = useMemo(() => {
     const map: Record<string, CalEvent[]> = {};
     for (const e of events) (map[e.date] ??= []).push(e);
@@ -41,7 +66,8 @@ export default function CalendarScreen() {
     setYm({ y: Number(today.slice(0, 4)), m: Number(today.slice(5, 7)) });
     setPicked(today);
   };
-  const tone = (e: CalEvent) => (e.kind === 'limit' ? (e.done ? c.faint : c.accent) : c.text);
+  const tone = (e: CalEvent) => (e.kind === 'limit' ? (e.done ? c.faint : c.accent) : e.kind === 'event' ? c.accent : c.text);
+  const bar = (e: CalEvent) => (e.kind === 'limit' ? c.accent : e.kind === 'event' ? '#2E5BFF' : c.text);
   const list = byDay[picked] ?? [];
 
   const navBtn = (dir: 1 | -1) => (
@@ -50,11 +76,18 @@ export default function CalendarScreen() {
     </Press>
   );
 
-  const toggle = <SegmentBar items={[['list', '목록'], ['month', '달력']]} value={view} onChange={setView} />;
+  const toggle = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+      <SegmentBar items={[['list', '목록'], ['month', '달력']]} value={view} onChange={setView} />
+      <Button small label="일정 추가" icon="plus" onPress={() => setEditor({ open: true })} />
+    </View>
+  );
   return (
     <Screen title="캘린더" right={toggle}>
+      {editor.open ? <EventEditor open onClose={() => setEditor({ open: false })} initial={editor.initial} date={picked} /> : null}
+      <EventDetail event={detail} onClose={() => setDetail(undefined)} onEdit={(e) => { setDetail(undefined); setEditor({ open: true, initial: e }); }} />
       {view === 'list' ? (
-        <Fade key="list"><Agenda events={events} today={today} /></Fade>
+        <Fade key="list"><Agenda events={events} today={today} onOpen={openItem} /></Fade>
       ) : (
         <Fade key="month">
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: space.md }}>
@@ -89,8 +122,8 @@ export default function CalendarScreen() {
                     <Text style={{ ...(isToday || on ? family.bold : family.semibold), fontSize: 13, color: isToday || on ? '#FFFFFF' : dayColor }}>{Number(d.slice(8))}</Text>
                   </View>
                   {items.slice(0, 2).map((e) => (
-                    <View key={e.id} style={{ borderRadius: 4, paddingHorizontal: 3, paddingVertical: 1, backgroundColor: e.kind === 'limit' ? c.accent : c.text, opacity: e.done ? 0.45 : 1 }}>
-                      <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 10, color: e.kind === 'limit' ? '#FFFFFF' : c.bg }}>{e.label}</Text>
+                    <View key={e.id} style={{ borderRadius: 4, paddingHorizontal: 3, paddingVertical: 1, backgroundColor: bar(e), opacity: e.done ? 0.45 : 1 }}>
+                      <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 10, color: e.kind === 'hearing' ? c.bg : '#FFFFFF' }}>{e.label}</Text>
                     </View>
                   ))}
                   {items.length > 2 ? <Text style={{ ...family.semibold, fontSize: 10, color: c.sub, textAlign: 'center' }}>+{items.length - 2}</Text> : null}
@@ -104,6 +137,7 @@ export default function CalendarScreen() {
       <View style={{ flexDirection: 'row', gap: space.md, marginTop: space.sm }}>
         <Legend color={c.text} label="기일" />
         {user.role !== 'client' ? <Legend color={c.accent} label="불변기간" /> : null}
+        <Legend color="#2E5BFF" label="일정" />
       </View>
 
       <Fade key={`day-${picked}`}>
@@ -114,15 +148,15 @@ export default function CalendarScreen() {
       {list.length ? (
         list.map((e, i) => (
           <Appear key={e.id} index={i}>
-          <Press onPress={() => router.push({ pathname: '/room/[id]', params: { id: e.roomId } })} scale={0.98} style={({ hovered }) => ({ flexDirection: 'row', gap: space.md, paddingVertical: space.md, paddingHorizontal: space.md, marginHorizontal: -space.md, borderRadius: radius.md, backgroundColor: hovered ? c.hover : 'transparent' })}>
-            <View style={{ width: 4, borderRadius: 2, backgroundColor: e.kind === 'limit' ? c.accent : c.text, opacity: e.done ? 0.3 : 1 }} />
+          <Press onPress={() => openItem(e)} scale={0.98} style={({ hovered }) => ({ flexDirection: 'row', gap: space.md, paddingVertical: space.md, paddingHorizontal: space.md, marginHorizontal: -space.md, borderRadius: radius.md, backgroundColor: hovered ? c.hover : 'transparent' })}>
+            <View style={{ width: 4, borderRadius: 2, backgroundColor: bar(e), opacity: e.done ? 0.3 : 1 }} />
             <View style={{ width: 52 }}>
               <Text style={{ ...family.bold, fontSize: 15, color: tone(e) }}>{e.time ?? '종일'}</Text>
-              <Text style={{ ...family.semibold, fontSize: 11, color: c.sub, marginTop: 2 }}>{e.kind === 'limit' ? '불변기간' : '기일'}</Text>
+              <Text style={{ ...family.semibold, fontSize: 11, color: c.sub, marginTop: 2 }}>{e.kind === 'limit' ? '불변기간' : e.kind === 'event' ? (e.scopeLabel ?? '일정') : '기일'}</Text>
             </View>
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={{ ...family.bold, fontSize: 15, color: c.text, textDecorationLine: e.done ? 'line-through' : 'none' }}>{e.label}</Text>
-              <Text numberOfLines={1} style={{ ...family.regular, fontSize: 13, color: c.sub }}>{[e.caseTitle, e.place, e.done ? '조치 완료' : ''].filter(Boolean).join(' · ')}</Text>
+              <Text numberOfLines={1} style={{ ...family.regular, fontSize: 13, color: c.sub }}>{[e.caseTitle, e.endTime ? `~${e.endTime}` : '', e.place, e.done ? '조치 완료' : ''].filter(Boolean).join(' · ')}</Text>
             </View>
             <Icon name="chevron" color={c.faint} size={18} />
           </Press>
@@ -149,7 +183,7 @@ function Legend({ color, label }: { color: string; label: string }) {
 }
 
 /** 목록 보기: 오늘부터 날짜별로 (휴대폰 일정 위젯처럼) */
-function Agenda({ events, today }: { events: CalEvent[]; today: string }) {
+function Agenda({ events, today, onOpen }: { events: CalEvent[]; today: string; onOpen: (e: CalEvent) => void }) {
   const s = useApp();
   const c = useColors();
   const days = useMemo(() => {
@@ -185,10 +219,10 @@ function Agenda({ events, today }: { events: CalEvent[]; today: string }) {
               <View style={{ flex: 1, gap: 6 }}>
                 {items.map((e) => (
                   <Appear key={e.id} index={idx++}>
-                  <Press onPress={() => router.push({ pathname: '/room/[id]', params: { id: e.roomId } })} scale={0.98} style={({ hovered }) => ({ backgroundColor: hovered ? c.lineStrong : c.surface, borderRadius: radius.md, paddingVertical: space.sm + 2, paddingHorizontal: space.md, borderLeftWidth: 3, borderLeftColor: e.kind === 'limit' ? c.accent : c.navBg })}>
-                    <Text numberOfLines={2} style={{ ...family.bold, fontSize: 15, lineHeight: 21, color: c.text }}>{e.label}, {e.caseTitle}{lawyersOf(e.roomId)}</Text>
+                  <Press onPress={() => onOpen(e)} scale={0.98} style={({ hovered }) => ({ backgroundColor: hovered ? c.lineStrong : c.surface, borderRadius: radius.md, paddingVertical: space.sm + 2, paddingHorizontal: space.md, borderLeftWidth: 3, borderLeftColor: e.kind === 'limit' ? c.accent : e.kind === 'event' ? '#2E5BFF' : c.navBg })}>
+                    <Text numberOfLines={2} style={{ ...family.bold, fontSize: 15, lineHeight: 21, color: c.text }}>{e.kind === 'event' ? e.label : `${e.label}, ${e.caseTitle}${lawyersOf(e.roomId)}`}</Text>
                     <Text numberOfLines={1} style={{ ...family.regular, fontSize: 13, color: c.sub, marginTop: 3 }}>
-                      {e.kind === 'limit' ? '불변기간 · 24:00 만료' : timeLabel(e.time) || '종일'}
+                      {e.kind === 'limit' ? '불변기간 · 24:00 만료' : e.kind === 'event' ? `${e.scopeLabel} · ${e.time ? `${timeLabel(e.time)}${e.endTime ? ` ~ ${timeLabel(e.endTime)}` : ''}` : '종일'}` : timeLabel(e.time) || '종일'}
                       {e.place ? `  |  ${e.place}` : ''}
                     </Text>
                   </Press>

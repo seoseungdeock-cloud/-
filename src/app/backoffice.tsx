@@ -13,6 +13,7 @@ import { family, space, useColors } from '@/ui/theme';
 import { AssignSection } from '@/ui/assign-panel';
 import { ClientPhonesSection } from '@/ui/client-phones-panel';
 import { DaeryuntopSection } from '@/ui/daeryuntop-panel';
+import { ResourcesSection } from '@/ui/resources-panel';
 import { LimitTestSection } from '@/ui/limit-test-panel';
 import { useFrameWidth } from '@/ui/web-frame';
 import { useApp, useMe } from '@/ui/use-app';
@@ -35,6 +36,7 @@ const MENU: { key: string; label: string; sub: (s: AppState) => string; superOnl
   { key: 'assign', label: '배당 안내', sub: () => '배당표 엑셀 → 사건방에 배당·재배당 안내' },
   { key: 'phones', label: '의뢰인 전화번호', sub: () => '전화 올 때 변호사 폰에 의뢰인 이름이 뜨도록' },
   { key: 'daeryuntop', label: '대륜탑 연동', sub: () => '사건번호 연결, 사건 목록 엑셀 올리기' },
+  { key: 'resources', label: '회의실·설비', sub: () => '캘린더에서 예약할 회의실 목록' },
 ];
 
 /** 백오피스: 계정 발급과 관리. 지금은 앱 안 화면이고, 서버가 붙으면 별도 웹 관리자 페이지로 분리할 수 있습니다. */
@@ -195,6 +197,7 @@ export default function BackofficeScreen() {
       {sec === 'assign' ? <AssignSection report={report} /> : null}
       {sec === 'phones' ? <ClientPhonesSection report={report} /> : null}
       {sec === 'daeryuntop' ? <DaeryuntopSection report={report} /> : null}
+      {sec === 'resources' ? <ResourcesSection report={report} /> : null}
       {sec === 'limitTest' ? <LimitTestSection report={report} /> : null}
 
       {sec === 'accounts' ? (
