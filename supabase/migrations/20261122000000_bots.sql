@@ -38,7 +38,7 @@ create policy bot_rooms_admin on public.bot_rooms for all to authenticated using
 
 -- 봇 만들기: 토큰은 서버에서 만들어 해시만 저장하고, 원문은 이 호출의 응답으로 한 번만 돌려줍니다.
 create function public.create_bot(p_name text, p_description text default null)
-returns table (id uuid, token text) language plpgsql security definer set search_path = public as $$
+returns table (id uuid, token text) language plpgsql security definer set search_path = public, extensions as $$
 declare t text; bid uuid;
 begin
   if not is_admin() then raise exception '어드민만 봇을 만들 수 있습니다.'; end if;
@@ -51,7 +51,7 @@ grant execute on function public.create_bot(text, text) to authenticated;
 revoke execute on function public.create_bot(text, text) from public, anon;
 
 -- 토큰 다시 만들기 (유출 시)
-create function public.rotate_bot_token(p_bot uuid) returns text language plpgsql security definer set search_path = public as $$
+create function public.rotate_bot_token(p_bot uuid) returns text language plpgsql security definer set search_path = public, extensions as $$
 declare t text;
 begin
   if not is_admin() then raise exception '어드민만 할 수 있습니다.'; end if;
@@ -65,7 +65,7 @@ revoke execute on function public.rotate_bot_token(uuid) from public, anon;
 
 -- 서버 함수(service_role)가 쓰는 조회: 토큰으로 봇 찾기
 create function public.bot_by_token(p_token text)
-returns table (id uuid, name text, active boolean) language sql stable security definer set search_path = public as $$
+returns table (id uuid, name text, active boolean) language sql stable security definer set search_path = public, extensions as $$
   select b.id, b.name, b.active from bots b where b.token_hash = encode(digest(p_token, 'sha256'), 'hex')
 $$;
 revoke all on function public.bot_by_token(text) from public, anon, authenticated;
