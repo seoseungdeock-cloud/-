@@ -1,4 +1,4 @@
-// 업무 도구 상태 — 캘린더 일정·회의실·할 일 (네이버웍스에서 옮겨 온 기능).
+// 업무 도구 상태 — 캘린더 일정·회의실·할 일·노트·고객 연락처 (네이버웍스에서 옮겨 온 기능).
 // 메신저 상태(store.ts)와 분리된 작은 저장소입니다. 서버에 붙어 있으면 Supabase 표를 읽고 쓰고, 아니면 기기 안 목업으로 돕니다.
 // 규칙 계산(겹침·반복·정렬)은 순수 함수로 두어 화면 없이 테스트합니다.
 import { useSyncExternalStore } from 'react';
@@ -47,6 +47,17 @@ export type Task = {
   createdAt: string;
 };
 export type TaskCategory = { id: string; userId: string; name: string; sort: number };
+/** 부서·회사·대화방이 함께 보는 메모 */
+export type SharedNote = {
+  id: string; scope: 'dept' | 'firm' | 'room'; dept?: string; roomId?: string;
+  title: string; body: string; pinned: boolean; allowEdit: boolean;
+  authorId: string; updatedBy?: string; createdAt: string; updatedAt: string;
+};
+/** 고객·거래처 연락처 */
+export type Contact = {
+  id: string; ownerId: string; shared: boolean; name: string; company?: string; title?: string;
+  phone?: string; email?: string; memo?: string; tags: string[]; createdAt: string; updatedAt: string;
+};
 
 export type WorkState = {
   loaded: boolean;
@@ -55,6 +66,8 @@ export type WorkState = {
   resources: Resource[];
   tasks: Task[];
   categories: TaskCategory[];
+  notes: SharedNote[];
+  contacts: Contact[];
   error?: string;
 };
 
@@ -118,6 +131,18 @@ export function visibleEvents(s: Pick<WorkState, 'events' | 'attendees'>, me: { 
   );
 }
 
+/** 어떤 사람이 볼 노트: 내 것 · 부서 · 회사 · 내 대화방. 고정된 것 먼저, 최근 수정 순 */
+export function visibleNotes(notes: SharedNote[], me: { id: string; dept?: string; firm?: boolean }, myRoomIds: Set<string>): SharedNote[] {
+  return notes
+    .filter((n) => n.authorId === me.id || (n.scope === 'firm' && me.firm) || (n.scope === 'dept' && me.firm && n.dept === me.dept) || (n.scope === 'room' && !!n.roomId && myRoomIds.has(n.roomId)))
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
+}
+/** 연락처 검색: 이름·회사·직함·전화·이메일·태그 */
+export function searchContacts(contacts: Contact[], q: string, tag?: string): Contact[] {
+  const k = q.trim().toLowerCase();
+  return contacts.filter((c) => (!tag || c.tags.includes(tag)) && (!k || [c.name, c.company, c.title, c.phone, c.email, c.memo, ...c.tags].some((v) => v?.toLowerCase().includes(k))));
+}
+
 /** 회의실 겹침: 같은 회의실에 시간이 겹치는 다른 일정 */
 export function resourceConflicts(events: WorkEvent[], resourceId: string, startsAt: string, endsAt: string, exceptId?: string): WorkEvent[] {
   const s = new Date(startsAt).getTime();
@@ -149,7 +174,8 @@ export function dueState(t: Task, today: string): 'overdue' | 'today' | 'soon' |
 
 // ───────────────────────── 상태 ─────────────────────────
 const listeners = new Set<() => void>();
-let state: WorkState = { loaded: false, events: [], attendees: [], resources: [], tasks: [], categories: [] };
+const EMPTY: WorkState = { loaded: false, events: [], attendees: [], resources: [], tasks: [], categories: [], notes: [], contacts: [] };
+let state: WorkState = EMPTY;
 function set(patch: Partial<WorkState> | ((s: WorkState) => Partial<WorkState>)) {
   state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) };
   listeners.forEach((l) => l());
@@ -184,7 +210,17 @@ function mockSeed(meId: string): Partial<WorkState> {
     { id: 'tk_3', ownerId: meId, assigneeId: 'u_staff', title: '증거자료 사본 정리', dueDate: kstDay(5), priority: 0, createdAt: ago(50) },
     { id: 'tk_4', ownerId: meId, assigneeId: meId, title: '상담 일정표 확인', dueDate: kstDay(-1), priority: 0, doneAt: ago(2), createdAt: ago(80) },
   ];
-  return { events, attendees, resources, tasks, categories: [{ id: 'tc_1', userId: meId, name: '사건', sort: 0 }, { id: 'tc_2', userId: meId, name: '사무', sort: 1 }] };
+  const notes: SharedNote[] = [
+    { id: 'nt_1', scope: 'firm', title: '사건방 운영 원칙', body: '1. 의뢰인 메시지는 당일 답장\n2. 기일 변경은 봇 알림 확인 후 「확인했습니다」\n3. 사건 자료는 방 안 파일함에', pinned: true, allowEdit: false, authorId: 'u_admin', createdAt: ago(400), updatedAt: ago(100) },
+    { id: 'nt_2', scope: 'dept', dept: '부산총괄본부', title: '상담팀 당직표 (11월)', body: '월 샘플 매니저 / 화 사무국 직원 / 수 샘플 변호사 A / 목·금 순환', pinned: false, allowEdit: true, authorId: 'u_m1', createdAt: ago(300), updatedAt: ago(40) },
+    { id: 'nt_3', scope: 'room', roomId: 'r_case2', title: '교통사고 사건 쟁점 정리', body: '· 과실비율 70:30 주장\n· 후유장해 진단 대기\n· 보험사 제시액 1,200만 원 → 조정기일에서 조율', pinned: false, allowEdit: true, authorId: meId, createdAt: ago(60), updatedAt: ago(5) },
+  ];
+  const contacts: Contact[] = [
+    { id: 'ct_1', ownerId: meId, shared: true, name: '김보험', company: '○○화재 보상팀', title: '대리', phone: '02-000-1111', email: 'claims@example.com', tags: ['보험사', '교통사고'], createdAt: ago(500), updatedAt: ago(500) },
+    { id: 'ct_2', ownerId: 'u_staff', shared: true, name: '박서기', company: '예시지방법원 민사3단독', title: '참여관', phone: '02-000-2222', tags: ['법원'], createdAt: ago(900), updatedAt: ago(900) },
+    { id: 'ct_3', ownerId: meId, shared: false, name: '이감정', company: '한국감정평가', title: '평가사', phone: '010-0000-3333', memo: '부동산 시가 감정 의뢰처', tags: ['감정'], createdAt: ago(200), updatedAt: ago(200) },
+  ];
+  return { events, attendees, resources, tasks, notes, contacts, categories: [{ id: 'tc_1', userId: meId, name: '사건', sort: 0 }, { id: 'tc_2', userId: meId, name: '사무', sort: 1 }] };
 }
 
 // ---- 서버 ----
@@ -207,20 +243,27 @@ const taskRow = (t: Task): Row => ({
   priority: t.priority, category_id: t.categoryId ?? null, room_id: t.roomId ?? null, done_at: t.doneAt ?? null,
 });
 
+const rowNote = (r: Row): SharedNote => ({ id: r.id, scope: r.scope, dept: opt(r.dept), roomId: opt(r.room_id), title: r.title, body: r.body ?? '', pinned: !!r.pinned, allowEdit: !!r.allow_edit, authorId: r.author_id, updatedBy: opt(r.updated_by), createdAt: r.created_at, updatedAt: r.updated_at });
+const noteRow = (n: SharedNote): Row => ({ id: n.id, scope: n.scope, dept: n.dept ?? null, room_id: n.roomId ?? null, title: n.title, body: n.body, pinned: n.pinned, allow_edit: n.allowEdit, author_id: n.authorId });
+const rowContact = (r: Row): Contact => ({ id: r.id, ownerId: r.owner_id, shared: !!r.shared, name: r.name, company: opt(r.company), title: opt(r.title), phone: opt(r.phone), email: opt(r.email), memo: opt(r.memo), tags: r.tags ?? [], createdAt: r.created_at, updatedAt: r.updated_at });
+const contactRow = (c: Contact): Row => ({ id: c.id, owner_id: c.ownerId, shared: c.shared, name: c.name, company: c.company ?? null, title: c.title ?? null, phone: c.phone ?? null, email: c.email ?? null, memo: c.memo ?? null, tags: c.tags });
+
 let live: RealtimeChannel | null = null;
 let reloadTimer: ReturnType<typeof setTimeout> | undefined;
 let currentUser: string | null = null;
 
 async function loadServer(): Promise<void> {
   const sb = supabase!;
-  const [ev, at, rs, tk, tc] = await Promise.all([
+  const [ev, at, rs, tk, tc, nt, ct] = await Promise.all([
     sb.from('events').select('*').order('starts_at'),
     sb.from('event_attendees').select('*'),
     sb.from('resources').select('*').order('name'),
     sb.from('tasks').select('*').order('created_at'),
     sb.from('task_categories').select('*').order('sort'),
+    sb.from('shared_notes').select('*').order('updated_at', { ascending: false }),
+    sb.from('contacts').select('*').order('name'),
   ]);
-  const err = [ev, at, rs, tk, tc].find((r) => r.error)?.error;
+  const err = [ev, at, rs, tk, tc, nt, ct].find((r) => r.error)?.error;
   if (err) throw err;
   set({
     loaded: true, error: undefined,
@@ -229,6 +272,8 @@ async function loadServer(): Promise<void> {
     resources: (rs.data ?? []).map((r: Row) => ({ id: r.id, name: r.name, kind: r.kind, branch: opt(r.branch), capacity: r.capacity ?? undefined, active: !!r.active })),
     tasks: (tk.data ?? []).map(rowTask),
     categories: (tc.data ?? []).map((r: Row) => ({ id: r.id, userId: r.user_id, name: r.name, sort: r.sort })),
+    notes: (nt.data ?? []).map(rowNote),
+    contacts: (ct.data ?? []).map(rowContact),
   });
 }
 function scheduleReload() {
@@ -241,7 +286,7 @@ export async function startWork(userId: string | null): Promise<void> {
   currentUser = userId;
   if (!userId) {
     if (live) { void live.unsubscribe(); live = null; }
-    set({ loaded: false, events: [], attendees: [], resources: [], tasks: [], categories: [] });
+    set(EMPTY);
     return;
   }
   if (!supabase) {
@@ -258,7 +303,7 @@ export async function startWork(userId: string | null): Promise<void> {
     const token = (await sb.auth.getSession()).data.session?.access_token;
     if (token) await sb.realtime.setAuth(token);
     const ch = sb.channel('skynet-work');
-    for (const t of ['events', 'event_attendees', 'tasks', 'resources', 'task_categories']) ch.on('postgres_changes', { event: '*', schema: 'public', table: t }, scheduleReload);
+    for (const t of ['events', 'event_attendees', 'tasks', 'resources', 'task_categories', 'shared_notes', 'contacts']) ch.on('postgres_changes', { event: '*', schema: 'public', table: t }, scheduleReload);
     live = ch.subscribe((st) => { if (st === 'SUBSCRIBED') scheduleReload(); });
   }
 }
@@ -371,6 +416,54 @@ export const work = {
     set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }));
     return write(() => supabase!.from('tasks').delete().eq('id', id));
   },
+  // 노트
+  async saveNote(input: Omit<SharedNote, 'id' | 'authorId' | 'createdAt' | 'updatedAt' | 'updatedBy'> & { id?: string }): Promise<Check & { id?: string }> {
+    const uid = me();
+    if (!input.title.trim()) return { ok: false, reason: '제목을 적어 주세요.' };
+    if (input.scope === 'dept' && !input.dept) return { ok: false, reason: '부서 정보가 없습니다.' };
+    if (input.scope === 'room' && !input.roomId) return { ok: false, reason: '대화방을 골라 주세요.' };
+    const cur = input.id ? state.notes.find((n) => n.id === input.id) : undefined;
+    if (input.id && !cur) return { ok: false, reason: '노트를 찾을 수 없습니다.' };
+    if (cur && cur.authorId !== uid && !cur.allowEdit) return { ok: false, reason: '글쓴이만 고칠 수 있는 노트입니다.' };
+    const now = nowIso();
+    const n: SharedNote = cur
+      ? { ...cur, ...input, id: cur.id, title: input.title.trim(), updatedAt: now, updatedBy: uid }
+      : { ...input, id: newId('nt'), title: input.title.trim(), authorId: uid, createdAt: now, updatedAt: now };
+    set((s) => ({ notes: cur ? s.notes.map((x) => (x.id === n.id ? n : x)) : [n, ...s.notes] }));
+    const r = await write(() => (cur ? supabase!.from('shared_notes').update({ title: n.title, body: n.body, pinned: n.pinned, allow_edit: n.allowEdit, scope: n.scope, dept: n.dept ?? null, room_id: n.roomId ?? null }).eq('id', n.id) : supabase!.from('shared_notes').insert(noteRow(n))));
+    return r.ok ? { ok: true, id: n.id } : r;
+  },
+  async deleteNote(id: string): Promise<Check> {
+    const uid = me();
+    const cur = state.notes.find((n) => n.id === id);
+    if (!cur) return { ok: false, reason: '노트를 찾을 수 없습니다.' };
+    if (cur.authorId !== uid) return { ok: false, reason: '글쓴이만 지울 수 있습니다.' };
+    set((s) => ({ notes: s.notes.filter((n) => n.id !== id) }));
+    return write(() => supabase!.from('shared_notes').delete().eq('id', id));
+  },
+  // 고객·거래처 연락처
+  async saveContact(input: Omit<Contact, 'id' | 'ownerId' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<Check & { id?: string }> {
+    const uid = me();
+    if (!input.name.trim()) return { ok: false, reason: '이름을 적어 주세요.' };
+    if (!input.phone?.trim() && !input.email?.trim()) return { ok: false, reason: '전화번호나 이메일 중 하나는 적어 주세요.' };
+    const cur = input.id ? state.contacts.find((c) => c.id === input.id) : undefined;
+    if (input.id && !cur) return { ok: false, reason: '연락처를 찾을 수 없습니다.' };
+    if (cur && cur.ownerId !== uid && !cur.shared) return { ok: false, reason: '만든 사람만 고칠 수 있습니다.' };
+    const now = nowIso();
+    const tags = [...new Set(input.tags.map((t) => t.trim()).filter(Boolean))];
+    const c: Contact = cur ? { ...cur, ...input, tags, id: cur.id, name: input.name.trim(), updatedAt: now } : { ...input, tags, id: newId('ct'), name: input.name.trim(), ownerId: uid, createdAt: now, updatedAt: now };
+    set((s) => ({ contacts: cur ? s.contacts.map((x) => (x.id === c.id ? c : x)) : [...s.contacts, c].sort((a, b) => a.name.localeCompare(b.name, 'ko')) }));
+    const r = await write(() => (cur ? supabase!.from('contacts').update(contactRow(c)).eq('id', c.id) : supabase!.from('contacts').insert(contactRow(c))));
+    return r.ok ? { ok: true, id: c.id } : r;
+  },
+  async deleteContact(id: string): Promise<Check> {
+    const uid = me();
+    const cur = state.contacts.find((c) => c.id === id);
+    if (!cur) return { ok: false, reason: '연락처를 찾을 수 없습니다.' };
+    if (cur.ownerId !== uid) return { ok: false, reason: '만든 사람만 지울 수 있습니다.' };
+    set((s) => ({ contacts: s.contacts.filter((c) => c.id !== id) }));
+    return write(() => supabase!.from('contacts').delete().eq('id', id));
+  },
   async addCategory(name: string): Promise<Check> {
     const uid = me();
     if (!name.trim()) return { ok: false, reason: '이름을 적어 주세요.' };
@@ -383,5 +476,5 @@ export const work = {
 /** 테스트용: 상태를 직접 넣습니다 */
 export function _setWorkState(patch: Partial<WorkState>, userId: string | null = 'u_test') {
   currentUser = userId;
-  set({ loaded: true, events: [], attendees: [], resources: [], tasks: [], categories: [], ...patch });
+  set({ ...EMPTY, loaded: true, ...patch });
 }

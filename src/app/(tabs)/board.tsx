@@ -53,6 +53,11 @@ export default function BoardScreen() {
           {dot(openReports)}
         </Pressable>
       ) : null}
+      {user.role !== 'client' ? (
+        <Pressable accessibilityLabel="노트" onPress={() => router.push('/notes')} hitSlop={10}>
+          <Icon name="file" color={c.text} size={24} />
+        </Pressable>
+      ) : null}
       <Pressable accessibilityLabel="쪽지함" onPress={() => router.push('/board/notes')} hitSlop={10}>
         <Icon name="mail" color={c.text} size={26} />
         {dot(unread)}

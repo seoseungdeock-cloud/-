@@ -11,6 +11,7 @@ import { clientCanSee, externalContacts, hasClient, isHidden, markParts, searchA
 import { actions } from '@/core/store';
 import type { Message, Room } from '@/core/types';
 import { AuthBotRow } from '@/ui/auth-bot';
+import { CrmContacts } from '@/ui/crm-contacts';
 import { ContactRow, OrgBrowser, UnderlineTabs } from '@/ui/contacts';
 import { Icon, type IconName } from '@/ui/icons';
 import { Avatar, Empty } from '@/ui/kit';
@@ -262,10 +263,11 @@ function ContactsPanel({ query }: { query: string }) {
               ) : null}
               <OrgBrowser people={people} dept={dept} onDept={setDept} renderMember={(u) => <ContactRow u={u} me={u.id === user.id} />} />
             </>
-          ) : external.length ? (
-            external.map((u, i) => <Appear key={u.id} index={i}><ContactRow u={u} /></Appear>)
           ) : (
-            <Empty text="외부 연락처가 없습니다." />
+            <>
+              <CrmContacts query="" />
+              {external.length ? external.map((u, i) => <Appear key={u.id} index={i}><ContactRow u={u} /></Appear>) : <Empty text="사건방에 함께 있는 의뢰인이 없습니다." />}
+            </>
           )}
         </>
       ) : people.length ? (

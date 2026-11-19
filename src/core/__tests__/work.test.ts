@@ -105,3 +105,32 @@ describe('업무 동작 (목업)', () => {
     expect((await work.deleteTask(id)).ok).toBe(false);
   });
 });
+
+describe('노트·연락처', () => {
+  beforeEach(() => _setWorkState({}, 'me'));
+  it('노트: 범위·고정 정렬, 편집 권한', async () => {
+    const a = await work.saveNote({ title: '부서 당직', body: 'x', scope: 'dept', dept: '부산', pinned: false, allowEdit: true });
+    const b = await work.saveNote({ title: '회사 원칙', body: 'y', scope: 'firm', pinned: true, allowEdit: false });
+    expect(a.ok && b.ok).toBe(true);
+    expect((await work.saveNote({ title: '', body: '', scope: 'firm', pinned: false, allowEdit: true })).ok).toBe(false);
+    const { visibleNotes } = await import('../work');
+    const vis = visibleNotes(workState().notes, { id: 'other', dept: '부산', firm: true }, new Set());
+    expect(vis.map((n) => n.title)).toEqual(['회사 원칙', '부서 당직']); // 고정 먼저
+    expect(visibleNotes(workState().notes, { id: 'other', dept: '서울', firm: true }, new Set()).map((n) => n.title)).toEqual(['회사 원칙']);
+    _setWorkState({ notes: workState().notes }, 'other');
+    expect((await work.saveNote({ id: b.id, title: '바꿈', body: '', scope: 'firm', pinned: true, allowEdit: false })).ok).toBe(false); // 나만 편집
+    expect((await work.saveNote({ id: a.id, title: '바꿈', body: '', scope: 'dept', dept: '부산', pinned: false, allowEdit: true })).ok).toBe(true); // 함께 편집
+    expect((await work.deleteNote(a.id!)).ok).toBe(false); // 글쓴이만 삭제
+  });
+  it('연락처: 전화나 이메일 중 하나 필수, 태그 정리, 검색', async () => {
+    expect((await work.saveContact({ name: '김보험', shared: true, tags: [] })).ok).toBe(false);
+    const r = await work.saveContact({ name: '김보험', company: '○○화재', phone: '02-1', shared: true, tags: [' 보험사', '보험사', '', '교통사고'] });
+    expect(r.ok).toBe(true);
+    expect(workState().contacts[0].tags).toEqual(['보험사', '교통사고']);
+    await work.saveContact({ name: '박서기', email: 'a@b.c', shared: false, tags: ['법원'] });
+    const { searchContacts } = await import('../work');
+    expect(searchContacts(workState().contacts, '화재').map((c) => c.name)).toEqual(['김보험']);
+    expect(searchContacts(workState().contacts, '', '법원').map((c) => c.name)).toEqual(['박서기']);
+    expect(searchContacts(workState().contacts, 'A@B').map((c) => c.name)).toEqual(['박서기']);
+  });
+});

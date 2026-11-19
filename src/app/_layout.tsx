@@ -60,6 +60,7 @@ export default function RootLayout() {
           <Stack.Screen name="agent/images" />
           <Stack.Screen name="marketing" />
           <Stack.Screen name="backoffice" />
+          <Stack.Screen name="notes" />
           <Stack.Screen name="suggest/index" />
           <Stack.Screen name="auth-codes" />
           <Stack.Screen name="suggest/inbox" />
