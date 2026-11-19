@@ -127,7 +127,7 @@ function TaskEditor({ onClose, initial }: { onClose: () => void; initial?: Task 
   const hits = who.trim() ? people.filter((u) => u.id !== assignee && [u.nickname, u.dept, u.title].some((v) => v?.includes(who.trim()))).slice(0, 6) : [];
   const picked = s.users.find((u) => u.id === assignee);
   const rooms = s.rooms.filter((r) => r.memberIds.includes(me.id) && (r.kind === 'case' || r.kind === 'group' || r.kind === 'office'));
-  const plusDays = (n: number) => new Date(Date.now() + 9 * 3_600_000 + n * 86_400_000).toISOString().slice(0, 10);
+  const plusDays = (n: number) => new Date(new Date(`${today}T00:00:00Z`).getTime() + n * 86_400_000).toISOString().slice(0, 10);
   const canDelete = initial && initial.ownerId === me.id;
   const submit = async () => {
     if (!title.trim()) return setError('할 일을 적어 주세요.');

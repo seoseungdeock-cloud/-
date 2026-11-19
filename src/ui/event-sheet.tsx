@@ -30,7 +30,8 @@ export function EventEditor({ open, onClose, initial, date, roomId, onDone }: { 
   const w = useWork();
   const [title, setTitle] = useState(initial?.title ?? '');
   const [allDay, setAllDay] = useState(initial?.allDay ?? false);
-  const [day, setDay] = useState(initial ? kstDate(initial.startsAt) : date ?? kstDate(new Date().toISOString()));
+  const todayStr = kstDate(new Date().toISOString());
+  const [day, setDay] = useState(initial ? kstDate(initial.startsAt) : date ?? todayStr);
   const [start, setStart] = useState(initial ? kstTime(initial.startsAt) : '10:00');
   const [end, setEnd] = useState(initial ? kstTime(initial.endsAt) : '11:00');
   const [place, setPlace] = useState(initial?.place ?? '');
@@ -85,8 +86,8 @@ export function EventEditor({ open, onClose, initial, date, roomId, onDone }: { 
         <Input placeholder="제목" value={title} onChangeText={setTitle} autoFocus />
         <Chips>
           <Chip label="종일" active={allDay} onPress={() => setAllDay((v) => !v)} />
-          <Chip label="오늘" active={day === kstDate(new Date().toISOString())} onPress={() => setDay(kstDate(new Date().toISOString()))} />
-          <Chip label="내일" onPress={() => setDay(kstDate(new Date(Date.now() + 86_400_000).toISOString()))} />
+          <Chip label="오늘" active={day === todayStr} onPress={() => setDay(todayStr)} />
+          <Chip label="내일" onPress={() => setDay(new Date(new Date(`${todayStr}T00:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10))} />
         </Chips>
         <View style={{ flexDirection: 'row', gap: space.sm }}>
           <View style={{ flex: 1.3 }}><Input label="날짜" placeholder="2026-11-20" value={day} onChangeText={setDay} autoCapitalize="none" /></View>
@@ -149,7 +150,6 @@ export function EventEditor({ open, onClose, initial, date, roomId, onDone }: { 
 
 /** 일정 보기 — 참석 응답, 고치기, 지우기 */
 export function EventDetail({ event, onClose, onEdit }: { event?: WorkEvent; onClose: () => void; onEdit: (e: WorkEvent) => void }) {
-  const c = useColors();
   const s = useApp();
   const me = useMe();
   const w = useWork();

@@ -37,7 +37,7 @@ export default function CalendarScreen() {
     const from = `${ym.y}-${String(ym.m).padStart(2, '0')}-01`;
     const lo = from < today ? from : today;
     const hi = new Date(Date.UTC(ym.y, ym.m + 1, 0)).toISOString().slice(0, 10);
-    const hi2 = new Date(Date.now() + 120 * 86_400_000).toISOString().slice(0, 10);
+    const hi2 = new Date(new Date(`${today}T00:00:00Z`).getTime() + 120 * 86_400_000).toISOString().slice(0, 10);
     const occ = vis.flatMap((e) => occurrences(e, lo, hi > hi2 ? hi : hi2));
     const scopeLabel = { personal: '내 일정', dept: '부서', firm: '회사', room: '대화방' } as const;
     return occ.map((e): CalEvent & { source: WorkEvent } => ({
