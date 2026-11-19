@@ -158,7 +158,7 @@ export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
 /** 둥글기: sm=배지·작은 버튼, md=입력칸·버튼·줄, lg=카드, xl=판·시트 */
 export const radius = { sm: 8, md: 12, lg: 16, xl: 20, pill: 999 };
 /** 글씨 크기. title=화면 제목(800), h2=큰 섹션(700), h3=카드·목록 제목(600), body=본문, small=보조, tiny=시각·설명 */
-export const font = { title: 28, h2: 22, h3: 17, body: 15, small: 13, tiny: 12 };
+export const font = { title: 28, h2: 22, h3: 18, body: 16, small: 14, tiny: 13 };
 /** 제목용 자간 (크기가 클수록 더 좁힘) */
 export const tracking = { title: -0.9, h2: -0.6, h3: -0.3, body: -0.1 };
 export const MAX_WIDTH = 720;

@@ -286,7 +286,7 @@ export default function RoomScreen() {
     </View>
   );
 
-  const inputStyle = { flex: 1, color: c.text, paddingHorizontal: space.sm, paddingVertical: 10, fontSize: font.body, lineHeight: 20, ...family.regular, maxHeight: 120, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : null) } as object;
+  const inputStyle = { flex: 1, color: c.text, paddingHorizontal: space.sm, paddingVertical: 10, fontSize: font.body, lineHeight: 22, ...family.regular, maxHeight: 120, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : null) } as object;
 
   const headAvatar = <Avatar name={room.title} size={36} group={members.length > 2} uri={room.photo ?? (room.kind === 'direct' ? members.find((u) => u.id !== user.id)?.photo : undefined)} />;
   const subtitle = isSelfRoom(room, user.id) ? '나만 보는 메모' : members.length > 2 ? `참여 ${members.length}명 · ${ROOM_KIND_LABEL[room.kind]}` : ROOM_KIND_LABEL[room.kind];
@@ -334,7 +334,7 @@ export default function RoomScreen() {
             ) : 'divider' in item ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginVertical: space.md }}>
                 <View style={{ flex: 1, height: 1, backgroundColor: c.accent, opacity: 0.4 }} />
-                <Text style={{ ...family.semibold, fontSize: 12, color: c.accent }}>읽지 않은 메시지</Text>
+                <Text style={{ ...family.semibold, fontSize: 13, color: c.accent }}>읽지 않은 메시지</Text>
                 <View style={{ flex: 1, height: 1, backgroundColor: c.accent, opacity: 0.4 }} />
               </View>
             ) : (
@@ -400,7 +400,7 @@ export default function RoomScreen() {
                   <Text style={{ ...family.semibold, fontSize: 13, color: c.accent }}>
                     {s.users.find((u) => u.id === replyTo.senderId)?.nickname ?? ''}에게 답장
                   </Text>
-                  <Text numberOfLines={1} style={{ ...family.regular, fontSize: 13, color: c.sub }}>{replyTo.text}</Text>
+                  <Text numberOfLines={1} style={{ ...family.regular, fontSize: 14, color: c.sub }}>{replyTo.text}</Text>
                 </View>
                 <Pressable accessibilityLabel="답장 취소" hitSlop={8} onPress={() => setReplyTo(undefined)}>
                   <Icon name="close" color={c.faint} size={18} />

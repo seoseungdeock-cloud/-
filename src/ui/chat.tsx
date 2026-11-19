@@ -33,7 +33,7 @@ function nameOf(users: User[], id: string): string {
 function Body({ text, names, color, mention, mark }: { text: string; names: string[]; color: string; mention: string; mark?: string }) {
   const c = useColors();
   return (
-    <Text style={{ ...family.regular, fontSize: 16, lineHeight: 23, color }}>
+    <Text style={{ ...family.regular, fontSize: 17, lineHeight: 25, color }}>
       {splitMentions(text, names).map((p, i) => (
         <Text key={i} style={p.mention ? { color: mention, ...family.semibold } : undefined}>
           {mark
@@ -129,7 +129,7 @@ export function Bubble({
   if (m.senderId === SYSTEM_SENDER) {
     return (
       <View style={{ alignItems: 'center', marginVertical: space.sm }}>
-        <Text style={{ ...family.regular, fontSize: 12, color: c.faint, textAlign: 'center' }}>{m.text}</Text>
+        <Text style={{ ...family.regular, fontSize: 13, color: c.faint, textAlign: 'center' }}>{m.text}</Text>
       </View>
     );
   }
@@ -137,7 +137,7 @@ export function Bubble({
   if (m.recalled) {
     return (
       <View style={{ alignItems: 'center', marginVertical: space.sm }}>
-        <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{sender?.nickname ?? ''}님이 메시지를 회수하였습니다.</Text>
+        <Text style={{ ...family.regular, fontSize: 13, color: c.faint }}>{sender?.nickname ?? ''}님이 메시지를 회수하였습니다.</Text>
       </View>
     );
   }
@@ -157,10 +157,10 @@ export function Bubble({
     <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', justifyContent: 'flex-end', paddingHorizontal: 4, opacity: tail ? 1 : 0, width: tail ? undefined : 0 }}>
       {read > 0 ? (
         <Pressable accessibilityLabel="읽은 사람 보기" disabled={!onReads} onPress={onReads} hitSlop={6}>
-          <Text style={{ ...family.semibold, fontSize: 11, color: c.accent }}>읽음 {read}</Text>
+          <Text style={{ ...family.semibold, fontSize: 12, color: c.accent }}>읽음 {read}</Text>
         </Pressable>
       ) : null}
-      <Text style={{ ...family.regular, fontSize: 11, color: c.faint }}>{clockTime(m.at)}</Text>
+      <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{clockTime(m.at)}</Text>
     </View>
   );
 
@@ -174,7 +174,7 @@ export function Bubble({
       {/* PC 넓은 화면에서는 말풍선이 끝없이 길어지지 않도록 560px 까지 */}
       <View style={{ maxWidth: frameW > 900 ? Math.min(560, frameW * 0.62) : '78%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
         {!mine && head ? (
-          <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 13, color: isAi ? c.ai : isBot ? c.accent : c.sub, marginBottom: 2 }}>
+          <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 14, color: isAi ? c.ai : isBot ? c.accent : c.sub, marginBottom: 3 }}>
             {assign ? '대륜 사건 배당' : isBot && m.botName ? `🤖 ${m.botName}` : isAi || isBot ? nameOf(users, m.senderId) : sender ? displayName(sender) : ''}
           </Text>
         ) : null}
@@ -209,8 +209,8 @@ export function Bubble({
               <View style={{ flexDirection: 'row', backgroundColor: c.quote, borderRadius: radius.sm + 2, overflow: 'hidden', marginBottom: 4 }}>
                 <View style={{ width: 3, backgroundColor: c.accent }} />
                 <View style={{ flex: 1, paddingHorizontal: space.sm + 2, paddingVertical: 6, gap: 1 }}>
-                  <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 13, color: c.accent }}>{nameOf(users, quoted.senderId)}</Text>
-                  <Text numberOfLines={2} style={{ ...family.regular, fontSize: 14, lineHeight: 19, color: c.sub }}>
+                  <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 14, color: c.accent }}>{nameOf(users, quoted.senderId)}</Text>
+                  <Text numberOfLines={2} style={{ ...family.regular, fontSize: 15, lineHeight: 21, color: c.sub }}>
                     {quoted.recalled ? '회수된 메시지입니다.' : quoted.text || (quoted.attachments?.length ? '사진·파일' : '')}
                   </Text>
                 </View>
@@ -224,7 +224,7 @@ export function Bubble({
               <BundleCard m={m} users={users} mark={mark} />
             ) : m.forwardOf ? (
               <>
-                <Text style={{ ...family.semibold, fontSize: 12, color: c.sub }}>전달 · {nameOf(users, m.forwardOf.senderId)}</Text>
+                <Text style={{ ...family.semibold, fontSize: 13, color: c.sub }}>전달 · {nameOf(users, m.forwardOf.senderId)}</Text>
                 <Body text={m.forwardOf.text} names={names} color={c.text} mention={c.accent} mark={mark} />
               </>
             ) : contact ? (
@@ -253,8 +253,8 @@ export function Bubble({
                 accessibilityLabel={`공감한 사람 ${e}`}
                 onPress={onReactions}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill, borderWidth: 1, borderColor: myReaction === e ? c.accent : c.line, backgroundColor: c.bg }}>
-                <Text style={{ fontSize: 13 }}>{e}</Text>
-                <Text style={{ ...family.semibold, fontSize: 12, color: myReaction === e ? c.accent : c.sub }}>{n}</Text>
+                <Text style={{ fontSize: 14 }}>{e}</Text>
+                <Text style={{ ...family.semibold, fontSize: 13, color: myReaction === e ? c.accent : c.sub }}>{n}</Text>
               </Pressable>
             ))}
           </View>
@@ -313,7 +313,7 @@ export function DayDivider({ at }: { at: string }) {
   return (
     <View style={{ alignItems: 'center', marginVertical: space.md }}>
       <View style={{ backgroundColor: c.surface, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 4 }}>
-        <Text style={{ ...family.regular, fontSize: 12, color: c.sub }}>{dayLabel(at)}</Text>
+        <Text style={{ ...family.regular, fontSize: 13, color: c.sub }}>{dayLabel(at)}</Text>
       </View>
     </View>
   );

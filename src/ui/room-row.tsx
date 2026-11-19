@@ -81,16 +81,16 @@ export function RoomRow({ room, selecting, selected, onToggle }: { room: Room; s
       </View>
       <View style={{ flex: 1, gap: 3 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
-          <Text numberOfLines={1} style={{ flexShrink: 1, ...(unread ? family.bold : family.semibold), fontSize: 15, color: c.text, letterSpacing: -0.2 }}>{roomTitle(room)}</Text>
+          <Text numberOfLines={1} style={{ flexShrink: 1, ...(unread ? family.bold : family.semibold), fontSize: 16, color: c.text, letterSpacing: -0.2 }}>{roomTitle(room)}</Text>
           {muted ? <Icon name="mute" color={c.faint} size={14} /> : null}
           {room.kind === 'case' ? <ModeBadge mode="private" /> : null}
           <View style={{ marginLeft: 'auto', paddingLeft: space.sm }}>
-            <Text style={{ ...family.regular, fontSize: 12, color: unread ? c.accent : c.faint }}>{last ? chatTime(last.at) : ''}</Text>
+            <Text style={{ ...family.regular, fontSize: 13, color: unread ? c.accent : c.faint }}>{last ? chatTime(last.at) : ''}</Text>
           </View>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
           <View style={{ flex: 1 }}>
-            <Text numberOfLines={mentioned ? 1 : 2} style={{ ...family.regular, fontSize: 13, lineHeight: 18, color: unread ? c.text : c.sub }}>{previewText(last, s.users)}</Text>
+            <Text numberOfLines={mentioned ? 1 : 2} style={{ ...family.regular, fontSize: 14, lineHeight: 20, color: unread ? c.text : c.sub }}>{previewText(last, s.users)}</Text>
             {mentioned ? <Text style={{ ...family.semibold, fontSize: 12, color: c.accent }}>나를 불렀습니다</Text> : null}
           </View>
           {unread ? (
