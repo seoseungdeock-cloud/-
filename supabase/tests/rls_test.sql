@@ -553,6 +553,38 @@ reset role;
 set role anon;
 select tst.throws('SKYZAI: 비로그인 못 부름', $$select skyzai_rooms()$$, 'permission denied');
 reset role;
+-- ── 파일함 (drive_files, 2026-11-26) · 조직도 열 (2026-11-25) ──
+reset role;
+update public.profiles set dept = '송무팀', duty = '소장', job = '변호사', rank_order = 3, dept_order = 6 where login_id = 'lawyer';
+update public.profiles set dept = '송무팀', job = '법률사무원', rank_order = 2 where login_id = 'staff';
+update public.profiles set dept = '경영본부' where login_id = 'subadmin';
+insert into public.rooms (id, kind, mode, title) values ('10000000-0000-0000-0000-000000000077', 'group', 'private', '남의 방');
+insert into public.room_members (room_id, user_id, is_master) values ('10000000-0000-0000-0000-000000000077', '00000000-0000-0000-0000-00000000000d', true);
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000c'); -- 변호사
+select tst.check('조직도: 직책·직군·순서 열을 읽음', (select duty = '소장' and job = '변호사' and rank_order = 3 from profiles where login_id = 'lawyer'));
+insert into public.drive_files (id, scope, dept, room_id, folder, name, size, path, uploader_id) values
+  ('70000000-0000-0000-0000-000000000001', 'dept', '송무팀', null, '서식', '답변서.docx', 1200, '70000000-0000-0000-0000-000000000001/답변서.docx', auth.uid()),
+  ('70000000-0000-0000-0000-000000000002', 'firm', null, null, '', '취업규칙.pdf', 3000, '70000000-0000-0000-0000-000000000002/취업규칙.pdf', auth.uid()),
+  ('70000000-0000-0000-0000-000000000003', 'room', null, '10000000-0000-0000-0000-000000000001', '', '증거1.pdf', 500, '70000000-0000-0000-0000-000000000003/증거1.pdf', auth.uid());
+select tst.throws('파일함: 남의 부서로는 못 올림', $$insert into public.drive_files (scope, dept, name, path, uploader_id) values ('dept', '경영본부', 'x', 'x/x', auth.uid())$$, 'row-level security');
+select tst.throws('파일함: 내가 안 든 방으로는 못 올림', $$insert into public.drive_files (scope, room_id, name, path, uploader_id) values ('room', '10000000-0000-0000-0000-000000000077', 'x', 'x/y', auth.uid())$$, 'row-level security');
+select tst.check('파일함: 올린 사람은 셋 다 봄', (select count(*) = 3 from drive_files));
+select tst.check('파일함: 저장소 보기 규칙이 명찰을 따름', drive_object_visible('70000000-0000-0000-0000-000000000002/취업규칙.pdf') and not drive_object_visible('없는/파일'));
+select tst.as_user('00000000-0000-0000-0000-00000000000d'); -- 같은 부서 직원
+select tst.check('파일함: 같은 부서는 부서·회사 파일, 방 파일은 못 봄', (select array_agg(name order by name) = array['답변서.docx', '취업규칙.pdf'] from drive_files));
+select tst.throws('파일함: 남이 올린 파일 이름은 못 바꿈', $$update public.drive_files set name = 'y' where id = '70000000-0000-0000-0000-000000000001' returning 1/0$$, '');
+delete from public.drive_files where id = '70000000-0000-0000-0000-000000000001';
+select tst.check('파일함: 남이 올린 파일은 못 지움', (select count(*) = 1 from drive_files where id = '70000000-0000-0000-0000-000000000001'));
+select tst.as_user('00000000-0000-0000-0000-00000000000b'); -- 다른 부서 어드민
+select tst.check('파일함: 다른 부서는 회사 파일만', (select array_agg(name) = array['취업규칙.pdf'] from drive_files));
+select tst.as_user('00000000-0000-0000-0000-00000000000e'); -- 의뢰인 (사건방 멤버)
+select tst.check('파일함: 의뢰인은 자기 사건방 파일만', (select array_agg(name) = array['증거1.pdf'] from drive_files));
+select tst.throws('파일함: 의뢰인은 못 올림', $$insert into public.drive_files (scope, room_id, name, path, uploader_id) values ('room', '10000000-0000-0000-0000-000000000001', 'x', 'x/z', auth.uid())$$, 'row-level security');
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+delete from public.drive_files where id = '70000000-0000-0000-0000-000000000003';
+select tst.check('파일함: 올린 사람은 지울 수 있음', (select count(*) = 2 from drive_files));
+reset role;
 -- ── 로그인 안 한 사람 ──
 reset role;
 set role anon;

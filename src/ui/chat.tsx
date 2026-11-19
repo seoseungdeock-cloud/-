@@ -821,6 +821,7 @@ export function RoomDrawer({
             ) : null}
 
             <View style={{ borderTopWidth: 1, borderTopColor: c.line, marginTop: space.md, paddingTop: space.sm }}>
+              <DrawerRow icon="folder" label="이 방 파일함" onPress={go(() => router.push({ pathname: '/drive', params: { room: room.id } }))} />
               <DrawerRow
                 icon="chat"
                 label="새 메시지방 만들기"

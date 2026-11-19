@@ -135,3 +135,4 @@ begin
 end $$;
 grant execute on function public.admin_rooms() to authenticated;
 revoke execute on function public.admin_rooms() from public, anon;
+grant select on public.audit_log to authenticated;

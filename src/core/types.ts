@@ -12,9 +12,13 @@ export type User = {
   agentAccess: boolean;
   membership: 'basic' | 'rightnow';
   // ---- 주소록 프로필 (조직도·연락처 상세) ----
-  title?: string; // 직책 (예: Junior Associate Attorney)
+  title?: string; // 직급 (예: 수석변호사·시니어·매니저) — 이름 옆에 붙음
+  duty?: string; // 직책 (예: 소장·책임사무원). 여러 개면 ', ' 로 이어짐
+  job?: string; // 직군 (예: 변호사·법률사무원·직원)
   dept?: string; // 부서 (조직도 단위)
   branch?: string; // 지점 (이름 옆 괄호에 표시)
+  rankOrder?: number; // 직급 표시 순서 (작을수록 위) — 조직도 정렬
+  deptOrder?: number; // 부서 표시 순서
   phone?: string;
   email?: string;
   birthday?: string; // YYYY-MM-DD

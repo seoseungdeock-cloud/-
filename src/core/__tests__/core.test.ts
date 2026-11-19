@@ -990,7 +990,7 @@ describe('불변기간 알림', () => {
   it('예시: 오늘 만료인 불변기간은 변호사 전용 게시판에 [사무소] 말머리 경고 글이 있음', () => {
     const post = getState().posts.find((p) => p.sourceId === 'deadline:lm1');
     expect(post).toMatchObject({ board: 'deadline', authorId: LIMIT_BOT });
-    expect(post?.title).toMatch(/^\[부산총괄본부\] 불변기간 오늘 만료 · 임대차보증금 반환 즉시항고기간$/);
+    expect(post?.title).toMatch(/^\[부산\] 불변기간 오늘 만료 · 임대차보증금 반환 즉시항고기간$/);
     as('lawyer');
     expect(canWriteBoard(me(), 'deadline')).toBe(false);
     as('client');

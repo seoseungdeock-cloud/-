@@ -135,15 +135,15 @@ const kstDay = (n: number) => new Date(Date.now() + 9 * 3_600_000 + n * 86_400_0
 const DEMO = typeof process === 'undefined' || !process.env?.JEST_WORKER_ID;
 export function initialState(): State {
   const users: User[] = [
-    { id: 'u_admin', superAdmin: true, executive: true, nickname: '승덕', role: 'admin', firm: '대륜', agentAccess: true, membership: 'basic', title: 'Admin', dept: '경영지원본부', branch: '본사', phone: '010-0000-0001', email: 'admin@example.com', joinedAt: '2026-06-15' },
-    { id: 'u_staff', nickname: '사무국 직원', role: 'staff', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Staff', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0002', email: 'staff@example.com', joinedAt: '2025-03-02' },
-    { id: 'u_lawyer', nickname: '샘플 변호사 A', role: 'lawyer', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Partner Attorney', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0003', email: 'lawyer@example.com', joinedAt: '2020-09-01' },
+    { id: 'u_admin', superAdmin: true, executive: true, nickname: '승덕', role: 'admin', firm: '대륜', agentAccess: true, membership: 'basic', title: '대표', job: '직원', dept: '경영지원본부', deptOrder: 1, rankOrder: 10, branch: '본사', phone: '010-0000-0001', email: 'admin@example.com', joinedAt: '2026-06-15' },
+    { id: 'u_staff', nickname: '사무국 직원', role: 'staff', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic', title: '매니저', duty: '책임사무원', job: '법률사무원', dept: '부산총괄본부', deptOrder: 5, rankOrder: 2, branch: '부산', phone: '010-0000-0002', email: 'staff@example.com', joinedAt: '2025-03-02' },
+    { id: 'u_lawyer', nickname: '샘플 변호사 A', role: 'lawyer', officeId: 'of_seoul', firm: '대륜', agentAccess: false, membership: 'basic', title: '수석변호사', duty: '소장', job: '변호사', dept: '부산총괄본부', deptOrder: 5, rankOrder: 3, branch: '부산', phone: '010-0000-0003', email: 'lawyer@example.com', joinedAt: '2020-09-01' },
     { id: 'u_client', nickname: '하늘', role: 'client', agentAccess: false, membership: 'basic' },
-    { id: 'u_admin2', nickname: '운영 어드민', role: 'admin', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Admin', dept: '경영지원본부', branch: '본사', phone: '010-0000-0007', email: 'subadmin@example.com', joinedAt: '2026-09-01' },
+    { id: 'u_admin2', nickname: '운영 어드민', role: 'admin', firm: '대륜', agentAccess: false, membership: 'basic', title: '시니어매니저', job: '직원', dept: '경영지원본부', deptOrder: 1, rankOrder: 3, branch: '본사', phone: '010-0000-0007', email: 'subadmin@example.com', joinedAt: '2026-09-01' },
     // 조직도 확인용 샘플 구성원 (로그인 계정 없음)
-    { id: 'u_l2', presence: 'court', nickname: '샘플 변호사 B', role: 'lawyer', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Junior Associate Attorney', dept: '실무수습변호사', branch: '서울강남', phone: '010-0000-0004', email: 'lawyer-b@example.com', joinedAt: '2026-06-15' },
-    { id: 'u_l3', nickname: '샘플 변호사 C', role: 'lawyer', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Junior Associate Attorney', dept: '실무수습변호사', branch: '군산', phone: '010-0000-0005', email: 'lawyer-c@example.com', joinedAt: '2026-06-15' },
-    { id: 'u_m1', presence: 'meeting', nickname: '샘플 매니저', role: 'staff', firm: '대륜', agentAccess: false, membership: 'basic', title: 'Manager', dept: '부산총괄본부', branch: '부산총괄본부', phone: '010-0000-0006', email: 'manager@example.com', joinedAt: '2024-01-08' },
+    { id: 'u_l2', presence: 'court', nickname: '샘플 변호사 B', role: 'lawyer', firm: '대륜', agentAccess: false, membership: 'basic', title: '변호사', job: '변호사', dept: '실무수습변호사', deptOrder: 9, rankOrder: 10, branch: '서울강남', phone: '010-0000-0004', email: 'lawyer-b@example.com', joinedAt: '2026-06-15' },
+    { id: 'u_l3', nickname: '샘플 변호사 C', role: 'lawyer', firm: '대륜', agentAccess: false, membership: 'basic', title: '변호사', job: '변호사', dept: '실무수습변호사', deptOrder: 9, rankOrder: 10, branch: '군산', phone: '010-0000-0005', email: 'lawyer-c@example.com', joinedAt: '2026-06-15' },
+    { id: 'u_m1', presence: 'meeting', nickname: '샘플 매니저', role: 'staff', firm: '대륜', agentAccess: false, membership: 'basic', title: '시니어', job: '상담실장', dept: '부산총괄본부', deptOrder: 5, rankOrder: 1, branch: '부산', phone: '010-0000-0006', email: 'manager@example.com', joinedAt: '2024-01-08' },
   ];
   // 개발용 계정 (서버 연결 시 백오피스에서 실제 계정으로 교체)
   const accounts: Account[] = [

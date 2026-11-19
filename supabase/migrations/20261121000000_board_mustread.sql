@@ -81,3 +81,4 @@ grant execute on function public.post_readers(uuid) to authenticated;
 revoke execute on function public.create_post(public.board_kind, text, text, text, boolean, jsonb, uuid, date) from public, anon;
 revoke execute on function public.mark_post_read(uuid) from public, anon;
 revoke execute on function public.post_readers(uuid) from public, anon;
+grant select on public.post_reads to authenticated;

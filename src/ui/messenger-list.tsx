@@ -261,7 +261,7 @@ function ContactsPanel({ query }: { query: string }) {
                   {favorites.map((u) => <ContactRow key={u!.id} u={u!} />)}
                 </View>
               ) : null}
-              <OrgBrowser people={people} dept={dept} onDept={setDept} renderMember={(u) => <ContactRow u={u} me={u.id === user.id} />} />
+              <OrgBrowser people={people} dept={dept} onDept={setDept} renderMember={(u, inDept) => <ContactRow u={u} me={u.id === user.id} omitDept={inDept} />} />
             </>
           ) : (
             <>

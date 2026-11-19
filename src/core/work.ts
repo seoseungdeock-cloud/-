@@ -1,10 +1,13 @@
-// 업무 도구 상태 — 캘린더 일정·회의실·할 일·노트·고객 연락처 (네이버웍스에서 옮겨 온 기능).
+// 업무 도구 상태 — 캘린더 일정·회의실·할 일·노트·고객 연락처·파일함 (네이버웍스에서 옮겨 온 기능).
 // 메신저 상태(store.ts)와 분리된 작은 저장소입니다. 서버에 붙어 있으면 Supabase 표를 읽고 쓰고, 아니면 기기 안 목업으로 돕니다.
 // 규칙 계산(겹침·반복·정렬)은 순수 함수로 두어 화면 없이 테스트합니다.
 import { useSyncExternalStore } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { newId, nowIso } from './ids';
+import { storageName } from './remote';
 import { supabase } from './supabase';
+/** 파일함 저장소 버킷 */
+export const DRIVE_BUCKET = 'drive';
 
 export type EventScope = 'personal' | 'dept' | 'firm' | 'room';
 export type AttendStatus = 'pending' | 'accepted' | 'declined';
@@ -59,6 +62,14 @@ export type Contact = {
   phone?: string; email?: string; memo?: string; tags: string[]; createdAt: string; updatedAt: string;
 };
 
+/** 파일함 한 칸. folder 는 '서식/민사' 처럼 '/' 로 이은 이름표 */
+export type DriveFile = {
+  id: string; scope: 'dept' | 'firm' | 'room'; dept?: string; roomId?: string; folder: string;
+  name: string; size: number; mime?: string; path: string; uploaderId: string; createdAt: string;
+  /** 목업·막 올린 파일의 기기 안 주소 */
+  uri?: string;
+};
+
 export type WorkState = {
   loaded: boolean;
   events: WorkEvent[];
@@ -68,6 +79,7 @@ export type WorkState = {
   categories: TaskCategory[];
   notes: SharedNote[];
   contacts: Contact[];
+  files: DriveFile[];
   error?: string;
 };
 
@@ -138,6 +150,32 @@ export function visibleNotes(notes: SharedNote[], me: { id: string; dept?: strin
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
 }
 /** 연락처 검색: 이름·회사·직함·전화·이메일·태그 */
+/** 파일함: 내가 볼 수 있는 파일 (노트와 같은 규칙) */
+export function visibleFiles(files: DriveFile[], me: { id: string; dept?: string; firm?: boolean }, myRoomIds: Set<string>): DriveFile[] {
+  return files.filter((f) => f.uploaderId === me.id || (f.scope === 'firm' && me.firm) || (f.scope === 'dept' && me.firm && f.dept === me.dept) || (f.scope === 'room' && !!f.roomId && myRoomIds.has(f.roomId)));
+}
+/** 폴더 이름표 정리: 앞뒤 '/'·공백 제거, 빈 조각 삭제 */
+export function cleanFolder(folder: string): string {
+  return folder.split('/').map((x) => x.trim()).filter(Boolean).join('/');
+}
+/** 한 폴더 안의 하위 폴더 이름(중복 없이)과 그 폴더에 바로 든 파일 */
+export function folderView(files: DriveFile[], folder: string): { folders: string[]; files: DriveFile[] } {
+  const base = cleanFolder(folder);
+  const prefix = base ? `${base}/` : '';
+  const folders = new Set<string>();
+  const direct: DriveFile[] = [];
+  for (const f of files) {
+    if (f.folder === base) direct.push(f);
+    else if (f.folder.startsWith(prefix)) folders.add(f.folder.slice(prefix.length).split('/')[0]);
+  }
+  return { folders: [...folders].sort((a, b) => a.localeCompare(b, 'ko')), files: direct.sort((a, b) => b.createdAt.localeCompare(a.createdAt)) };
+}
+export function fileSizeText(n: number): string {
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)}KB`;
+  return `${(n / 1024 / 1024).toFixed(1)}MB`;
+}
+
 export function searchContacts(contacts: Contact[], q: string, tag?: string): Contact[] {
   const k = q.trim().toLowerCase();
   return contacts.filter((c) => (!tag || c.tags.includes(tag)) && (!k || [c.name, c.company, c.title, c.phone, c.email, c.memo, ...c.tags].some((v) => v?.toLowerCase().includes(k))));
@@ -174,7 +212,7 @@ export function dueState(t: Task, today: string): 'overdue' | 'today' | 'soon' |
 
 // ───────────────────────── 상태 ─────────────────────────
 const listeners = new Set<() => void>();
-const EMPTY: WorkState = { loaded: false, events: [], attendees: [], resources: [], tasks: [], categories: [], notes: [], contacts: [] };
+const EMPTY: WorkState = { loaded: false, events: [], attendees: [], resources: [], tasks: [], categories: [], notes: [], contacts: [], files: [] };
 let state: WorkState = EMPTY;
 function set(patch: Partial<WorkState> | ((s: WorkState) => Partial<WorkState>)) {
   state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) };
@@ -220,7 +258,17 @@ function mockSeed(meId: string): Partial<WorkState> {
     { id: 'ct_2', ownerId: 'u_staff', shared: true, name: '박서기', company: '예시지방법원 민사3단독', title: '참여관', phone: '02-000-2222', tags: ['법원'], createdAt: ago(900), updatedAt: ago(900) },
     { id: 'ct_3', ownerId: meId, shared: false, name: '이감정', company: '한국감정평가', title: '평가사', phone: '010-0000-3333', memo: '부동산 시가 감정 의뢰처', tags: ['감정'], createdAt: ago(200), updatedAt: ago(200) },
   ];
-  return { events, attendees, resources, tasks, notes, contacts, categories: [{ id: 'tc_1', userId: meId, name: '사건', sort: 0 }, { id: 'tc_2', userId: meId, name: '사무', sort: 1 }] };
+  const files: DriveFile[] = [
+    { id: 'df_1', scope: 'firm', folder: '사내 규정', name: '취업규칙(2026 개정).pdf', size: 482_000, mime: 'application/pdf', path: 'df_1/취업규칙.pdf', uploaderId: 'u_admin', createdAt: ago(900) },
+    { id: 'df_2', scope: 'firm', folder: '사내 규정', name: '정보보호 지침.pdf', size: 120_000, mime: 'application/pdf', path: 'df_2/정보보호.pdf', uploaderId: 'u_admin', createdAt: ago(800) },
+    { id: 'df_3', scope: 'firm', folder: '서식/소송', name: '소장 표준 서식.docx', size: 64_000, mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', path: 'df_3/소장.docx', uploaderId: 'u_lawyer', createdAt: ago(700) },
+    { id: 'df_4', scope: 'firm', folder: '서식/소송', name: '답변서 표준 서식.docx', size: 58_000, mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', path: 'df_4/답변서.docx', uploaderId: 'u_lawyer', createdAt: ago(650) },
+    { id: 'df_5', scope: 'firm', folder: '서식/계약', name: '위임계약서.hwp', size: 90_000, path: 'df_5/위임계약서.hwp', uploaderId: 'u_staff', createdAt: ago(600) },
+    { id: 'df_6', scope: 'dept', dept: '부산총괄본부', folder: '', name: '상담 응대 매뉴얼 v3.pdf', size: 2_300_000, mime: 'application/pdf', path: 'df_6/매뉴얼.pdf', uploaderId: 'u_m1', createdAt: ago(300) },
+    { id: 'df_7', scope: 'dept', dept: '부산총괄본부', folder: '당직', name: '11월 당직표.xlsx', size: 22_000, path: 'df_7/당직표.xlsx', uploaderId: 'u_m1', createdAt: ago(120) },
+    { id: 'df_8', scope: 'room', roomId: 'r_case2', folder: '', name: '교통사고 사실확인원.pdf', size: 410_000, mime: 'application/pdf', path: 'df_8/사실확인원.pdf', uploaderId: meId, createdAt: ago(40) },
+  ];
+  return { events, attendees, resources, tasks, notes, contacts, files, categories: [{ id: 'tc_1', userId: meId, name: '사건', sort: 0 }, { id: 'tc_2', userId: meId, name: '사무', sort: 1 }] };
 }
 
 // ---- 서버 ----
@@ -246,6 +294,7 @@ const taskRow = (t: Task): Row => ({
 const rowNote = (r: Row): SharedNote => ({ id: r.id, scope: r.scope, dept: opt(r.dept), roomId: opt(r.room_id), title: r.title, body: r.body ?? '', pinned: !!r.pinned, allowEdit: !!r.allow_edit, authorId: r.author_id, updatedBy: opt(r.updated_by), createdAt: r.created_at, updatedAt: r.updated_at });
 const noteRow = (n: SharedNote): Row => ({ id: n.id, scope: n.scope, dept: n.dept ?? null, room_id: n.roomId ?? null, title: n.title, body: n.body, pinned: n.pinned, allow_edit: n.allowEdit, author_id: n.authorId });
 const rowContact = (r: Row): Contact => ({ id: r.id, ownerId: r.owner_id, shared: !!r.shared, name: r.name, company: opt(r.company), title: opt(r.title), phone: opt(r.phone), email: opt(r.email), memo: opt(r.memo), tags: r.tags ?? [], createdAt: r.created_at, updatedAt: r.updated_at });
+const rowFile = (r: Row): DriveFile => ({ id: r.id, scope: r.scope, dept: opt(r.dept), roomId: opt(r.room_id), folder: r.folder ?? '', name: r.name, size: Number(r.size ?? 0), mime: opt(r.mime), path: r.path, uploaderId: r.uploader_id, createdAt: r.created_at });
 const contactRow = (c: Contact): Row => ({ id: c.id, owner_id: c.ownerId, shared: c.shared, name: c.name, company: c.company ?? null, title: c.title ?? null, phone: c.phone ?? null, email: c.email ?? null, memo: c.memo ?? null, tags: c.tags });
 
 let live: RealtimeChannel | null = null;
@@ -254,7 +303,7 @@ let currentUser: string | null = null;
 
 async function loadServer(): Promise<void> {
   const sb = supabase!;
-  const [ev, at, rs, tk, tc, nt, ct] = await Promise.all([
+  const [ev, at, rs, tk, tc, nt, ct, df] = await Promise.all([
     sb.from('events').select('*').order('starts_at'),
     sb.from('event_attendees').select('*'),
     sb.from('resources').select('*').order('name'),
@@ -262,8 +311,9 @@ async function loadServer(): Promise<void> {
     sb.from('task_categories').select('*').order('sort'),
     sb.from('shared_notes').select('*').order('updated_at', { ascending: false }),
     sb.from('contacts').select('*').order('name'),
+    sb.from('drive_files').select('*').order('created_at', { ascending: false }),
   ]);
-  const err = [ev, at, rs, tk, tc, nt, ct].find((r) => r.error)?.error;
+  const err = [ev, at, rs, tk, tc, nt, ct, df].find((r) => r.error)?.error;
   if (err) throw err;
   set({
     loaded: true, error: undefined,
@@ -274,6 +324,7 @@ async function loadServer(): Promise<void> {
     categories: (tc.data ?? []).map((r: Row) => ({ id: r.id, userId: r.user_id, name: r.name, sort: r.sort })),
     notes: (nt.data ?? []).map(rowNote),
     contacts: (ct.data ?? []).map(rowContact),
+    files: (df.data ?? []).map(rowFile),
   });
 }
 function scheduleReload() {
@@ -303,7 +354,7 @@ export async function startWork(userId: string | null): Promise<void> {
     const token = (await sb.auth.getSession()).data.session?.access_token;
     if (token) await sb.realtime.setAuth(token);
     const ch = sb.channel('skynet-work');
-    for (const t of ['events', 'event_attendees', 'tasks', 'resources', 'task_categories', 'shared_notes', 'contacts']) ch.on('postgres_changes', { event: '*', schema: 'public', table: t }, scheduleReload);
+    for (const t of ['events', 'event_attendees', 'tasks', 'resources', 'task_categories', 'shared_notes', 'contacts', 'drive_files']) ch.on('postgres_changes', { event: '*', schema: 'public', table: t }, scheduleReload);
     live = ch.subscribe((st) => { if (st === 'SUBSCRIBED') scheduleReload(); });
   }
 }
@@ -463,6 +514,63 @@ export const work = {
     if (cur.ownerId !== uid) return { ok: false, reason: '만든 사람만 지울 수 있습니다.' };
     set((s) => ({ contacts: s.contacts.filter((c) => c.id !== id) }));
     return write(() => supabase!.from('contacts').delete().eq('id', id));
+  },
+  // 파일함
+  /** 파일 올리기: 명찰(drive_files)을 먼저 만들고 저장소에 올립니다. 올리기가 실패하면 명찰을 지웁니다. */
+  async uploadFile(input: { scope: DriveFile['scope']; dept?: string; roomId?: string; folder: string; name: string; uri: string; size?: number; mime?: string }): Promise<Check & { id?: string }> {
+    const uid = me();
+    const name = input.name.trim().slice(0, 200);
+    if (!name) return { ok: false, reason: '파일 이름이 없습니다.' };
+    if (input.scope === 'dept' && !input.dept) return { ok: false, reason: '부서 정보가 없습니다.' };
+    if (input.scope === 'room' && !input.roomId) return { ok: false, reason: '대화방을 골라 주세요.' };
+    if ((input.size ?? 0) > 50 * 1024 * 1024) return { ok: false, reason: '파일은 50MB까지 올릴 수 있습니다.' };
+    const id = newId('df');
+    const f: DriveFile = { id, scope: input.scope, dept: input.dept, roomId: input.roomId, folder: cleanFolder(input.folder), name, size: input.size ?? 0, mime: input.mime, path: `${id}/${storageName(id, name)}`, uploaderId: uid, createdAt: nowIso(), uri: input.uri };
+    set((s) => ({ files: [f, ...s.files] }));
+    if (!supabase) return { ok: true, id };
+    const sb = supabase;
+    const { error } = await sb.from('drive_files').insert({ id: f.id, scope: f.scope, dept: f.dept ?? null, room_id: f.roomId ?? null, folder: f.folder, name: f.name, size: f.size, mime: f.mime ?? null, path: f.path, uploader_id: uid });
+    if (error) { set((s) => ({ files: s.files.filter((x) => x.id !== id) })); return { ok: false, reason: error.message }; }
+    try {
+      const body = await (await fetch(input.uri)).arrayBuffer();
+      const up = await sb.storage.from(DRIVE_BUCKET).upload(f.path, body, { contentType: f.mime ?? 'application/octet-stream', upsert: false });
+      if (up.error) throw up.error;
+    } catch (e) {
+      await sb.from('drive_files').delete().eq('id', id);
+      set((s) => ({ files: s.files.filter((x) => x.id !== id) }));
+      const msg = String((e as Error)?.message ?? e);
+      return { ok: false, reason: /exceeded|too large|size/i.test(msg) ? '파일은 50MB까지 올릴 수 있습니다.' : '파일을 올리지 못했습니다.' };
+    }
+    return { ok: true, id };
+  },
+  /** 이름·폴더 바꾸기 (올린 사람만) */
+  async moveFile(id: string, patch: { name?: string; folder?: string }): Promise<Check> {
+    const uid = me();
+    const cur = state.files.find((f) => f.id === id);
+    if (!cur) return { ok: false, reason: '파일을 찾을 수 없습니다.' };
+    if (cur.uploaderId !== uid) return { ok: false, reason: '올린 사람만 바꿀 수 있습니다.' };
+    const name = (patch.name ?? cur.name).trim().slice(0, 200);
+    if (!name) return { ok: false, reason: '파일 이름이 없습니다.' };
+    const next = { ...cur, name, folder: cleanFolder(patch.folder ?? cur.folder) };
+    set((s) => ({ files: s.files.map((f) => (f.id === id ? next : f)) }));
+    return write(() => supabase!.from('drive_files').update({ name: next.name, folder: next.folder }).eq('id', id));
+  },
+  async deleteFile(id: string): Promise<Check> {
+    const uid = me();
+    const cur = state.files.find((f) => f.id === id);
+    if (!cur) return { ok: false, reason: '파일을 찾을 수 없습니다.' };
+    if (cur.uploaderId !== uid) return { ok: false, reason: '올린 사람만 지울 수 있습니다.' };
+    set((s) => ({ files: s.files.filter((f) => f.id !== id) }));
+    return write(() => supabase!.from('drive_files').delete().eq('id', id));
+  },
+  /** 내려받기 주소 (1시간짜리). 목업은 기기 안 주소 */
+  async fileUrl(id: string): Promise<string | undefined> {
+    const cur = state.files.find((f) => f.id === id);
+    if (!cur) return undefined;
+    if (!supabase) return cur.uri;
+    if (cur.uri) return cur.uri;
+    const { data } = await supabase.storage.from(DRIVE_BUCKET).createSignedUrl(cur.path, 3600, { download: cur.name });
+    return data?.signedUrl;
   },
   async addCategory(name: string): Promise<Check> {
     const uid = me();

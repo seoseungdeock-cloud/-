@@ -58,6 +58,9 @@ export default function BoardScreen() {
           <Icon name="file" color={c.text} size={24} />
         </Pressable>
       ) : null}
+      <Pressable accessibilityLabel="파일함" onPress={() => router.push('/drive')} hitSlop={10}>
+        <Icon name="folder" color={c.text} size={24} />
+      </Pressable>
       <Pressable accessibilityLabel="쪽지함" onPress={() => router.push('/board/notes')} hitSlop={10}>
         <Icon name="mail" color={c.text} size={26} />
         {dot(unread)}

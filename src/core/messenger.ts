@@ -153,16 +153,48 @@ export function roomLinks(messages: Message[]): { url: string; at: string }[] {
 
 export const NO_DEPT = '소속 미지정';
 
-/** 조직도: 부서별 묶음 (부서 이름순) */
+export const NO_BRANCH = '지점 미지정';
+
+/** 조직도 사람 순서: 직급 순서(대륜탑 표시 순서, 작을수록 위) → 이름. 순서가 없는 사람은 뒤로 */
+export function byRank(a: User, b: User): number {
+  const ra = a.rankOrder ?? Number.MAX_SAFE_INTEGER;
+  const rb = b.rankOrder ?? Number.MAX_SAFE_INTEGER;
+  return ra !== rb ? ra - rb : a.nickname.localeCompare(b.nickname, 'ko');
+}
+
+/** 조직도: 부서별 묶음 (대륜탑 부서 순서 → 이름순, 미지정은 맨 뒤). 사람은 직급 순 */
 export function orgGroups(users: User[]): { dept: string; members: User[] }[] {
   const map = new Map<string, User[]>();
   for (const u of users) {
     const d = u.dept ?? NO_DEPT;
     map.set(d, [...(map.get(d) ?? []), u]);
   }
+  const order = (members: User[]) => Math.min(...members.map((m) => m.deptOrder ?? Number.MAX_SAFE_INTEGER));
   return [...map.entries()]
-    .sort(([a], [b]) => (a === NO_DEPT ? 1 : b === NO_DEPT ? -1 : a.localeCompare(b, 'ko')))
-    .map(([dept, members]) => ({ dept, members: members.sort((a, b) => a.nickname.localeCompare(b.nickname, 'ko')) }));
+    .sort(([a, am], [b, bm]) => {
+      if (a === NO_DEPT || b === NO_DEPT) return a === NO_DEPT ? 1 : -1;
+      const oa = order(am);
+      const ob = order(bm);
+      return oa !== ob ? oa - ob : a.localeCompare(b, 'ko');
+    })
+    .map(([dept, members]) => ({ dept, members: members.sort(byRank) }));
+}
+
+/** 조직도: 지점별 묶음 (이름순, 미지정은 맨 뒤). 지점 안은 다시 부서별 */
+export function branchGroups(users: User[]): { branch: string; members: User[]; depts: { dept: string; members: User[] }[] }[] {
+  const map = new Map<string, User[]>();
+  for (const u of users) {
+    const b = u.branch ?? NO_BRANCH;
+    map.set(b, [...(map.get(b) ?? []), u]);
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => (a === NO_BRANCH ? 1 : b === NO_BRANCH ? -1 : a.localeCompare(b, 'ko')))
+    .map(([branch, members]) => ({ branch, members: members.sort(byRank), depts: orgGroups(members) }));
+}
+
+/** 조직도 한 줄 설명: 부서 · 직책 · 직군 (있는 것만). 직급은 이름 옆에 이미 있어 뺍니다 */
+export function orgLine(u: User, omitDept = false): string {
+  return [omitDept ? undefined : u.dept, u.duty, u.job && u.job !== u.title ? u.job : undefined].filter(Boolean).join(' · ');
 }
 
 /** 외부 연락처: 같은 방에 있지만 우리 조직이 아닌 사람 (예: 사건방의 의뢰인) */

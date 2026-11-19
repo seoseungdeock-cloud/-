@@ -50,6 +50,7 @@
 | 푸시(폰 Expo 푸시, PC 웹 푸시), 08:30 요약 | `supabase/functions/push-send`, `src/core/push.ts`, `src/core/web-push.ts` |
 | 캘린더, 사무소·담당 변호사 목록(백오피스·배당 안내용) | `src/app/(tabs)/calendar.tsx`, `src/core/calendar.ts`, `src/core/offices.ts` |
 | SKYZAI(song_mu) 메신저 연결 — SKYZAI 의 메신저 화면이 이 서버의 방·글·파일을 그대로 쓴다 (2026-11-18) | `supabase/migrations/20261118000000_skyzai_messenger.sql`, `supabase/functions/skyzai-bridge` |
+| 업무 도구(네이버웍스 대체, 2026-11-20~26): 일정·회의실 예약, 할 일, 필독 공지, 봇 알림, 노트, 고객 연락처, 파일함, 조직도(지점>부서>직급), 감사 기록 | `src/core/work.ts`, `src/app/(tabs)/tasks.tsx`, `src/app/notes.tsx`, `src/app/drive.tsx`, `src/ui/event-sheet.tsx`, `src/ui/*-panel.tsx`, `supabase/functions/bot-send`, 마이그레이션 `20261120`~`20261126` |
 
 ## 폴더
 
@@ -114,7 +115,7 @@ bash supabase/tests/run.sh   # DB 마이그레이션·보안 규칙 시험 (로�
 주소록·조직도는 스카이넷 `profiles` 를 보여 주는데, 이 표는 **대륜탑 재직 명단을 기준으로 맞춥니다**. 서버 함수 `daeryuntop-sync` 가
 대륜탑 DB 의 `admin_user`(승인·미삭제)와 `common_code`(직위·지점 이름)를 **SELECT 만** 해서:
 - 대륜탑에 있는데 스카이넷에 없는 사번은 계정을 만들어 둡니다 (비밀번호 없음 — 로그인은 늘 대륜탑 인증). 그래서 로그인 전 사람도 주소록에 보입니다.
-- 이름·직위·부서·지점·전화·이메일을 대륜탑 값으로 맞춥니다. 부서·직위·지점은 코드라서 `common_code` 이름으로 바꿉니다(대륜탑 화면과 같음). 직위에 '변호사'가 들어가면 역할 `lawyer`, 아니면 `staff`. 어드민 역할은 건드리지 않습니다.
+- 이름·직급·직책·직군·부서·지점·전화·이메일과 표시 순서(직급·부서)를 대륜탑 값으로 맞춥니다. 부서·직위·지점은 코드라서 `common_code` 이름으로 바꿉니다(대륜탑 화면과 같음). 직위에 '변호사'가 들어가면 역할 `lawyer`, 아니면 `staff`. 어드민 역할은 건드리지 않습니다.
 - 사람이 아닌 계정(대륜탑관리자·System·AICC 같은 시스템/봇, 직위 코드가 없는 부서 공용 계정, 이름에 관리자/test/system 이 든 것)은 명단에서 빼고, 이미 들어왔으면 사용 중지합니다. 사용 중지 계정은 주소록에 안 보입니다.
 - 대륜탑에서 사라진(퇴사·삭제·미승인) 사번은 사용 중지(`active=false`)합니다. 다시 나타나면 다시 켭니다. 손으로 만든 계정(`profiles.source` 가 비어 있음 — 의뢰인·테스트)은 건드리지 않습니다.
 
@@ -131,6 +132,20 @@ DAERYUNTOP_DB_URL='postgresql://계정:비밀번호@호스트:5432/디비' bash 
 **배포하는 사람에게 필요한 것**: 회사 AWS 계정 권한 (서버는 SSH 키 없이 **SSM Session Manager** 로만 들어갑니다).
 첫 관리자 만들 때만: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FIRST_ADMIN_ID`, `FIRST_ADMIN_PASSWORD`, `FIRST_ADMIN_NAME`.
 
+## 업무 도구 — 네이버웍스에서 옮겨 온 기능 (2026-11-20 ~ 26)
+네이버웍스 API 가 제공하던 것 중 메신저에 붙여 쓸 만한 기능을 그대로 만들었습니다. 상태는 메신저(`store.ts`)와 분리된 작은 저장소 `src/core/work.ts`(`useWork`, `work.*`)에 있고, 서버가 없으면 기기 안 목업으로 돕니다. 범위(scope)는 공통으로 **개인 / 부서(dept) / 회사(firm) / 대화방(room)** 이며, 행 규칙(RLS)이 같은 범위 사람에게만 보여 줍니다.
+| 기능 | 어디서 | 비고 |
+|---|---|---|
+| 일정·회의실 (`events`, `event_attendees`, `resources`) | 캘린더 탭 → 「새 일정」, 백오피스 → 회의실·설비 | 반복(매일·매주·매월), 참석자 수락/거절, 회의실 겹침은 DB 트리거가 막음 |
+| 할 일 (`tasks`, `task_categories`) | 할 일 탭 (의뢰인 제외) | 맡기기(담당자), 기한·우선순위, 사건방 연결 |
+| 필독 공지 (`posts.must_read_until`, `post_reads`) | 게시판 → 글쓰기 → 「필독 기한」 | 읽은 사람 수·명단, 안 읽은 사람에게 배너 |
+| 봇 (`bots`, `bot_rooms`, 함수 `bot-send`) | 백오피스 → 봇 | 토큰으로 바깥 시스템이 방에 알림. `POST /functions/v1/bot-send {token, room_id, text}` |
+| 노트 (`shared_notes`) | 게시판 상단 📄, 방 메뉴 | 고정(공지), 다른 사람 편집 허용 |
+| 고객·거래처 연락처 (`contacts`) | 대화 → 주소록 → 외부 연락처 | 태그, 회사 공용/내 것 |
+| 파일함 (`drive_files`, 버킷 `drive`) | 게시판 상단 📁, 방 메뉴 「이 방 파일함」 | 폴더는 이름표(`서식/소송`), 50MB, 올린 사람만 이름·폴더 변경·삭제. 방 탭은 대화에서 보낸 파일도 함께 |
+| 조직도 (`profiles.duty/job/rank_order/dept_order`) | 대화 → 주소록 → 조직도 | 지점별/부서별 보기, 사람은 직급 순. 직책(소장·책임사무원)·직군(변호사·법률사무원)은 대륜탑 `admin_position` 에서 동기화 |
+| 감사 기록 (`audit_log`) | 백오피스 → 감사 기록 (최고 관리자) | 계정·방·게시글·봇 변경 이력, 방 대화 CSV 내보내기(내보낸 것도 기록) |
+서버에 올리기: 마이그레이션 `20261120000000`~`20261126000000` 을 순서대로 적용하고, 함수 `bot-send` 를 복사한 뒤 `docker compose restart functions`. 테스트는 `npx jest`(규칙·목업 동작)와 `bash supabase/tests/run.sh`(RLS) 로 돕니다.
 ## 서버(Supabase) 운영 — 회사 AWS 계정 안에 직접 설치
 
 2026-11-16부터 Supabase 클라우드 대신 **공식 Supabase 셀프 호스팅(Docker Compose)** 을 회사 AWS 에 올려 씁니다. 앱 코드와 DB 설계는 그대로이고 주소만 다릅니다.

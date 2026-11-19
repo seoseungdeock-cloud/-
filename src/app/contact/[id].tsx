@@ -38,6 +38,9 @@ export default function ContactScreen() {
     { icon: 'mail', label: '메일', onPress: showPrivate && u.email ? () => Linking.openURL(`mailto:${u.email}`) : undefined },
   ];
   const rows: [string, string | undefined][] = [
+    ['직급', u.title],
+    ['직책', u.duty],
+    ['직군', u.job && u.job !== u.title ? u.job : undefined],
     ['전화', showPrivate ? u.phone : undefined],
     ['메일', showPrivate ? u.email : undefined],
     ['생일', showPrivate && u.birthday ? birthdayText(u.birthday) : undefined],
@@ -79,7 +82,7 @@ export default function ContactScreen() {
       {u.firm ? (
         <View style={{ paddingVertical: space.lg, borderBottomWidth: 1, borderBottomColor: c.line, gap: space.md }}>
           <Text style={{ ...family.regular, fontSize: 13, color: c.faint }}>법무법인 {u.firm}</Text>
-          {[u.dept, u.branch].filter((v, i, a) => v && a.indexOf(v) === i).map((v) => (
+          {[u.branch, u.dept].filter((v, i, a) => v && a.indexOf(v) === i).map((v) => (
             <Text key={v} style={{ ...family.semibold, fontSize: 17, color: c.text }}>{v}</Text>
           ))}
         </View>

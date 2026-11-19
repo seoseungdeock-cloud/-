@@ -77,3 +77,4 @@ begin
     alter publication supabase_realtime add table public.bots, public.bot_rooms;
   end if;
 end $$;
+grant select, insert, update, delete on public.bot_rooms to authenticated;

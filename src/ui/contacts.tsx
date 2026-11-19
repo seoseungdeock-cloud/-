@@ -1,8 +1,8 @@
 import { router } from 'expo-router';
-import { useRef, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
-import { displayName, orgGroups, presenceOf } from '@/core/messenger';
+import { branchGroups, displayName, orgGroups, orgLine, presenceOf } from '@/core/messenger';
 import { actions } from '@/core/store';
 import type { User } from '@/core/types';
 import { Icon } from './icons';
@@ -10,12 +10,12 @@ import { Avatar, Empty } from './kit';
 import { Slide } from './motion';
 import { usePresenceBadge } from './presence';
 import { useBoxes } from './segments';
-import { family, space, useColors } from './theme';
+import { family, radius, space, useColors } from './theme';
 import { useApp, useMe } from './use-app';
 
 const ROLE_LABEL = { client: '의뢰인', lawyer: '변호사', staff: '직원', admin: '어드민' } as const;
 
-export function ContactRow({ u, left, onPress, me }: { u: User; left?: ReactNode; onPress?: () => void; me?: boolean }) {
+export function ContactRow({ u, left, onPress, me, omitDept }: { u: User; left?: ReactNode; onPress?: () => void; me?: boolean; omitDept?: boolean }) {
   const c = useColors();
   const s = useApp();
   const user = useMe();
@@ -32,7 +32,7 @@ export function ContactRow({ u, left, onPress, me }: { u: User; left?: ReactNode
         <Text numberOfLines={1} style={{ ...family.bold, fontSize: 14, color: c.text }}>{displayName(u)}</Text>
         <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.sub, marginTop: 1 }}>
           {me ? '나 · ' : ''}
-          {u.dept ?? ROLE_LABEL[u.role]}
+          {orgLine(u, omitDept) || ROLE_LABEL[u.role]}
           {u.role !== 'client' && presence.key !== 'available' ? ` · ${presence.label}` : ''}
         </Text>
       </View>
@@ -41,56 +41,95 @@ export function ContactRow({ u, left, onPress, me }: { u: User; left?: ReactNode
   );
 }
 
-// 조직도: TOP에서 부서 목록 → 부서를 누르면 구성원 (전체 수, 부서 전체 대화)
-export function OrgBrowser({ people, dept, onDept, renderMember }: { people: User[]; dept?: string; onDept: (d?: string) => void; renderMember: (u: User) => ReactNode }) {
+// 조직도: TOP → 지점(또는 부서) → 부서 → 구성원. 사람은 직급 순, 부서는 대륜탑 표시 순서.
+export function OrgBrowser({ people, dept, onDept, renderMember }: { people: User[]; dept?: string; onDept: (d?: string) => void; renderMember: (u: User, inDept?: boolean) => ReactNode }) {
   const c = useColors();
-  const groups = orgGroups(people);
-  const current = groups.find((g) => g.dept === dept);
+  const hasBranch = people.some((u) => u.branch);
+  const [mode, setMode] = useState<'branch' | 'dept'>(hasBranch ? 'branch' : 'dept');
+  const [branch, setBranch] = useState<string>();
+  const branches = useMemo(() => branchGroups(people), [people]);
+  const depts = useMemo(() => orgGroups(people), [people]);
+  const curBranch = mode === 'branch' && branch ? branches.find((b) => b.branch === branch) : undefined;
+  // 부서는 지점 안에서 골랐으면 그 지점 사람만, 아니면 회사 전체에서
+  const curDept = dept ? (curBranch ? curBranch.depts : depts).find((g) => g.dept === dept) : undefined;
+  const crumb = (label: string, active: boolean, onPress?: () => void) => (
+    <Pressable key={label} onPress={onPress} disabled={!onPress} hitSlop={8}>
+      <Text numberOfLines={1} style={{ ...(active ? family.bold : family.regular), fontSize: 14, color: active ? c.text : c.faint, maxWidth: 160 }}>{label}</Text>
+    </Pressable>
+  );
+  const sep = (k: string) => <Icon key={k} name="chevron" color={c.faint} size={14} />;
+  const groupRow = (label: string, count: number, onPress: () => void, icon: 'people' | 'building' = 'people') => (
+    <Pressable key={label} onPress={onPress} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm + 4, paddingVertical: 8, opacity: pressed ? 0.6 : 1 })}>
+      <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name={icon} color={c.sub} size={18} />
+      </View>
+      <Text numberOfLines={1} style={{ flex: 1, ...family.semibold, fontSize: 15, color: c.text }}>{label}</Text>
+      <Text style={{ ...family.regular, fontSize: 13, color: c.faint }}>{count}</Text>
+      <Icon name="chevron" color={c.faint} size={16} />
+    </Pressable>
+  );
+  const chatAll = (members: User[], title: string) => (
+    <Pressable
+      accessibilityLabel={`${title} 전체 대화`}
+      hitSlop={10}
+      style={{ marginLeft: 'auto' }}
+      onPress={() => {
+        const res = actions.startChat(members.map((u) => u.id), title);
+        if (res.ok) router.push({ pathname: '/room/[id]', params: { id: res.roomId! } });
+      }}>
+      <Icon name="chat" color={c.accent} size={22} />
+    </Pressable>
+  );
+  const countLine = (members: User[], title: string) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: space.sm }}>
+      <Text style={{ ...family.regular, fontSize: 14, color: c.sub }}>
+        전체 <Text style={{ color: c.accent, ...family.bold }}>{members.length}</Text>
+      </Text>
+      {chatAll(members, title)}
+    </View>
+  );
   return (
     <View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: c.line }}>
-        <Pressable onPress={() => onDept(undefined)} hitSlop={8}>
-          <Text style={{ ...(current ? family.regular : family.bold), fontSize: 14, color: current ? c.faint : c.text }}>TOP</Text>
-        </Pressable>
-        {current ? (
-          <>
-            <Icon name="chevron" color={c.faint} size={14} />
-            <Text style={{ ...family.bold, fontSize: 14, color: c.text }}>{current.dept}</Text>
-          </>
+        {crumb('TOP', !curBranch && !curDept, () => { setBranch(undefined); onDept(undefined); })}
+        {curBranch ? [sep('s1'), crumb(curBranch.branch, !curDept, curDept ? () => onDept(undefined) : undefined)] : null}
+        {curDept ? [sep('s2'), crumb(curDept.dept, true)] : null}
+        {!curBranch && !curDept && hasBranch ? (
+          <View style={{ marginLeft: 'auto', flexDirection: 'row', gap: 2, backgroundColor: c.surface, borderRadius: radius.pill, padding: 2 }}>
+            {(['branch', 'dept'] as const).map((k) => (
+              <Pressable key={k} accessibilityRole="tab" accessibilityState={{ selected: mode === k }} onPress={() => setMode(k)} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: mode === k ? c.bg : 'transparent' }}>
+                <Text style={{ ...family.semibold, fontSize: 12.5, color: mode === k ? c.text : c.faint }}>{k === 'branch' ? '지점별' : '부서별'}</Text>
+              </Pressable>
+            ))}
+          </View>
         ) : null}
       </View>
-      {current ? (
+      {curDept ? (
         <>
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: space.sm }}>
-            <Text style={{ ...family.regular, fontSize: 14, color: c.sub }}>
-              전체 <Text style={{ color: c.accent, ...family.bold }}>{current.members.length}</Text>
-            </Text>
-            <Pressable
-              accessibilityLabel="부서 전체 대화"
-              hitSlop={10}
-              style={{ marginLeft: 'auto' }}
-              onPress={() => {
-                const res = actions.startChat(current.members.map((u) => u.id), current.dept);
-                if (res.ok) router.push({ pathname: '/room/[id]', params: { id: res.roomId! } });
-              }}>
-              <Icon name="chat" color={c.accent} size={22} />
-            </Pressable>
-          </View>
-          {current.members.map((u) => <View key={u.id}>{renderMember(u)}</View>)}
+          {countLine(curDept.members, curDept.dept)}
+          {curDept.members.map((u) => <View key={u.id}>{renderMember(u, true)}</View>)}
         </>
-      ) : groups.length ? (
-        groups.map((g) => (
-          <Pressable key={g.dept} onPress={() => onDept(g.dept)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm + 4, paddingVertical: 8, opacity: pressed ? 0.6 : 1 })}>
-            <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="people" color={c.sub} size={18} />
+      ) : curBranch ? (
+        <>
+          {countLine(curBranch.members, curBranch.branch)}
+          {/* 지점 안은 부서 제목 아래 사람을 바로 보여 줍니다. 부서 제목을 누르면 그 부서만 */}
+          {curBranch.depts.map((g) => (
+            <View key={g.dept} style={{ marginBottom: space.sm }}>
+              <Pressable onPress={() => onDept(g.dept)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, opacity: pressed ? 0.6 : 1 })}>
+                <Text style={{ ...family.bold, fontSize: 14, color: c.sub }}>{g.dept}</Text>
+                <Text style={{ ...family.regular, fontSize: 13, color: c.faint }}>{g.members.length}</Text>
+                <Icon name="chevron" color={c.faint} size={14} />
+              </Pressable>
+              {g.members.map((u) => <View key={u.id}>{renderMember(u, true)}</View>)}
             </View>
-            <Text style={{ flex: 1, ...family.semibold, fontSize: 14, color: c.text }}>{g.dept}</Text>
-            <Text style={{ ...family.regular, fontSize: 13, color: c.faint }}>{g.members.length}</Text>
-            <Icon name="chevron" color={c.faint} size={16} />
-          </Pressable>
-        ))
-      ) : (
+          ))}
+        </>
+      ) : !people.length ? (
         <Empty text="주소록에 표시할 사람이 없습니다." />
+      ) : mode === 'branch' ? (
+        branches.map((b) => groupRow(b.branch, b.members.length, () => setBranch(b.branch), 'building'))
+      ) : (
+        depts.map((g) => groupRow(g.dept, g.members.length, () => onDept(g.dept)))
       )}
     </View>
   );

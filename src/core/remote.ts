@@ -223,6 +223,7 @@ export async function loadAll(sb: SupabaseClient, meId: string, withMessages = t
   const users: User[] = profiles.map((p) => ({
     id: p.id, nickname: p.nickname, role: p.role, agentAccess: p.agent_access, membership: p.membership,
     officeId: opt(p.office_id), firm: opt(p.firm), title: opt(p.title), dept: opt(p.dept), branch: opt(p.branch),
+    duty: opt(p.duty), job: opt(p.job), ...(p.rank_order == null ? {} : { rankOrder: p.rank_order }), ...(p.dept_order == null ? {} : { deptOrder: p.dept_order }),
     phone: opt(p.phone), email: opt(p.email), birthday: opt(p.birthday), joinedAt: opt(p.joined_at),
     status: opt(p.status), presence: p.presence, ...(p.photo_path && photos.get(p.photo_path) ? { photo: photos.get(p.photo_path) } : {}), ...(p.super_admin ? { superAdmin: true } : {}), ...(p.is_executive ? { executive: true } : {}),
   }));

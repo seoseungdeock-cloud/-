@@ -30,6 +30,7 @@ const fail = (code: string, reason: string, status = 400) => reply({ ok: false, 
 type TopMember = {
   admin_id: string; admin_name: string; position_code: string | null; position_name: string | null; department_name: string | null; name_is_code: boolean; branch_name: string | null;
   admin_tel: string | null; admin_email: string | null; created_at: string | null;
+  duty: string | null; job: string | null; rank_order: number | null; dept_order: number | null;
 };
 /** 사람이 아닌 계정 — 대륜탑 관리자·시스템·봇·부서 공용 계정 (2026-11-19 명단 기준). 환경변수로 더할 수 있습니다. */
 const EXCLUDE_IDS = new Set(['dr_admin', 'app_test', 'aicc', 'daeryuntalkai', 'daeryun', 'sys', 'jin', 'audit', 'meeting', 'manager12', 'manager13', ...(Deno.env.get('DAERYUNTOP_SYNC_EXCLUDE') ?? '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean)]);
@@ -75,7 +76,13 @@ async function readDaeryuntop(): Promise<TopMember[]> {
     const rows = await sql<TopMember[]>`
       select au.admin_id, au.admin_name, au.admin_email, au.created_at, au.position as position_code,
              pc.code_name as position_name, dc.code_name as department_name, bc.code_name as branch_name,
+             pc.sort_num as rank_order, dc.sort_num as dept_order,
              exists (select 1 from common_code cc where cc.deleted_at is null and cc.code_name = au.admin_name) as name_is_code,
+             -- 직책(75)·직군(73)은 admin_position 에 여러 줄로 있을 수 있어 이름을 이어 붙입니다
+             (select string_agg(x.code_name, ', ' order by x.sort_num, x.code_name) from admin_position ap join common_code x on x.code = ap.code and x.deleted_at is null
+               where ap.admin_id = au.admin_id and ap.parent_code = 75 and ap.deleted_at is null) as duty,
+             (select string_agg(x.code_name, ', ' order by x.sort_num, x.code_name) from admin_position ap join common_code x on x.code = ap.code and x.deleted_at is null
+               where ap.admin_id = au.admin_id and ap.parent_code = 73 and ap.deleted_at is null) as job,
              case when ${encKey} <> '' and au.admin_tel ~ '^[0-9a-fA-F]+$'
                   then convert_from(decrypt(decode(au.admin_tel, 'hex'), ${encKey}::bytea, 'aes'), 'utf8')
                   else null end as admin_tel
@@ -140,7 +147,7 @@ Deno.serve(async (req) => {
   }
 
   // 3) 스카이넷 쪽 현재 상태
-  const { data: profiles, error: pe } = await admin.from('profiles').select('id, login_id, nickname, role, title, dept, branch, phone, email, active, source');
+  const { data: profiles, error: pe } = await admin.from('profiles').select('id, login_id, nickname, role, title, dept, branch, phone, email, active, source, duty, job, rank_order, dept_order');
   if (pe) return fail('db', pe.message, 500);
   const have = new Map((profiles ?? []).map((p) => [p.login_id as string, p]));
 
@@ -157,7 +164,11 @@ Deno.serve(async (req) => {
       joined_at: m.created_at ? new Date(m.created_at).toISOString().slice(0, 10) : null,
     };
     // 연락처는 대륜탑이 기준 — 비어 있으면 비웁니다 (암호화된 채 들어온 값이 남지 않도록)
-    const contact = { phone: clean(m.admin_tel, 30), email: clean(m.admin_email, 120) };
+    const contact = {
+      phone: clean(m.admin_tel, 30), email: clean(m.admin_email, 120),
+      // 조직도용 — 직책·직군·표시 순서도 대륜탑이 기준이라 비면 비웁니다
+      duty: clean(m.duty, 80), job: clean(m.job, 40), rank_order: m.rank_order ?? null, dept_order: m.dept_order ?? null,
+    };
     try {
       if (!prof) {
         const email = `${loginId}@${LOGIN_DOMAIN}`;

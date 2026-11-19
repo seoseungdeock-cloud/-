@@ -49,6 +49,7 @@ create function public.can_see_note(n public.shared_notes) returns boolean langu
       or (n.scope = 'room' and is_member(n.room_id))
 $$;
 revoke execute on function public.can_see_note(public.shared_notes) from public, anon;
+grant execute on function public.can_see_note(public.shared_notes) to authenticated;
 
 create policy notes_read on public.shared_notes for select to authenticated using (can_see_note(shared_notes));
 create policy notes_insert on public.shared_notes for insert to authenticated
@@ -74,3 +75,4 @@ begin
     alter publication supabase_realtime add table public.shared_notes, public.contacts;
   end if;
 end $$;
+grant select, insert, update, delete on public.shared_notes, public.contacts to authenticated;

@@ -169,3 +169,9 @@ insert into public.resources (name, kind, branch, capacity) values
 
 revoke execute on function public.resource_conflict(uuid, timestamptz, timestamptz, uuid) from public, anon;
 revoke execute on function public.my_dept() from public, anon;
+-- 행 규칙(policy)이 부르는 도우미는 로그인한 사람이 실행할 수 있어야 함
+grant execute on function public.my_dept(), public.can_see_event(public.events) to authenticated;
+-- 표 권한 (행 규칙이 실제 범위를 정함). 'Automatically expose new tables' 설정에 기대지 않도록 명시합니다.
+grant select, insert, update, delete on public.events, public.event_attendees, public.tasks, public.task_categories to authenticated;
+grant select on public.resources to authenticated;
+grant insert, update, delete on public.resources to authenticated;

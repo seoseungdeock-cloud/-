@@ -1,4 +1,4 @@
-import { _setWorkState, dueState, kstDate, kstIso, kstTime, occurrences, resourceConflicts, searchContacts, sortTasks, visibleEvents, visibleNotes, work, workState, type Task, type WorkEvent } from '../work';
+import { _setWorkState, cleanFolder, dueState, folderView, visibleFiles, type DriveFile, kstDate, kstIso, kstTime, occurrences, resourceConflicts, searchContacts, sortTasks, visibleEvents, visibleNotes, work, workState, type Task, type WorkEvent } from '../work';
 
 const ev = (p: Partial<WorkEvent> & Pick<WorkEvent, 'id' | 'startsAt' | 'endsAt'>): WorkEvent => ({
   ownerId: 'u1', title: p.id, allDay: false, scope: 'personal', recurrence: 'none', createdAt: '2026-01-01T00:00:00Z', ...p,
@@ -130,5 +130,45 @@ describe('노트·연락처', () => {
     expect(searchContacts(workState().contacts, '화재').map((c) => c.name)).toEqual(['김보험']);
     expect(searchContacts(workState().contacts, '', '법원').map((c) => c.name)).toEqual(['박서기']);
     expect(searchContacts(workState().contacts, 'A@B').map((c) => c.name)).toEqual(['박서기']);
+  });
+});
+
+describe('파일함', () => {
+  const f = (id: string, p: Partial<DriveFile>): DriveFile => ({ id, scope: 'firm', folder: '', name: `${id}.pdf`, size: 10, path: `${id}/${id}.pdf`, uploaderId: 'u1', createdAt: `2026-11-0${id.length}T00:00:00Z`, ...p });
+  it('폴더 이름표를 정리한다', () => {
+    expect(cleanFolder(' /서식 / 소송/ ')).toBe('서식/소송');
+    expect(cleanFolder('///')).toBe('');
+  });
+  it('한 폴더 안의 하위 폴더와 파일을 나눈다', () => {
+    const files = [f('a', { folder: '' }), f('bb', { folder: '서식' }), f('ccc', { folder: '서식/소송' }), f('dddd', { folder: '서식/계약' }), f('e', { folder: '규정' })];
+    const top = folderView(files, '');
+    expect(top.folders).toEqual(['규정', '서식']);
+    expect(top.files.map((x) => x.id)).toEqual(['a']);
+    const form = folderView(files, '서식');
+    expect(form.folders).toEqual(['계약', '소송']);
+    expect(form.files.map((x) => x.id)).toEqual(['bb']);
+  });
+  it('보이는 범위: 회사·내 부서·내 방·내가 올린 것', () => {
+    const files = [f('a', { scope: 'firm' }), f('b', { scope: 'dept', dept: '송무' }), f('c', { scope: 'dept', dept: '경영' }), f('d', { scope: 'room', roomId: 'r1' }), f('e', { scope: 'room', roomId: 'r2', uploaderId: 'me' })];
+    const vis = visibleFiles(files, { id: 'me', dept: '송무', firm: true }, new Set(['r1']));
+    expect(vis.map((x) => x.id)).toEqual(['a', 'b', 'd', 'e']);
+    expect(visibleFiles(files, { id: 'cl', firm: false }, new Set(['r1'])).map((x) => x.id)).toEqual(['d']);
+  });
+  it('올리기·옮기기·지우기 (목업)', async () => {
+    _setWorkState({ files: [] }, 'me');
+    const up = await work.uploadFile({ scope: 'dept', dept: '송무', folder: ' 서식/ ', name: '답변서.docx', uri: 'blob:x', size: 100 });
+    expect(up.ok).toBe(true);
+    const saved = workState().files[0];
+    expect(saved.folder).toBe('서식');
+    expect(saved.path.startsWith(`${saved.id}/`)).toBe(true);
+    expect((await work.uploadFile({ scope: 'dept', folder: '', name: 'x', uri: 'blob:y' })).ok).toBe(false);
+    expect((await work.uploadFile({ scope: 'firm', folder: '', name: 'big', uri: 'blob:z', size: 51 * 1024 * 1024 })).ok).toBe(false);
+    expect((await work.moveFile(saved.id, { folder: '서식/소송' })).ok).toBe(true);
+    expect(workState().files[0].folder).toBe('서식/소송');
+    _setWorkState({ files: workState().files }, 'other');
+    expect((await work.deleteFile(saved.id)).ok).toBe(false);
+    _setWorkState({ files: workState().files }, 'me');
+    expect((await work.deleteFile(saved.id)).ok).toBe(true);
+    expect(workState().files).toHaveLength(0);
   });
 });
