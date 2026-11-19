@@ -1,4 +1,4 @@
-import { _setWorkState, dueState, kstDate, kstIso, kstTime, occurrences, resourceConflicts, sortTasks, visibleEvents, work, workState, type Task, type WorkEvent } from '../work';
+import { _setWorkState, dueState, kstDate, kstIso, kstTime, occurrences, resourceConflicts, searchContacts, sortTasks, visibleEvents, visibleNotes, work, workState, type Task, type WorkEvent } from '../work';
 
 const ev = (p: Partial<WorkEvent> & Pick<WorkEvent, 'id' | 'startsAt' | 'endsAt'>): WorkEvent => ({
   ownerId: 'u1', title: p.id, allDay: false, scope: 'personal', recurrence: 'none', createdAt: '2026-01-01T00:00:00Z', ...p,
@@ -113,7 +113,6 @@ describe('노트·연락처', () => {
     const b = await work.saveNote({ title: '회사 원칙', body: 'y', scope: 'firm', pinned: true, allowEdit: false });
     expect(a.ok && b.ok).toBe(true);
     expect((await work.saveNote({ title: '', body: '', scope: 'firm', pinned: false, allowEdit: true })).ok).toBe(false);
-    const { visibleNotes } = await import('../work');
     const vis = visibleNotes(workState().notes, { id: 'other', dept: '부산', firm: true }, new Set());
     expect(vis.map((n) => n.title)).toEqual(['회사 원칙', '부서 당직']); // 고정 먼저
     expect(visibleNotes(workState().notes, { id: 'other', dept: '서울', firm: true }, new Set()).map((n) => n.title)).toEqual(['회사 원칙']);
@@ -128,7 +127,6 @@ describe('노트·연락처', () => {
     expect(r.ok).toBe(true);
     expect(workState().contacts[0].tags).toEqual(['보험사', '교통사고']);
     await work.saveContact({ name: '박서기', email: 'a@b.c', shared: false, tags: ['법원'] });
-    const { searchContacts } = await import('../work');
     expect(searchContacts(workState().contacts, '화재').map((c) => c.name)).toEqual(['김보험']);
     expect(searchContacts(workState().contacts, '', '법원').map((c) => c.name)).toEqual(['박서기']);
     expect(searchContacts(workState().contacts, 'A@B').map((c) => c.name)).toEqual(['박서기']);
