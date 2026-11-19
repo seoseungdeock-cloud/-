@@ -5,8 +5,10 @@
 import type { State } from './store';
 import type { User } from './types';
 
-export function contactsFor(me: User, s: Pick<State, 'users' | 'rooms'>): User[] {
-  const others = s.users.filter((u) => u.id !== me.id);
+export function contactsFor(me: User, s: Pick<State, 'users' | 'rooms'> & Partial<Pick<State, 'accounts'>>): User[] {
+  // 사용 중지된 계정(퇴사 등)은 주소록에 안 보입니다
+  const off = new Set((s.accounts ?? []).filter((a) => !a.active).map((a) => a.userId));
+  const others = s.users.filter((u) => u.id !== me.id && !off.has(u.id));
   if (me.role === 'admin') return others;
   if (me.role === 'client') {
     const ids = new Set(

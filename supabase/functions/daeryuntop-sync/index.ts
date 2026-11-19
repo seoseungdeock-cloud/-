@@ -7,12 +7,15 @@
 //   · 둘 다 있는 사번 → 이름·직위·부서·지점·전화·이메일을 대륜탑 값으로 맞춥니다. 역할은 변호사/직원만 직위에 따라 바꾸고, 어드민은 건드리지 않습니다.
 //   · 전에 동기화로 들어왔는데 대륜탑에서 사라진(퇴사·삭제·미승인) 사번 → 사용 중지(active=false). 다시 나타나면 다시 켭니다.
 //   · 손으로 만든 계정(의뢰인, 테스트 계정 등)은 건드리지 않습니다.
+//   · 사람이 아닌 계정(대륜탑관리자·System·AICC 같은 시스템/봇 계정, 직위 없는 부서 계정)은 명단에서 뺍니다 — 이름·아이디 규칙 + DAERYUNTOP_SYNC_EXCLUDE.
 //
 // 부르는 쪽
 //   · pg_cron → public.kick_daeryuntop_sync() → 이 함수 (헤더 x-sync-secret = Vault 'daeryuntop_sync_secret')
 //   · 백오피스 「대륜탑 명단 동기화」 버튼 → 어드민 세션 토큰으로 호출 (profiles.role = 'admin' 확인)
 //
-// 비밀값(함수 설정에서만): SUPABASE_SERVICE_ROLE_KEY(자동), DAERYUNTOP_DB_URL (postgres://읽기전용계정:비밀번호@호스트:5432/디비), DAERYUNTOP_SYNC_SECRET
+// 비밀값(함수 설정에서만): SUPABASE_SERVICE_ROLE_KEY(자동), DAERYUNTOP_DB_URL (postgres://읽기전용계정:비밀번호@호스트:5432/디비), DAERYUNTOP_SYNC_SECRET,
+//   DAERYUNTOP_ENC_KEY (대륜탑이 전화번호를 AES 로 암호화해 두는 키 — 있으면 전화번호를 풀어서 넣고, 없으면 전화번호는 비움),
+//   DAERYUNTOP_SYNC_EXCLUDE (명단에서 뺄 사번, 쉼표 구분. 기본값 아래 EXCLUDE_IDS)
 // 배포: index.ts 를 서버 /opt/skynet/volumes/functions/daeryuntop-sync/ 에 복사하고 docker compose restart functions.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import postgres from 'npm:postgres@3';
@@ -25,9 +28,21 @@ const reply = (data: unknown, status = 200) => new Response(JSON.stringify(data)
 const fail = (code: string, reason: string, status = 400) => reply({ ok: false, code, reason }, status);
 
 type TopMember = {
-  admin_id: string; admin_name: string; position_name: string | null; department: string | null; branch_name: string | null;
+  admin_id: string; admin_name: string; position_code: string | null; position_name: string | null; department_name: string | null; branch_name: string | null;
   admin_tel: string | null; admin_email: string | null; created_at: string | null;
 };
+/** 사람이 아닌 계정 — 대륜탑 관리자·시스템·봇·부서 공용 계정 (2026-11-19 명단 기준). 환경변수로 더할 수 있습니다. */
+const EXCLUDE_IDS = new Set(['dr_admin', 'app_test', 'aicc', 'daeryuntalkai', 'daeryun', 'sys', 'jin', ...(Deno.env.get('DAERYUNTOP_SYNC_EXCLUDE') ?? '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean)]);
+const NOT_PERSON = /관리자|테스트|\btest\b|system|\bbot\b|^aicc$|ai$|^sys/i;
+/** 사람 계정인지: 제외 목록에 없고, 이름이 시스템 계정 같지 않고, 직위가 있어야 합니다 (부서 공용 계정은 직위가 없음). */
+function isPerson(m: TopMember): boolean {
+  const id = m.admin_id.trim().toLowerCase();
+  if (EXCLUDE_IDS.has(id)) return false;
+  if (NOT_PERSON.test(m.admin_name) || NOT_PERSON.test(id)) return false;
+  if (!m.position_code?.trim()) return false;   // 직위 코드 자체가 없는 계정 = 부서 공용 계정. (코드가 있는데 이름표가 없는 경우는 사람)
+  if (m.department_name === '마스터') return false;
+  return true;
+}
 
 /** AWS RDS 인증서 발급기관 묶음 — 런타임 기본 신뢰 목록에 없어 직접 받아 TLS 검증에 씁니다 (한 번 받아 두고 재사용). */
 let rdsCa: string | undefined;
@@ -48,13 +63,19 @@ async function readDaeryuntop(): Promise<TopMember[]> {
   if (!url) throw new Error('DAERYUNTOP_DB_URL 이 설정되지 않았습니다');
   const ca = await rdsCaBundle();
   const sql = postgres(url, { max: 1, idle_timeout: 5, connect_timeout: 10, prepare: false, ssl: ca ? { ca } : 'prefer' });
+  const encKey = Deno.env.get('DAERYUNTOP_ENC_KEY') ?? '';
   try {
+    // 부서·직위·지점은 코드라서 common_code 에서 이름으로 바꿉니다 (대륜탑 화면과 같은 방식). 전화번호는 대륜탑이 AES 로 암호화해 두므로 키가 있을 때만 풉니다.
     const rows = await sql<TopMember[]>`
-      select au.admin_id, au.admin_name, au.department, au.admin_tel, au.admin_email, au.created_at,
-             pc.code_name as position_name, bc.code_name as branch_name
+      select au.admin_id, au.admin_name, au.admin_email, au.created_at, au.position as position_code,
+             pc.code_name as position_name, dc.code_name as department_name, bc.code_name as branch_name,
+             case when ${encKey} <> '' and au.admin_tel ~ '^[0-9a-fA-F]+$'
+                  then convert_from(decrypt(decode(au.admin_tel, 'hex'), ${encKey}::bytea, 'aes'), 'utf8')
+                  else null end as admin_tel
         from admin_user au
         left join common_code bc on bc.code = au.branch and bc.deleted_at is null
         left join common_code pc on au.position ~ '^[0-9]+$' and pc.code = au.position::int and pc.deleted_at is null
+        left join common_code dc on au.department ~ '^[0-9]+$' and dc.code = au.department::int and dc.deleted_at is null
        where au.deleted_at is null
          and coalesce(au.is_hard_delete, false) = false
          and coalesce(au.approve_state, false) = true
@@ -103,9 +124,12 @@ Deno.serve(async (req) => {
     return fail('daeryuntop', `대륜탑에 연결하지 못했습니다: ${String((e as Error).message ?? e).slice(0, 120)}`, 502);
   }
   const byId = new Map<string, TopMember>();
+  let notPerson = 0;
   for (const m of members) {
     const id = m.admin_id.trim().toLowerCase();
-    if (ID_RE.test(id)) byId.set(id, m);
+    if (!ID_RE.test(id)) continue;
+    if (!isPerson(m)) { notPerson++; continue; }
+    byId.set(id, m);
   }
 
   // 3) 스카이넷 쪽 현재 상태
@@ -122,9 +146,11 @@ Deno.serve(async (req) => {
     const nickname = clean(m.admin_name, 30) ?? loginId;
     const lawyer = isLawyer(m.position_name);
     const fields = {
-      nickname, title: clean(m.position_name), dept: clean(m.department), branch: clean(m.branch_name),
-      phone: clean(m.admin_tel, 30), email: clean(m.admin_email, 120), joined_at: m.created_at ? new Date(m.created_at).toISOString().slice(0, 10) : null,
+      nickname, title: clean(m.position_name), dept: clean(m.department_name), branch: clean(m.branch_name),
+      joined_at: m.created_at ? new Date(m.created_at).toISOString().slice(0, 10) : null,
     };
+    // 연락처는 대륜탑이 기준 — 비어 있으면 비웁니다 (암호화된 채 들어온 값이 남지 않도록)
+    const contact = { phone: clean(m.admin_tel, 30), email: clean(m.admin_email, 120) };
     try {
       if (!prof) {
         const email = `${loginId}@${LOGIN_DOMAIN}`;
@@ -135,12 +161,13 @@ Deno.serve(async (req) => {
           userId = link?.user?.id;
         }
         if (!userId) throw new Error(error?.message ?? 'createUser');
-        const { error: ie } = await admin.from('profiles').upsert({ id: userId, login_id: loginId, role: lawyer ? 'lawyer' : 'staff', firm: '대륜', active: true, source: SOURCE, synced_at: now, ...fields }, { onConflict: 'id' });
+        const { error: ie } = await admin.from('profiles').upsert({ id: userId, login_id: loginId, role: lawyer ? 'lawyer' : 'staff', firm: '대륜', active: true, source: SOURCE, synced_at: now, ...fields, ...contact }, { onConflict: 'id' });
         if (ie) throw ie;
         result.added++;
       } else {
         const patch: Record<string, unknown> = { source: SOURCE, synced_at: now };
         for (const [k, v] of Object.entries(fields)) if (v !== null && v !== (prof as Record<string, unknown>)[k]) patch[k] = v;
+        for (const [k, v] of Object.entries(contact)) if (v !== (prof as Record<string, unknown>)[k]) patch[k] = v;
         if (prof.role === 'lawyer' || prof.role === 'staff') {
           const want = lawyer ? 'lawyer' : 'staff';
           if (want !== prof.role) patch.role = want;
@@ -165,6 +192,6 @@ Deno.serve(async (req) => {
     else result.deactivated++;
   }
 
-  console.log('[daeryuntop-sync]', caller, JSON.stringify({ total: byId.size, ...result, errors: result.errors.length }));
-  return reply({ ok: true, total: byId.size, ...result, at: now });
+  console.log('[daeryuntop-sync]', caller, JSON.stringify({ total: byId.size, notPerson, ...result, errors: result.errors.length }));
+  return reply({ ok: true, total: byId.size, notPerson, ...result, at: now });
 });
