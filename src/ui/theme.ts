@@ -38,9 +38,12 @@ const light = {
   warn: '#E8590C',
   warnSoft: '#FFF1E6',
   member: '#B8860B',
-  bubbleMine: '#2E5BFF',
-  bubbleMineText: '#FFFFFF',
+  /** 내 말풍선 — 연한 파랑 바닥에 진한 글자 (진파랑+흰 글자는 답장·작은 글자가 안 읽혀서 뺌) */
+  bubbleMine: '#E2EAFF',
+  bubbleMineText: '#191F28',
   bubbleOther: '#F2F4F6',
+  /** 말풍선 안 인용 칸 (답장·전달 원문) */
+  quote: 'rgba(15,23,42,0.06)',
   mark: '#FFE45C',
   markText: '#191F28',
   /** 왼쪽 메뉴·폰 상단 띠 — 진한 남색 바닥 (슬랙식 업무용 메뉴) */
@@ -82,9 +85,10 @@ const darkColors: typeof light = {
   warn: '#FF8A4C',
   warnSoft: '#3A2418',
   member: '#E0B84A',
-  bubbleMine: '#3A62E8',
-  bubbleMineText: '#FFFFFF',
+  bubbleMine: '#273A66',
+  bubbleMineText: '#F2F4F6',
   bubbleOther: '#24262C',
+  quote: 'rgba(255,255,255,0.08)',
   mark: '#FFE45C',
   markText: '#191F28',
   navBg: '#0C0F1D',

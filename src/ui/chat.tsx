@@ -3,20 +3,20 @@ import { router } from 'expo-router';
 import { createElement, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, Text, TextInput, Vibration, View } from 'react-native';
 
-import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
-import { actions } from '@/core/store';
-import { useApp, useMe } from '@/ui/use-app';
-import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Attachment, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
 import { canConfirmGreeting, greetingDue, lawyerName, parseAssignText, type AssignNotice } from '@/core/assign';
+import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
 import type { RoomDocRef } from '@/core/room-ai';
 import { aiAnswerLevel } from '@/core/rooms';
-import { Icon, type IconName } from './icons';
-import { HearingCard } from './hearing';
-import { FileActions, fileSize, isVideo, openFile } from './board';
-import { openViewer } from './image-viewer';
+import { actions } from '@/core/store';
+import { AI_SENDER, BOT_SENDER, SYSTEM_SENDER, type Attachment, type Message, type NotifyLevel, type Room, type User } from '@/core/types';
+import { useApp, useMe } from '@/ui/use-app';
 import { useAx } from './axiom';
-import { pickSquarePhoto } from './pick-photo';
+import { FileActions, fileSize, isVideo, openFile } from './board';
+import { HearingCard } from './hearing';
+import { Icon, type IconName } from './icons';
+import { openViewer } from './image-viewer';
 import { Avatar } from './kit';
+import { pickSquarePhoto } from './pick-photo';
 import { chatTime, clockTime, roomTitle } from './room-row';
 import { family, radius, space, useColors } from './theme';
 import { useFrameWidth } from './web-frame';
@@ -206,11 +206,14 @@ export function Bubble({
               gap: space.xs,
             }}>
             {quoted ? (
-              <View style={{ borderLeftWidth: 2, borderLeftColor: mine ? 'rgba(255,255,255,0.7)' : c.accent, paddingLeft: space.sm, marginBottom: 2 }}>
-                <Text style={{ ...family.semibold, fontSize: 12, color: mine ? c.bubbleMineText : c.sub }}>{nameOf(users, quoted.senderId)}에게 답장</Text>
-                <Text numberOfLines={2} style={{ ...family.regular, fontSize: 13, color: mine ? c.bubbleMineText : c.sub }}>
-                  {quoted.recalled ? '회수된 메시지입니다.' : quoted.text}
-                </Text>
+              <View style={{ flexDirection: 'row', backgroundColor: c.quote, borderRadius: radius.sm + 2, overflow: 'hidden', marginBottom: 4 }}>
+                <View style={{ width: 3, backgroundColor: c.accent }} />
+                <View style={{ flex: 1, paddingHorizontal: space.sm + 2, paddingVertical: 6, gap: 1 }}>
+                  <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 13, color: c.accent }}>{nameOf(users, quoted.senderId)}</Text>
+                  <Text numberOfLines={2} style={{ ...family.regular, fontSize: 14, lineHeight: 19, color: c.sub }}>
+                    {quoted.recalled ? '회수된 메시지입니다.' : quoted.text || (quoted.attachments?.length ? '사진·파일' : '')}
+                  </Text>
+                </View>
               </View>
             ) : null}
             {m.hearingAlertId ? (
@@ -236,7 +239,7 @@ export function Bubble({
             ) : (
               <>
                 {m.attachments?.length ? <MessageFiles items={m.attachments} mine={mine} title={room.title} boxed={bare} /> : null}
-                {m.text ? <Body text={m.text} names={names} color={fg} mention={mine ? c.bubbleMineText : c.accent} mark={mark} /> : null}
+                {m.text ? <Body text={m.text} names={names} color={fg} mention={c.accent} mark={mark} /> : null}
               </>
             )}
           </Pressable>
