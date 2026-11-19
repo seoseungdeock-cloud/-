@@ -18,8 +18,8 @@ import { openViewer } from './image-viewer';
 import { Avatar } from './kit';
 import { pickSquarePhoto } from './pick-photo';
 import { chatTime, clockTime, roomTitle } from './room-row';
-import { family, radius, space, useColors } from './theme';
-import { useFrameWidth } from './web-frame';
+import { family, radius, shadow, space, useColors } from './theme';
+import { useFrameWidth, useLayout } from './web-frame';
 
 export const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
@@ -399,14 +399,26 @@ export function ReactionsSheet({ m, me, users, onClose }: { m?: Message; me: Use
 }
 
 /** 바닥에서 올라오는 시트 */
-export function Sheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+/**
+ * 시트: 폰에서는 아래에서 올라오는 바닥 시트, PC·태블릿에서는 가운데 떠 있는 대화상자 (폭 560, wide 면 720).
+ * 바깥(어두운 배경)을 누르면 닫힙니다.
+ */
+export function Sheet({ open, onClose, children, wide }: { open: boolean; onClose: () => void; children: ReactNode; wide?: boolean }) {
   const c = useColors();
-  // PC 웹에서도 앱 화면(폰 크기 등) 폭 안에서만 열림
   const frameW = useFrameWidth();
+  const { desktop } = useLayout();
+  const dialog = desktop && frameW >= 640;
   return (
-    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable accessibilityLabel="닫기" onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}>
-        <Pressable onPress={() => undefined} style={{ backgroundColor: c.bg, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, gap: space.sm, maxHeight: '80%', width: '100%', maxWidth: frameW, alignSelf: 'center' }}>
+    <Modal visible={open} transparent animationType={dialog ? 'fade' : 'slide'} onRequestClose={onClose}>
+      <Pressable accessibilityLabel="닫기" onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.42)', justifyContent: dialog ? 'center' : 'flex-end', alignItems: 'center', padding: dialog ? space.xl : 0 }}>
+        <Pressable
+          onPress={() => undefined}
+          style={
+            dialog
+              ? { backgroundColor: c.bg, borderRadius: radius.xl, padding: space.xl, gap: space.sm, maxHeight: '88%', width: '100%', maxWidth: wide ? 720 : 560, ...shadow.float }
+              : { backgroundColor: c.bg, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: space.lg, paddingBottom: space.xl, gap: space.sm, maxHeight: '88%', width: '100%', maxWidth: frameW }
+          }>
+          {dialog ? null : <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: c.lineStrong, marginTop: -4, marginBottom: space.sm }} />}
           {children}
         </Pressable>
       </Pressable>

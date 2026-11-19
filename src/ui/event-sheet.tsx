@@ -8,6 +8,7 @@ import { Icon } from '@/ui/icons';
 import { Avatar, Badge, Button, Chip, Chips, Input, Notice, Sub, T } from '@/ui/kit';
 import { family, radius, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
+import { useLayout } from '@/ui/web-frame';
 import { timeLabel } from '@/ui/hearing';
 
 const SCOPES: [EventScope, string][] = [['personal', '내 일정'], ['dept', '부서 공유'], ['firm', '회사 공유'], ['room', '대화방']];
@@ -25,6 +26,7 @@ function addMinutes(time: string, min: number): string {
 /** 일정 만들기 / 고치기 */
 export function EventEditor({ open, onClose, initial, date, roomId, onDone }: { open: boolean; onClose: () => void; initial?: WorkEvent; date?: string; roomId?: string; onDone?: (id: string) => void }) {
   const c = useColors();
+  const { desktop } = useLayout();
   const s = useApp();
   const me = useMe();
   const w = useWork();
@@ -80,22 +82,23 @@ export function EventEditor({ open, onClose, initial, date, roomId, onDone }: { 
 
   return (
     <Sheet open={open} onClose={onClose}>
-      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        <T size="h3" bold>{initial ? '일정 고치기' : '새 일정'}</T>
-        <View style={{ height: space.md }} />
+      <T size="h3" bold>{initial ? '일정 고치기' : '새 일정'}</T>
+      {/* 제목·단추는 고정, 가운데 항목만 스크롤 */}
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={{ flexShrink: 1, marginTop: space.sm }}>
         <Input placeholder="제목" value={title} onChangeText={setTitle} autoFocus />
         <Chips>
           <Chip label="종일" active={allDay} onPress={() => setAllDay((v) => !v)} />
           <Chip label="오늘" active={day === todayStr} onPress={() => setDay(todayStr)} />
           <Chip label="내일" onPress={() => setDay(new Date(new Date(`${todayStr}T00:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10))} />
         </Chips>
-        <View style={{ flexDirection: 'row', gap: space.sm }}>
-          <View style={{ flex: 1.3 }}><Input label="날짜" placeholder="2026-11-20" value={day} onChangeText={setDay} autoCapitalize="none" /></View>
+        {/* PC: 날짜·시작·끝 한 줄 / 폰: 날짜 한 줄, 시작·끝 한 줄 */}
+        <View style={{ flexDirection: desktop ? 'row' : 'column', gap: desktop ? space.sm : 0 }}>
+          <View style={{ flex: desktop ? 1.3 : undefined }}><Input label="날짜" placeholder="2026-11-20" value={day} onChangeText={setDay} autoCapitalize="none" /></View>
           {allDay ? null : (
-            <>
+            <View style={{ flex: desktop ? 2 : undefined, flexDirection: 'row', gap: space.sm }}>
               <View style={{ flex: 1 }}><Input label="시작" placeholder="10:00" value={start} onChangeText={(v) => { setStart(v); if (TIME_RE.test(v) && end <= v) setEnd(addMinutes(v, 60)); }} autoCapitalize="none" /></View>
               <View style={{ flex: 1 }}><Input label="끝" placeholder="11:00" value={end} onChangeText={setEnd} autoCapitalize="none" /></View>
-            </>
+            </View>
           )}
         </View>
         <Sub>공유 범위</Sub>
@@ -138,12 +141,12 @@ export function EventEditor({ open, onClose, initial, date, roomId, onDone }: { 
         <Chips>{REPEATS.map(([k, l]) => <Chip key={k} label={l} active={repeat === k} onPress={() => setRepeat(k)} />)}</Chips>
         {repeat !== 'none' ? <Input label="반복 종료일 (비우면 계속)" placeholder="2026-12-31" value={until} onChangeText={setUntil} autoCapitalize="none" /> : null}
         <Input placeholder="메모 (선택)" value={memo} onChangeText={setMemo} multiline />
-        {error ? <Notice text={error} /> : null}
-        <View style={{ flexDirection: 'row', gap: space.sm }}>
-          <View style={{ flex: 1 }}><Button label="취소" kind="plain" onPress={onClose} /></View>
-          <View style={{ flex: 2 }}><Button label={busy ? '저장 중…' : initial ? '저장' : '일정 추가'} disabled={busy} onPress={() => void submit()} /></View>
-        </View>
       </ScrollView>
+      {error ? <Notice text={error} /> : null}
+      <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.sm }}>
+        <View style={{ flex: 1 }}><Button label="취소" kind="plain" onPress={onClose} /></View>
+        <View style={{ flex: 2 }}><Button label={busy ? '저장 중…' : initial ? '저장' : '일정 추가'} disabled={busy} onPress={() => void submit()} /></View>
+      </View>
     </Sheet>
   );
 }
