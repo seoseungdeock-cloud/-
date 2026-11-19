@@ -28,18 +28,24 @@ const reply = (data: unknown, status = 200) => new Response(JSON.stringify(data)
 const fail = (code: string, reason: string, status = 400) => reply({ ok: false, code, reason }, status);
 
 type TopMember = {
-  admin_id: string; admin_name: string; position_code: string | null; position_name: string | null; department_name: string | null; branch_name: string | null;
+  admin_id: string; admin_name: string; position_code: string | null; position_name: string | null; department_name: string | null; name_is_code: boolean; branch_name: string | null;
   admin_tel: string | null; admin_email: string | null; created_at: string | null;
 };
 /** 사람이 아닌 계정 — 대륜탑 관리자·시스템·봇·부서 공용 계정 (2026-11-19 명단 기준). 환경변수로 더할 수 있습니다. */
-const EXCLUDE_IDS = new Set(['dr_admin', 'app_test', 'aicc', 'daeryuntalkai', 'daeryun', 'sys', 'jin', ...(Deno.env.get('DAERYUNTOP_SYNC_EXCLUDE') ?? '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean)]);
-const NOT_PERSON = /관리자|테스트|\btest\b|system|\bbot\b|^aicc$|ai$|^sys/i;
-/** 사람 계정인지: 제외 목록에 없고, 이름이 시스템 계정 같지 않고, 직위가 있어야 합니다 (부서 공용 계정은 직위가 없음). */
+const EXCLUDE_IDS = new Set(['dr_admin', 'app_test', 'aicc', 'daeryuntalkai', 'daeryun', 'sys', 'jin', 'audit', 'meeting', 'manager12', 'manager13', ...(Deno.env.get('DAERYUNTOP_SYNC_EXCLUDE') ?? '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean)]);
+const NOT_PERSON = /관리자|테스트|\btest\b|system|\bbot\b|^aicc$|ai$|^sys|\(hq\)|공용|회의실/i;
+/**
+ * 사람 계정인지. 다음은 사람이 아닙니다:
+ *   · 제외 목록 사번 · 이름/아이디가 관리자·test·system·bot·AI 같음 · 직위 코드가 아예 없음(부서 공용 계정)
+ *   · 이름이 부서·지점·직위 이름표(common_code)와 똑같음 — 「감사실」「회의실」「경영관리팀」처럼 부서명을 이름으로 쓴 공용 계정.
+ *     (손영실 같은 사람 이름은 이름표와 같지 않아 그대로 사람)
+ */
 function isPerson(m: TopMember): boolean {
   const id = m.admin_id.trim().toLowerCase();
   if (EXCLUDE_IDS.has(id)) return false;
   if (NOT_PERSON.test(m.admin_name) || NOT_PERSON.test(id)) return false;
-  if (!m.position_code?.trim()) return false;   // 직위 코드 자체가 없는 계정 = 부서 공용 계정. (코드가 있는데 이름표가 없는 경우는 사람)
+  if (!m.position_code?.trim()) return false;
+  if (m.name_is_code) return false;
   if (m.department_name === '마스터') return false;
   return true;
 }
@@ -69,6 +75,7 @@ async function readDaeryuntop(): Promise<TopMember[]> {
     const rows = await sql<TopMember[]>`
       select au.admin_id, au.admin_name, au.admin_email, au.created_at, au.position as position_code,
              pc.code_name as position_name, dc.code_name as department_name, bc.code_name as branch_name,
+             exists (select 1 from common_code cc where cc.deleted_at is null and cc.code_name = au.admin_name) as name_is_code,
              case when ${encKey} <> '' and au.admin_tel ~ '^[0-9a-fA-F]+$'
                   then convert_from(decrypt(decode(au.admin_tel, 'hex'), ${encKey}::bytea, 'aes'), 'utf8')
                   else null end as admin_tel
