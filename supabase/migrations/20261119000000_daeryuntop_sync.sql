@@ -44,3 +44,5 @@ language sql stable security definer set search_path = public as $$
     from public.profiles where source = 'daeryuntop';
 $$;
 grant execute on function public.daeryuntop_sync_status() to authenticated;
+
+revoke execute on function public.daeryuntop_sync_status() from public, anon;

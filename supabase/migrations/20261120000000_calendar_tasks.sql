@@ -166,3 +166,6 @@ insert into public.resources (name, kind, branch, capacity) values
   ('본사 소회의실 B', 'room', '본사(여의도)', 6),
   ('서초 회의실', 'room', '서울서초', 8),
   ('부산 회의실', 'room', '부산', 10);
+
+revoke execute on function public.resource_conflict(uuid, timestamptz, timestamptz, uuid) from public, anon;
+revoke execute on function public.my_dept() from public, anon;

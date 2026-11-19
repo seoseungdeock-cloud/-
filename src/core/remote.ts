@@ -332,6 +332,8 @@ export async function loadAll(sb: SupabaseClient, meId: string, withMessages = t
       ...(p.board !== 'anon' ? { board: p.board } : {}),
       ...(Array.isArray(p.attachments) && p.attachments.length ? { attachments: attachmentsOf(p.attachments, boardUrls) } : {}),
       ...(p.notice ? { notice: true } : {}), ...(p.source_id ? { sourceId: p.source_id } : {}),
+      ...(p.must_read_until ? { mustReadUntil: String(p.must_read_until).slice(0, 10) } : {}),
+      ...(typeof p.read_count === 'number' ? { readCount: p.read_count } : {}), ...(p.read_by_me ? { readByMe: true } : {}),
     };
   });
   const noteMessagesBy = group(noteMessages, (m) => m.thread_id);
@@ -547,7 +549,7 @@ export function remoteOps(sb: SupabaseClient) {
     // 게시판
     createPost: async (p: BoardPost) => {
       const atts = p.attachments?.length ? await uploadBoardFiles(p) : [];
-      await rpc(sb, 'create_post', { p_id: p.id, p_board: p.board ?? 'anon', p_title: p.title, p_body: p.body, p_field: p.field, p_notice: !!p.notice, p_attachments: atts });
+      await rpc(sb, 'create_post', { p_id: p.id, p_board: p.board ?? 'anon', p_title: p.title, p_body: p.body, p_field: p.field, p_notice: !!p.notice, p_attachments: atts, p_must_read_until: p.mustReadUntil ?? null });
     },
     comment: (id: string, postId: string, text: string, parentId?: string) => rpc(sb, 'comment_post', { p_id: id, p_post: postId, p_text: text, p_parent: parentId ?? null }),
     votePost: (postId: string, v: number) => rpc(sb, 'vote_post', { p_post: postId, p_value: v }),
@@ -567,6 +569,8 @@ export function remoteOps(sb: SupabaseClient) {
     },
 
     // 건의사항·인증코드
+    markPostRead: (id: string) => rpc(sb, 'mark_post_read', { p_post: id }),
+    postReaders: (id: string) => rpc<{ user_id: string; nickname: string; dept: string | null; read_at: string }[]>(sb, 'post_readers', { p_post: id }),
     submitSuggestion: (s: Suggestion) => check(sb.from('suggestions').insert({ id: s.id, author_id: s.authorId, body: s.body })),
     answerSuggestion: (id: string, status: string, answer: string) => rpc(sb, 'answer_suggestion', { p_id: id, p_status: status, p_answer: answer }),
     readAuthCodes: async () => check(sb.from('auth_codes').update({ read: true }).eq('user_id', await me()).eq('read', false)),

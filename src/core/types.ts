@@ -208,6 +208,12 @@ export type BoardPost = {
   sourceId?: string;
   /** 서버가 정한 글 안의 익명 번호 (사용자 id → N). 없으면 등장 순서로 셉니다. */
   aliases?: Record<string, number>;
+  /** 필독 기한 (YYYY-MM-DD). 이 날까지 읽어야 하는 글 */
+  mustReadUntil?: string;
+  /** 읽은 사람 수 (서버) */
+  readCount?: number;
+  /** 내가 읽었나 */
+  readByMe?: boolean;
 };
 
 export type BoardKind = 'notice' | 'deadline' | 'anon' | 'lawyer' | 'advice' | 'event' | 'praise' | 'lawnews' | 'skyzai';

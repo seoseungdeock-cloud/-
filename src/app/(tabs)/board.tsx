@@ -2,10 +2,11 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 
-import { authorView, BEST_MIN, BOARD_LABEL, BOARD_TAB, boardOf, boardsFor, canSeeBoard, canWriteBoard, needsField, pinNotices, unseenNotices, isBest as isBestPost, BOARD_SORT_LABEL, formatUntil, notesFor, restrictedUntil, score, searchPosts, sortPosts, timeAgo, unreadIn, type BoardSort } from '@/core/board';
+import { isUnreadMustRead, pendingMustReads, authorView, BEST_MIN, BOARD_LABEL, BOARD_TAB, boardOf, boardsFor, canSeeBoard, canWriteBoard, needsField, pinNotices, unseenNotices, isBest as isBestPost, BOARD_SORT_LABEL, formatUntil, notesFor, restrictedUntil, score, searchPosts, sortPosts, timeAgo, unreadIn, type BoardSort } from '@/core/board';
 import { actions } from '@/core/store';
 import { BOARD_FIELDS } from '@/core/board-fields';
 import type { BoardKind, BoardPost } from '@/core/types';
+import { todayKst } from '@/core/calendar';
 import { UnderlineTabs } from '@/ui/contacts';
 import { Icon } from '@/ui/icons';
 import { Badge, Button, Empty, Notice, Screen } from '@/ui/kit';
@@ -20,6 +21,8 @@ export default function BoardScreen() {
   const user = useMe();
   const c = useColors();
   const [sort, setSort] = useState<BoardSort>('hot');
+  const today = todayKst();
+  const mustReads = pendingMustReads(s.posts.filter((p) => canSeeBoard(user, boardOf(p))), today);
   const [field, setField] = useState<string>();
   const [q, setQ] = useState('');
   const boards = boardsFor(user);
@@ -80,6 +83,13 @@ export default function BoardScreen() {
         </View>
         <SegmentBar items={(Object.keys(BOARD_SORT_LABEL) as BoardSort[]).map((k) => [k, BOARD_SORT_LABEL[k]] as [BoardSort, string])} value={sort} onChange={setSort} />
       </View>
+      {mustReads.length ? (
+        <Press onPress={() => router.push({ pathname: '/board/[id]', params: { id: mustReads[0].id } })} scale={0.99} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.warnSoft, borderRadius: radius.md, paddingVertical: space.sm + 2, paddingHorizontal: space.md, marginBottom: space.md }}>
+          <Icon name="notice" color={c.warn} size={18} />
+          <Text style={{ flex: 1, ...family.semibold, fontSize: 14, color: c.warn }} numberOfLines={1}>아직 읽지 않은 필독 {mustReads.length}건 — {mustReads[0].title}{mustReads[0].mustReadUntil ? ` (~${mustReads[0].mustReadUntil.slice(5).replace('-', '/')})` : ''}</Text>
+          <Icon name="chevron" color={c.warn} size={16} />
+        </Press>
+      ) : null}
       {needsField(board) ? (
         <View style={{ marginHorizontal: -space.lg, marginBottom: space.md }}>
           <ChipBar items={[['', '전체'], ...BOARD_FIELDS.map((f) => [f, f] as [string, string])]} value={field ?? ''} onChange={(f) => setField(f || undefined)} size="sm" />
@@ -104,6 +114,7 @@ export default function BoardScreen() {
                   <View style={{ flex: 1, gap: 3, minWidth: 0 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       {p.notice ? <Badge label="공지" /> : null}
+                      {p.mustReadUntil ? <Badge label={isUnreadMustRead(p, today) ? '필독' : '필독 ✓'} tone={isUnreadMustRead(p, today) ? 'warn' : 'plain'} /> : null}
                       <Text numberOfLines={1} style={{ flexShrink: 1, ...family.semibold, fontSize: 15, color: c.text, letterSpacing: -0.2 }}>{p.title}</Text>
                     </View>
                     <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12.5, color: c.faint }}>

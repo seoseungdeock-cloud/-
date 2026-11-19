@@ -17,11 +17,13 @@ let seq = 0;
 const attId = () => `att_${Date.now().toString(36)}_${seq++}`;
 
 // 사진·파일은 지금은 기기 안에만 있고, 서버가 붙으면 업로드합니다.
+const plusDays = (n: number) => new Date(Date.now() + 9 * 3_600_000 + n * 86_400_000).toISOString().slice(0, 10);
 export default function NewPostScreen() {
   const params = useLocalSearchParams<{ board?: string }>();
   const user = useMe();
   const board: BoardKind = boardsFor(user).find((b) => b === params.board) ?? 'anon';
   const [notice, setNotice] = useState(board === 'notice');
+  const [mustRead, setMustRead] = useState('');
   const [field, setField] = useState('');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -44,7 +46,7 @@ export default function NewPostScreen() {
     add(res.assets.map((a) => ({ id: attId(), kind: a.mimeType?.startsWith('image/') ? 'image' : 'file', name: a.name, uri: a.uri, size: a.size, mime: a.mimeType })));
   };
   const submit = () => {
-    const res = actions.createPost({ title, body, field, board, attachments: files, notice });
+    const res = actions.createPost({ title, body, field, board, attachments: files, notice, mustReadUntil: mustRead || undefined });
     if (!res.ok) return setError(res.reason);
     router.replace({ pathname: '/board/[id]', params: { id: res.postId! } });
   };
@@ -62,6 +64,16 @@ export default function NewPostScreen() {
           <Chip label="일반 글" active={!notice} onPress={() => setNotice(false)} />
           <Chip label="공지로 올리기" active={notice} onPress={() => setNotice(true)} />
         </Chips>
+      ) : null}
+      {board !== 'anon' ? (
+        <View style={{ marginBottom: space.sm }}>
+          <Chips>
+            <Chip label="필독 없음" active={!mustRead} onPress={() => setMustRead('')} />
+            <Chip label="필독 · 1주" active={!!mustRead && mustRead === plusDays(7)} onPress={() => setMustRead(plusDays(7))} />
+            <Chip label="필독 · 한 달" active={!!mustRead && mustRead === plusDays(30)} onPress={() => setMustRead(plusDays(30))} />
+          </Chips>
+          {mustRead ? <Input label="필독 기한 — 이 날까지 읽어야 하며, 누가 읽었는지 볼 수 있습니다" value={mustRead} onChangeText={setMustRead} autoCapitalize="none" /> : null}
+        </View>
       ) : null}
       <Input label="제목" value={title} onChangeText={setTitle} />
       <Input label="내용" value={body} onChangeText={setBody} multiline style={{ minHeight: 160, textAlignVertical: 'top' }} />

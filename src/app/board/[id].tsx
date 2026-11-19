@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { authorView, BOARD_LABEL, boardOf, canSeeBoard, commentTree, isNoticePost, nameIn, RESTRICT_OPTIONS, timeAgo } from '@/core/board';
 import { LIMIT_BOT } from '@/core/deadlines';
@@ -8,7 +8,8 @@ import { LAW_BOT } from '@/core/law-digest';
 import { actions } from '@/core/store';
 import type { RoomCheck } from '@/core/rooms';
 import { Attachments, BoardAuthor, ReportPanel, TextButton, VoteBar } from '@/ui/board';
-import { Badge, Button, Chip, Chips, Empty, Input, Notice, Screen } from '@/ui/kit';
+import { Sheet } from '@/ui/chat';
+import { Avatar, Badge, Button, Chip, Chips, Empty, Input, Notice, Screen } from '@/ui/kit';
 import { family, radius, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
 
@@ -27,10 +28,12 @@ export default function PostScreen() {
   const post = s.posts.find((p) => p.id === id);
   const visible = !!post && canSeeBoard(user, boardOf(post));
   const isNotice = visible && isNoticePost(post!);
-  // 공지를 열면 팝업에서도 확인한 것으로
+  // 공지를 열면 팝업에서도 확인한 것으로, 글을 열면 읽음 표시(필독·읽은 사람 수)
   useEffect(() => {
     if (isNotice && id) actions.markNoticesSeen([id]);
-  }, [isNotice, id]);
+    if (visible && id) actions.markPostRead(id);
+  }, [isNotice, visible, id]);
+  const [readers, setReaders] = useState<{ userId: string; nickname: string; dept?: string; readAt: string }[]>();
   // 변호사 게시판 글은 변호사 계정만 엽니다.
   if (!post || !visible) return <Screen title="게시판" back><Empty text="글을 찾을 수 없습니다." /></Screen>;
   const realName = boardOf(post) !== 'anon';
@@ -102,8 +105,33 @@ export default function PostScreen() {
       <Text style={{ ...family.bold, fontSize: 20, lineHeight: 28, color: c.text, marginTop: space.xs }}>{post.title}</Text>
       <View style={{ flexDirection: 'row', gap: space.xs, marginVertical: space.sm }}>
         {isNotice ? <Badge label="공지" /> : null}
+        {post.mustReadUntil ? <Badge label={`필독 · ${post.mustReadUntil.slice(5).replace('-', '/')}까지`} tone="warn" /> : null}
         {post.field ? <Badge label={post.field} tone="plain" /> : null}
+        {realName && (post.authorId === user.id || admin) && typeof post.readCount === 'number' ? (
+          <Pressable onPress={() => void actions.postReaders(post.id).then(setReaders)} hitSlop={6}><Badge label={`읽음 ${post.readCount}명 · 목록`} tone="plain" /></Pressable>
+        ) : realName && typeof post.readCount === 'number' ? <Badge label={`읽음 ${post.readCount}`} tone="plain" /> : null}
       </View>
+      {readers ? (
+        <Sheet open onClose={() => setReaders(undefined)}>
+          <Text style={{ ...family.bold, fontSize: 17, color: c.text }}>읽은 사람 {readers.length}명</Text>
+          {post.mustReadUntil ? <Text style={{ ...family.regular, fontSize: 13, color: c.sub, marginTop: 2 }}>필독 기한 {post.mustReadUntil} · 안 읽은 사람 {Math.max(0, s.users.filter((u) => u.role !== 'client' && u.firm === user.firm).length - readers.length)}명</Text> : null}
+          <ScrollView style={{ maxHeight: 360, marginTop: space.sm }}>
+            {readers.length ? readers.map((r) => (
+              <View key={r.userId} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 6 }}>
+                <Avatar name={r.nickname} size={28} />
+                <Text style={{ flex: 1, ...family.semibold, fontSize: 14, color: c.text }}>{r.nickname}<Text style={{ ...family.regular, color: c.sub }}>{r.dept ? ` · ${r.dept}` : ''}</Text></Text>
+                <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{timeAgo(r.readAt)}</Text>
+              </View>
+            )) : <Text style={{ ...family.regular, fontSize: 14, color: c.sub, paddingVertical: space.md }}>아직 읽은 사람이 없습니다.</Text>}
+          </ScrollView>
+          {post.mustReadUntil && readers.length < s.users.filter((u) => u.role !== 'client' && u.firm === user.firm).length ? (
+            <>
+              <Text style={{ ...family.bold, fontSize: 14, color: c.warn, marginTop: space.md }}>안 읽은 사람</Text>
+              <Text style={{ ...family.regular, fontSize: 13, color: c.sub, marginTop: 4, lineHeight: 19 }}>{s.users.filter((u) => u.role !== 'client' && u.firm === user.firm && !readers.some((r) => r.userId === u.id)).map((u) => u.nickname).slice(0, 60).join(', ')}{s.users.filter((u) => u.role !== 'client' && u.firm === user.firm && !readers.some((r) => r.userId === u.id)).length > 60 ? ' …' : ''}</Text>
+            </>
+          ) : null}
+        </Sheet>
+      ) : null}
       <Text style={{ ...family.regular, fontSize: 16, lineHeight: 24, color: c.text }}>{post.body}</Text>
       <Attachments items={post.attachments ?? []} />
       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.lg, marginTop: space.md }}>

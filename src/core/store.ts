@@ -2169,7 +2169,7 @@ export const actions = {
 
   // ---- 익명 게시판 (모든 계정 이용 가능) ----
 
-  createPost(input: { title: string; body: string; field: string; board?: BoardKind; attachments?: Attachment[]; notice?: boolean }): RoomCheck & { postId?: string } {
+  createPost(input: { title: string; body: string; field: string; board?: BoardKind; attachments?: Attachment[]; notice?: boolean; mustReadUntil?: string }): RoomCheck & { postId?: string } {
     const blocked = boardBlocked();
     if (blocked) return blocked;
     const board = input.board ?? 'anon';
@@ -2180,14 +2180,37 @@ export const actions = {
     const attachments = input.attachments ?? [];
     if (attachments.length > MAX_ATTACHMENTS) return { ok: false, reason: `첨부는 ${MAX_ATTACHMENTS}개까지 올릴 수 있습니다.` };
     if (attachments.some((a) => (a.size ?? 0) > 50 * 1024 * 1024)) return { ok: false, reason: '파일은 50MB까지 올릴 수 있습니다.' };
+    if (input.mustReadUntil && board === 'anon') return { ok: false, reason: '익명 게시판에는 필독을 걸 수 없습니다.' };
+    if (input.mustReadUntil && !/^\d{4}-\d{2}-\d{2}$/.test(input.mustReadUntil)) return { ok: false, reason: '필독 기한은 2026-11-30 처럼 적어 주세요.' };
     const post: BoardPost = {
       id: newId('p'), authorId: me().id, field: input.field, title: input.title.trim(), body: input.body.trim(), at: nowIso(), votes: {}, comments: [],
       ...(board !== 'anon' ? { board } : {}), ...(attachments.length ? { attachments } : {}),
       ...(board === 'skyzai' && input.notice ? { notice: true } : {}),
+      ...(input.mustReadUntil ? { mustReadUntil: input.mustReadUntil, readCount: 0 } : {}),
     };
     set((s) => ({ posts: [post, ...s.posts] }));
     mirror((r) => r.createPost(post));
     return { ok: true, postId: post.id };
+  },
+  /** 글을 열었을 때 읽음 표시 (필독 확인·읽은 사람 수) */
+  markPostRead(postId: string) {
+    const p = state.posts.find((x) => x.id === postId);
+    if (!p || p.readByMe || !p.board) return;
+    set((s) => ({ posts: s.posts.map((x) => (x.id === postId ? { ...x, readByMe: true, readCount: (x.readCount ?? 0) + 1 } : x)) }));
+    mirror((r) => r.markPostRead(postId));
+  },
+  /** 읽은 사람 목록 (글쓴이·어드민). 목업에서는 나만. */
+  async postReaders(postId: string): Promise<{ userId: string; nickname: string; dept?: string; readAt: string }[]> {
+    if (remote) {
+      try {
+        const rows = await remote.postReaders(postId);
+        return rows.map((r) => ({ userId: r.user_id, nickname: r.nickname, dept: r.dept ?? undefined, readAt: r.read_at }));
+      } catch {
+        return [];
+      }
+    }
+    const p = state.posts.find((x) => x.id === postId);
+    return p?.readByMe ? [{ userId: me().id, nickname: me().nickname, dept: me().dept, readAt: nowIso() }] : [];
   },
 
   /** 게시판 공지 팝업에서 확인한 공지 */

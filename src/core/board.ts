@@ -112,6 +112,14 @@ export function toggleVote(votes: Votes, userId: string, v: 1 | -1): Votes {
   return next;
 }
 
+/** 필독인데 아직 안 읽은 글인가 (기한 안) */
+export function isUnreadMustRead(p: BoardPost, today: string): boolean {
+  return !!p.mustReadUntil && p.mustReadUntil >= today && !p.readByMe;
+}
+/** 내가 아직 읽지 않은 필독 글 */
+export function pendingMustReads(posts: BoardPost[], today: string): BoardPost[] {
+  return posts.filter((p) => isUnreadMustRead(p, today)).sort((a, b) => (a.mustReadUntil ?? '').localeCompare(b.mustReadUntil ?? ''));
+}
 export type BoardSort = 'hot' | 'new' | 'best';
 export const BOARD_SORT_LABEL: Record<BoardSort, string> = { hot: '인기', new: '최신', best: '베스트' };
 
