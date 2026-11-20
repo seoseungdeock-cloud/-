@@ -4,10 +4,11 @@
 //   모바일: 이 틀 없이 아래 탭 (폰 앱과 같음)
 // 로그인 뒤 모든 화면(대화방·게시글·설정까지)에서 메뉴가 그대로 보입니다.
 import { router, usePathname } from 'expo-router';
-import { type ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { desktopBridge, isDesktopApp, setDesktopBadge } from '@/core/desktop';
 import { promptInstall, useInstallState } from '@/core/install';
 import { isHidden, unreadCount } from '@/core/messenger';
 import { canSeeWorkTab } from '@/core/rooms';
@@ -49,6 +50,7 @@ function logout() {
 }
 
 export function Shell({ children, signedIn }: { children: ReactNode; signedIn: boolean }) {
+  useDesktopOpenRoom();
   const { mode, navWidth } = useLayout();
   const c = useColors();
   if (Platform.OS !== 'web' || !signedIn || mode === 'phone') return <>{children}</>;
@@ -60,11 +62,17 @@ export function Shell({ children, signedIn }: { children: ReactNode; signedIn: b
   );
 }
 
-/** 안 읽은 메시지 수 (대화 메뉴 배지) */
+/** 안 읽은 메시지 수 (대화 메뉴 배지). PC 앱이면 Dock·작업표시줄 배지에도 */
 export function useUnread(): number {
   const s = useApp();
   const user = useMe();
-  return s.rooms.filter((r) => r.memberIds.includes(user.id) && !isHidden(r, user.id, s.messages)).reduce((n, r) => n + unreadCount(r, user.id, s.messages, s.reads), 0);
+  const n = s.rooms.filter((r) => r.memberIds.includes(user.id) && !isHidden(r, user.id, s.messages)).reduce((n, r) => n + unreadCount(r, user.id, s.messages, s.reads), 0);
+  useEffect(() => setDesktopBadge(n), [n]);
+  return n;
+}
+/** PC 앱: 운영체제 알림을 누르면 그 방으로 */
+export function useDesktopOpenRoom(): void {
+  useEffect(() => desktopBridge()?.onOpenRoom((id) => router.push({ pathname: '/room/[id]', params: { id } })), []);
 }
 
 const ITEM_H = 40;
@@ -121,7 +129,7 @@ function Sidebar() {
         })}
       </View>
       <View style={{ marginTop: 'auto', gap: 6 }}>
-        {install === 'available' ? (
+        {install === 'available' && !isDesktopApp() ? (
           <Press
             accessibilityRole="button"
             accessibilityLabel="PC 앱으로 설치"

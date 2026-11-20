@@ -34,10 +34,11 @@ import { deadlineCasesFrom, dueLimitPosts, LIMIT_BOT, limitLawyers, limitPost, l
 import { classify, type DtHearing, type DtResult } from './daeryuntop';
 import { alertText, CHANGE_LABEL, recipientsOf, whenLabel } from './hearings';
 import { isSelfRoom, SELF_ROOM_TITLE } from './calendar';
+import { desktopNotifyMessage } from './desktop';
 import { boardOf, canSeeBoard, canWriteBoard, formatUntil, MAX_ATTACHMENTS, needsField, reportTarget, restrictedUntil, toggleVote } from './board';
 import { demoMessages, demoReads, demoRooms, demoUsers } from './demo';
 import { startWork } from './work';
-import { displayName, isMaster, parseMentions, roomMasters, type Reads } from './messenger';
+import { displayName, isMaster, parseMentions, previewText, roomMasters, type Reads } from './messenger';
 import { findLawyer } from './offices';
 import { aliasOf, canManageOpen, canUseOpenChat, checkAlias, checkOpenPassword, isOpenMember, OPEN_MAX_OPTIONS, parseTags } from './open-chat';
 import { keepSession } from './login-prefs';
@@ -512,6 +513,12 @@ async function onMessageRow(sb: SupabaseClient, c: Change) {
   const [m] = await messagesFromRows(sb, meId, [row], () => undefined, () => !!prev?.deletedFor?.includes(meId));
   const merged: Message = { ...m, ...(prev?.reactions && !m.recalled ? { reactions: prev.reactions } : {}) };
   set((s) => ({ messages: mergeMessages(s.messages, [merged]) }));
+  // 남이 보낸 새 글이면 PC 앱(있을 때)에 운영체제 알림
+  if (!prev && c.eventType === 'INSERT' && merged.senderId !== meId && !merged.recalled) {
+    const room = state.rooms.find((r) => r.id === merged.roomId);
+    const me = state.users.find((u) => u.id === meId);
+    if (room && me) desktopNotifyMessage(merged, room, me, state.users.find((u) => u.id === merged.senderId), previewText(merged, state.users));
+  }
 }
 
 function onReactionRow(c: Change) {

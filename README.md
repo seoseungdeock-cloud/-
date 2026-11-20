@@ -186,6 +186,9 @@ docker exec -it supabase-db psql -U postgres   # DB 콘솔
 
 **옛 클라우드 프로젝트의 데이터 옮기기** (아직 안 함): 옛 프로젝트의 DB 비밀번호가 있으면 `pg_dump` → 서버 `psql` 로 넣고, 저장소 파일은 service 키로 내려받아 `volumes/storage` 에 넣습니다.
 
+## PC 앱 (Windows · Mac)
+Electron 껍데기가 배포된 웹을 그대로 띄웁니다 — 트레이·배지·운영체제 알림·자동 실행만 더해집니다. 만드는 법·서명은 `desktop/README.md`.
+
 ## 웹 배포 (GitHub Pages)
 
 ```bash

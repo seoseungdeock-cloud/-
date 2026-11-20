@@ -1,0 +1,60 @@
+{
+  "name": "skynet-desktop",
+  "productName": "SKYNET",
+  "version": "1.0.0",
+  "description": "SKYNET 업무 메신저 — PC 앱 (Windows · Mac)",
+  "main": "src/main.js",
+  "private": true,
+  "author": "SKYNET",
+  "scripts": {
+    "start": "electron .",
+    "start:local": "SKYNET_URL=http://localhost:8082 electron .",
+    "icons": "node scripts/make-icons.mjs",
+    "build:mac": "electron-builder --mac --universal",
+    "build:win": "electron-builder --win --x64",
+    "build": "electron-builder --mac --universal --win --x64"
+  },
+  "devDependencies": {
+    "electron": "^39.2.3",
+    "electron-builder": "^26.0.12",
+    "sharp": "^0.34.3"
+  },
+  "build": {
+    "appId": "net.skyzkorea.skynet",
+    "productName": "SKYNET",
+    "copyright": "© SKYNET",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["src/**/*", "build/icon.png", "build/tray*.png"],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.business",
+      "icon": "build/icon.icns",
+      "target": [{ "target": "dmg", "arch": ["universal"] }, { "target": "zip", "arch": ["universal"] }],
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "identity": null,
+      "extendInfo": { "NSUserNotificationAlertStyle": "alert" }
+    },
+    "dmg": {
+      "title": "SKYNET",
+      "contents": [{ "x": 140, "y": 180 }, { "x": 400, "y": 180, "type": "link", "path": "/Applications" }]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [{ "target": "nsis", "arch": ["x64"] }, { "target": "portable", "arch": ["x64"] }],
+      "signAndEditExecutable": true
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SKYNET",
+      "artifactName": "SKYNET-Setup-${version}.${ext}",
+      "installerLanguages": ["ko_KR"],
+      "language": "1042"
+    },
+    "portable": { "artifactName": "SKYNET-Portable-${version}.${ext}" }
+  }
+}
