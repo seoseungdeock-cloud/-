@@ -19,6 +19,8 @@ export type User = {
   branch?: string; // 지점 (이름 옆 괄호에 표시)
   rankOrder?: number; // 직급 표시 순서 (작을수록 위) — 조직도 정렬
   deptOrder?: number; // 부서 표시 순서
+  officer?: boolean; // 임원 (직급 이름표 기준, 대륜탑 동기화가 채움)
+  extraDepts?: string[]; // 겸직 부서 — 조직도에 함께 표시 (어드민이 넣음)
   phone?: string;
   email?: string;
   birthday?: string; // YYYY-MM-DD
@@ -173,6 +175,8 @@ export type Message = {
   hearingAlertId?: string;
   /** 바깥 봇(bot-send)이 보낸 메시지의 봇 이름 */
   botName?: string;
+  /** 봇 메시지의 링크 버튼 (최대 3개) */
+  buttons?: { label: string; url: string }[];
   /** 연락처 공유 메시지의 대상 */
   contactId?: string;
   /** '나에게서 삭제'한 사용자 */

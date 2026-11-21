@@ -24,15 +24,19 @@ export default function TasksScreen() {
   const today = todayKst();
   const [view, setView] = useState<View_>('mine');
   const [editor, setEditor] = useState<{ open: boolean; initial?: Task }>({ open: false });
+  // 내 할 일 = 내가 담당자 (담당자가 여럿이면 내 몫이 아직 남은 것)
+  const isMine = (t: Task) => (t.assignees?.length ? t.assignees.some((a) => a.userId === me.id) : t.assigneeId === me.id || (!t.assigneeId && t.ownerId === me.id));
+  const myPart = (t: Task) => t.assignees?.find((a) => a.userId === me.id);
+  const openForMe = (t: Task) => !t.doneAt && isMine(t) && !myPart(t)?.doneAt;
   const list = useMemo(() => {
     const all = sortTasks(w.tasks);
-    if (view === 'done') return all.filter((t) => t.doneAt && (t.ownerId === me.id || t.assigneeId === me.id));
-    if (view === 'delegated') return all.filter((t) => !t.doneAt && t.ownerId === me.id && t.assigneeId && t.assigneeId !== me.id);
-    return all.filter((t) => !t.doneAt && (t.assigneeId === me.id || (!t.assigneeId && t.ownerId === me.id)));
-  }, [w.tasks, view, me.id]);
+    if (view === 'done') return all.filter((t) => (t.doneAt || myPart(t)?.doneAt) && (t.ownerId === me.id || isMine(t)));
+    if (view === 'delegated') return all.filter((t) => !t.doneAt && t.ownerId === me.id && (t.assignees?.length ? t.assignees.some((a) => a.userId !== me.id) : !!t.assigneeId && t.assigneeId !== me.id));
+    return all.filter(openForMe);
+  }, [w.tasks, view, me.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const counts = {
-    mine: w.tasks.filter((t) => !t.doneAt && (t.assigneeId === me.id || (!t.assigneeId && t.ownerId === me.id))).length,
-    overdue: w.tasks.filter((t) => t.assigneeId === me.id && dueState(t, today) === 'overdue').length,
+    mine: w.tasks.filter(openForMe).length,
+    overdue: w.tasks.filter((t) => openForMe(t) && dueState(t, today) === 'overdue').length,
   };
   const groups = useMemo(() => {
     const g: [string, Task[]][] = [];
@@ -80,20 +84,25 @@ function TaskRow({ t, today, onOpen }: { t: Task; today: string; onOpen: () => v
   const s = useApp();
   const me = useMe();
   const st = dueState(t, today);
-  const assignee = s.users.find((u) => u.id === t.assigneeId);
+  const assignees = (t.assignees?.length ? t.assignees : t.assigneeId ? [{ userId: t.assigneeId, doneAt: t.doneAt }] : []).map((a) => ({ ...a, user: s.users.find((u) => u.id === a.userId) }));
+  const others = assignees.filter((a) => a.userId !== me.id);
+  const mine = assignees.find((a) => a.userId === me.id);
   const owner = s.users.find((u) => u.id === t.ownerId);
   const room = t.roomId ? s.rooms.find((r) => r.id === t.roomId) : undefined;
   const dueColor = st === 'overdue' ? c.warn : st === 'today' ? c.accent : c.sub;
+  const doneCount = assignees.filter((a) => a.doneAt).length;
+  // 체크 표시: 내 몫이 있으면 내 몫, 아니면(맡긴 사람) 전체 완료
+  const checked = mine ? !!mine.doneAt : !!t.doneAt;
   const sub = [
     t.dueDate ? `${dateLabel(t.dueDate)}${t.dueTime ? ` ${t.dueTime}` : ''}${!t.doneAt && st !== 'none' ? ` (${dDayLabel(dDay(t.dueDate))})` : ''}` : '',
-    t.assigneeId !== me.id && assignee ? `담당 ${assignee.nickname}` : t.ownerId !== me.id && owner ? `${owner.nickname} 님이 맡김` : '',
+    others.length > 1 ? `담당 ${others.length + (mine ? 1 : 0)}명 · ${t.completion === 'all' ? '모두 완료해야' : '한 명만 완료해도'} 끝 · ${doneCount}/${assignees.length} 완료` : others.length === 1 && others[0].user ? `담당 ${others[0].user.nickname}${others[0].doneAt ? ' ✓' : ''}` : t.ownerId !== me.id && owner ? `${owner.nickname} 님이 맡김` : '',
     room ? room.title : '',
   ].filter(Boolean).join(' · ');
   return (
     <Press onPress={onOpen} scale={0.99} style={({ hovered }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm + 2, paddingHorizontal: space.md, marginHorizontal: -space.md, borderRadius: radius.md, backgroundColor: hovered ? c.hover : 'transparent' })}>
-      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: !!t.doneAt }} accessibilityLabel={t.doneAt ? '완료 취소' : '완료'} hitSlop={8} onPress={() => void work.toggleTask(t.id)}
-        style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: t.doneAt ? c.accent : t.priority === 2 ? c.warn : c.mute, backgroundColor: t.doneAt ? c.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-        {t.doneAt ? <Icon name="check" color="#FFFFFF" size={14} /> : null}
+      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked }} accessibilityLabel={checked ? '완료 취소' : '완료'} hitSlop={8} onPress={() => void (mine ? work.toggleMine(t.id) : work.toggleTask(t.id))}
+        style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: checked ? c.accent : t.priority === 2 ? c.warn : c.mute, backgroundColor: checked ? c.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+        {checked ? <Icon name="check" color="#FFFFFF" size={14} /> : null}
       </Pressable>
       <View style={{ flex: 1, gap: 2 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -103,7 +112,12 @@ function TaskRow({ t, today, onOpen }: { t: Task; today: string; onOpen: () => v
         </View>
         {sub ? <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12.5, color: t.doneAt ? c.faint : dueColor }}>{sub}</Text> : null}
       </View>
-      {assignee && assignee.id !== me.id ? <Avatar name={assignee.nickname} size={26} uri={assignee.photo} /> : null}
+      {others.length ? (
+        <View style={{ flexDirection: 'row' }}>
+          {others.slice(0, 3).map((a, i) => a.user ? <View key={a.userId} style={{ marginLeft: i ? -8 : 0, borderRadius: 14, borderWidth: 2, borderColor: a.doneAt ? c.accent : c.bg }}><Avatar name={a.user.nickname} size={24} uri={a.user.photo} /></View> : null)}
+          {others.length > 3 ? <Text style={{ ...family.semibold, fontSize: 12, color: c.faint, marginLeft: 4, alignSelf: 'center' }}>+{others.length - 3}</Text> : null}
+        </View>
+      ) : null}
     </Press>
   );
 }
@@ -119,13 +133,14 @@ function TaskEditor({ onClose, initial }: { onClose: () => void; initial?: Task 
   const [due, setDue] = useState(initial?.dueDate ?? '');
   const [time, setTime] = useState(initial?.dueTime ?? '');
   const [priority, setPriority] = useState<0 | 1 | 2>(initial?.priority ?? 0);
-  const [assignee, setAssignee] = useState<string>(initial?.assigneeId ?? me.id);
+  const [assignees, setAssignees] = useState<string[]>(() => (initial ? (initial.assignees?.length ? initial.assignees.map((a) => a.userId) : initial.assigneeId ? [initial.assigneeId] : [me.id]) : [me.id]));
+  const [completion, setCompletion] = useState<'any' | 'all'>(initial?.completion ?? 'any');
   const [roomId, setRoomId] = useState<string | undefined>(initial?.roomId);
   const [who, setWho] = useState('');
   const [error, setError] = useState<string>();
   const people = s.users.filter((u) => u.role !== 'client' && u.firm === me.firm);
-  const hits = who.trim() ? people.filter((u) => u.id !== assignee && [u.nickname, u.dept, u.title].some((v) => v?.includes(who.trim()))).slice(0, 6) : [];
-  const picked = s.users.find((u) => u.id === assignee);
+  const hits = who.trim() ? people.filter((u) => !assignees.includes(u.id) && [u.nickname, u.dept, u.title].some((v) => v?.includes(who.trim()))).slice(0, 6) : [];
+  const isOwner = !initial || initial.ownerId === me.id;
   const rooms = s.rooms.filter((r) => r.memberIds.includes(me.id) && (r.kind === 'case' || r.kind === 'group' || r.kind === 'office'));
   const plusDays = (n: number) => new Date(new Date(`${today}T00:00:00Z`).getTime() + n * 86_400_000).toISOString().slice(0, 10);
   const canDelete = initial && initial.ownerId === me.id;
@@ -133,9 +148,14 @@ function TaskEditor({ onClose, initial }: { onClose: () => void; initial?: Task 
     if (!title.trim()) return setError('할 일을 적어 주세요.');
     if (due && !DATE_RE.test(due)) return setError('기한은 2026-11-20 처럼 적어 주세요.');
     if (time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return setError('시각은 15:00 처럼 적어 주세요.');
-    const patch = { title, detail: detail.trim() || undefined, dueDate: due || undefined, dueTime: time || undefined, priority, assigneeId: assignee, roomId };
-    const r = initial ? await work.updateTask(initial.id, patch) : await work.createTask(patch);
+    if (!assignees.length) return setError('담당자를 한 명 이상 골라 주세요.');
+    const patch = { title, detail: detail.trim() || undefined, dueDate: due || undefined, dueTime: time || undefined, priority, assigneeId: assignees[0], roomId, completion };
+    const r = initial ? await work.updateTask(initial.id, patch) : await work.createTask({ ...patch, assigneeIds: assignees });
     if (!r.ok) return setError(r.reason);
+    if (initial && isOwner) {
+      const r2 = await work.setAssignees(initial.id, assignees);
+      if (!r2.ok) return setError(r2.reason);
+    }
     onClose();
   };
   return (
@@ -160,17 +180,23 @@ function TaskEditor({ onClose, initial }: { onClose: () => void; initial?: Task 
         <Sub>중요도</Sub>
         <View style={{ height: 6 }} />
         <Chips>{PRIORITY.map(([k, l]) => <Chip key={k} label={l} active={priority === k} onPress={() => setPriority(k)} />)}</Chips>
-        <Sub>담당자</Sub>
+        <Sub>담당자 {assignees.length > 1 ? `${assignees.length}명` : ''}</Sub>
         <View style={{ height: 6 }} />
         <Chips>
-          <Chip label={picked ? `${picked.nickname}${picked.id === me.id ? ' (나)' : ''}` : '나'} active onPress={() => setAssignee(me.id)} />
-          {picked && picked.id !== me.id ? <Chip label="나로" onPress={() => setAssignee(me.id)} /> : null}
+          {assignees.map((id) => { const u = s.users.find((x) => x.id === id); const done = initial?.assignees?.find((a) => a.userId === id)?.doneAt; return <Chip key={id} label={`${u?.nickname ?? id}${id === me.id ? ' (나)' : ''}${done ? ' ✓' : ''}${isOwner ? ' ×' : ''}`} active onPress={() => isOwner && setAssignees((a) => a.filter((x) => x !== id))} />; })}
+          {!assignees.includes(me.id) && isOwner ? <Chip label="+ 나" onPress={() => setAssignees((a) => [...a, me.id])} /> : null}
         </Chips>
-        <Input placeholder="다른 사람에게 맡기기 — 이름·부서로 찾기" value={who} onChangeText={setWho} />
+        {assignees.length > 1 ? (
+          <Chips>
+            <Chip label="한 명만 끝내도 완료" active={completion === 'any'} onPress={() => setCompletion('any')} />
+            <Chip label="모두 끝내야 완료" active={completion === 'all'} onPress={() => setCompletion('all')} />
+          </Chips>
+        ) : null}
+        {isOwner ? <Input placeholder="담당자 더하기 — 이름·부서로 찾기" value={who} onChangeText={setWho} /> : null}
         {hits.length ? (
           <View style={{ marginTop: -space.sm, marginBottom: space.md, borderRadius: radius.md, backgroundColor: c.surface, overflow: 'hidden' }}>
             {hits.map((u) => (
-              <Pressable key={u.id} onPress={() => { setAssignee(u.id); setWho(''); }} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.sm + 2, backgroundColor: pressed ? c.lineStrong : 'transparent' })}>
+              <Pressable key={u.id} onPress={() => { setAssignees((a) => [...a, u.id]); setWho(''); }} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.sm + 2, backgroundColor: pressed ? c.lineStrong : 'transparent' })}>
                 <Avatar name={u.nickname} size={28} uri={u.photo} />
                 <Text style={{ ...family.semibold, fontSize: 14, color: c.text }}>{u.nickname}</Text>
                 <Text style={{ ...family.regular, fontSize: 12, color: c.sub }}>{[u.title, u.dept].filter(Boolean).join(' · ')}</Text>

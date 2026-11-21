@@ -584,6 +584,66 @@ select tst.throws('파일함: 의뢰인은 못 올림', $$insert into public.dri
 select tst.as_user('00000000-0000-0000-0000-00000000000c');
 delete from public.drive_files where id = '70000000-0000-0000-0000-000000000003';
 select tst.check('파일함: 올린 사람은 지울 수 있음', (select count(*) = 2 from drive_files));
+-- ── 보강 10건 (2026-11-27) ──
+-- 1 휴지통
+update public.drive_files set deleted_at = now(), deleted_by = auth.uid() where id = '70000000-0000-0000-0000-000000000001';
+select tst.check('휴지통: 올린 사람은 지운 파일을 봄', (select deleted_at is not null from drive_files where id = '70000000-0000-0000-0000-000000000001'));
+select tst.as_user('00000000-0000-0000-0000-00000000000d');
+select tst.check('휴지통: 같은 부서라도 지운 파일은 안 보임', (select count(*) = 0 from drive_files where id = '70000000-0000-0000-0000-000000000001'));
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+update public.drive_files set deleted_at = null, deleted_by = null where id = '70000000-0000-0000-0000-000000000001';
+select tst.check('휴지통: 되살리기', (select deleted_at is null from drive_files where id = '70000000-0000-0000-0000-000000000001'));
+reset role;
+select tst.check('감사: 휴지통·복원이 기록됨', (select count(*) >= 2 from audit_log where action in ('file.trash', 'file.restore') and target_id = '70000000-0000-0000-0000-000000000001'));
+select tst.check('휴지통: 30일 지난 것만 비움', (select purge_drive_trash() = 0));
+-- 2·5 일정 회차 (매주 화·목, 2회차 건너뜀)
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+insert into public.events (id, owner_id, title, starts_at, ends_at, scope, recurrence, recurrence_days, recurrence_exdates, reminders)
+values ('80000000-0000-0000-0000-000000000001', auth.uid(), '화목 회의', '2026-11-03 01:00+00', '2026-11-03 02:00+00', 'personal', 'weekly', '{2,4}', '{2026-11-05}', '{10}');
+select tst.check('반복: 매주 화·목 + 예외일 제외', (select array_agg((o at time zone 'Asia/Seoul')::date order by o) = array['2026-11-03','2026-11-10','2026-11-12']::date[]
+  from events e, event_occurrences(e, '2026-11-01 00:00+09', '2026-11-13 00:00+09') o where e.id = '80000000-0000-0000-0000-000000000001'));
+insert into public.events (id, owner_id, title, starts_at, ends_at, scope, recurrence, recurrence_interval) values ('80000000-0000-0000-0000-000000000002', auth.uid(), '격주', '2026-11-02 01:00+00', '2026-11-02 02:00+00', 'personal', 'weekly', 2);
+select tst.check('반복: 2주마다', (select count(*) = 2 from events e, event_occurrences(e, '2026-11-01 00:00+09', '2026-11-20 00:00+09') o where e.id = '80000000-0000-0000-0000-000000000002'));
+insert into public.event_attendees (event_id, user_id, status, optional) values ('80000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000000d', 'tentative', true);
+reset role;
+select tst.check('일정: 초대하면 참석자에게 푸시가 쌓임', (select count(*) = 1 from push_outbox where user_id = '00000000-0000-0000-0000-00000000000d' and title like '일정 초대%'));
+select tst.check('감사: 일정 생성이 기록됨', (select count(*) >= 2 from audit_log where action = 'events.create'));
+-- 3 필독 30일
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+select tst.throws('필독: 31일 뒤는 거부', $$select create_post('lawyer', '필독', '본문', '민사', p_must_read_until => ((now() at time zone 'Asia/Seoul')::date + 31))$$, '최대 30일');
+select tst.check('필독: 30일은 허용', create_post('lawyer', '필독', '본문', '민사', p_must_read_until => ((now() at time zone 'Asia/Seoul')::date + 30), p_id => '90000000-0000-0000-0000-000000000001') is not null);
+select tst.check('필독: 대상자 전체의 읽음 여부 (안 읽은 사람 포함)', (select count(*) filter (where not is_read) >= 2 and count(*) filter (where user_id = auth.uid()) = 1 from post_read_status('90000000-0000-0000-0000-000000000001')));
+-- 6 할 일 담당자 여러 명
+insert into public.tasks (id, owner_id, title, completion) values ('a0000000-0000-0000-0000-000000000001', auth.uid(), '팀 과제', 'all');
+insert into public.task_assignees (task_id, user_id) values ('a0000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000000d'), ('a0000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000000b');
+select tst.as_user('00000000-0000-0000-0000-00000000000d');
+select tst.check('할 일: 담당자는 할 일을 봄', (select count(*) = 1 from tasks where id = 'a0000000-0000-0000-0000-000000000001'));
+update public.task_assignees set done_at = now() where task_id = 'a0000000-0000-0000-0000-000000000001' and user_id = auth.uid();
+select tst.check('할 일: 모두 완료 조건 — 한 명만 끝내면 아직 미완료', (select done_at is null from tasks where id = 'a0000000-0000-0000-0000-000000000001'));
+select tst.as_user('00000000-0000-0000-0000-00000000000b');
+update public.task_assignees set done_at = now() where task_id = 'a0000000-0000-0000-0000-000000000001' and user_id = auth.uid();
+select tst.check('할 일: 둘 다 끝내면 완료', (select done_at is not null from tasks where id = 'a0000000-0000-0000-0000-000000000001'));
+-- 9 연락처 부서 공유
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+insert into public.contacts (id, owner_id, shared, name, share_depts, phones) values ('b0000000-0000-0000-0000-000000000001', auth.uid(), false, '김거래', '{경영본부}', '[{"type":"cell","value":"010-1","primary":true},{"type":"work","value":"02-1","primary":false}]');
+select tst.as_user('00000000-0000-0000-0000-00000000000b'); -- 경영본부
+select tst.check('연락처: 지정 부서 사람은 봄', (select count(*) = 1 from contacts where id = 'b0000000-0000-0000-0000-000000000001'));
+select tst.as_user('00000000-0000-0000-0000-00000000000d'); -- 송무팀
+select tst.check('연락처: 다른 부서는 못 봄', (select count(*) = 0 from contacts where id = 'b0000000-0000-0000-0000-000000000001'));
+-- 8 외부 링크
+select tst.as_user('00000000-0000-0000-0000-00000000000c');
+create temp table tst_link as select * from create_drive_link('70000000-0000-0000-0000-000000000002', 'anyone', 'download', now() + interval '7 days', 'pw1234');
+select tst.check('링크: 토큰이 한 번 발급됨', (select token like 'skl_%' from tst_link));
+select tst.throws('링크: 담당 아닌 사람은 못 만듦', $$select create_drive_link('70000000-0000-0000-0000-000000000003')$$, '');
+reset role;
+select tst.throws('링크: 비밀번호 틀리면 거부', $$select resolve_drive_link((select token from tst_link), 'wrong')$$, '비밀번호');
+select tst.check('링크: 맞으면 파일 경로', (select name = '취업규칙.pdf' from resolve_drive_link((select token from tst_link), 'pw1234')));
+select tst.check('링크: 열람 횟수·감사 기록', (select hits = 1 from drive_links where id = (select id from tst_link)) and exists (select 1 from audit_log where action = 'file.link_open'));
+-- 4 로그인 기록
+update public.profiles set last_login_at = now() where login_id = 'lawyer';
+select tst.check('감사: 로그인이 기록됨', exists (select 1 from audit_log where action = 'auth.login' and target_id = '00000000-0000-0000-0000-00000000000c'));
 reset role;
 -- ── 로그인 안 한 사람 ──
 reset role;

@@ -13,6 +13,9 @@ import { timeLabel } from '@/ui/hearing';
 
 const SCOPES: [EventScope, string][] = [['personal', '내 일정'], ['dept', '부서 공유'], ['firm', '회사 공유'], ['room', '대화방']];
 const REPEATS: [Recurrence, string][] = [['none', '반복 없음'], ['daily', '매일'], ['weekly', '매주'], ['monthly', '매월']];
+const REMINDERS: [number, string][] = [[0, '정시'], [10, '10분 전'], [30, '30분 전'], [60, '1시간 전'], [1440, '1일 전'], [10080, '1주 전']];
+const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+export const reminderLabel = (m: number) => REMINDERS.find(([k]) => k === m)?.[1] ?? (m % 1440 === 0 ? `${m / 1440}일 전` : m % 60 === 0 ? `${m / 60}시간 전` : `${m}분 전`);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -43,7 +46,12 @@ export function EventEditor({ open, onClose, initial, date, roomId, onDone }: { 
   const [resource, setResource] = useState<string | undefined>(initial?.resourceId);
   const [repeat, setRepeat] = useState<Recurrence>(initial?.recurrence ?? 'none');
   const [until, setUntil] = useState(initial?.recurrenceUntil ?? '');
+  const [days, setDays] = useState<number[]>(initial?.recurrenceDays ?? []);
+  const [interval, setInterval] = useState<number>(initial?.recurrenceInterval ?? 1);
+  const [reminders, setReminders] = useState<number[]>(initial?.reminders ?? (initial ? [] : [10]));
+  const [priv, setPriv] = useState(initial?.private ?? false);
   const [attendees, setAttendees] = useState<string[]>(() => (initial ? w.attendees.filter((a) => a.eventId === initial.id).map((a) => a.userId) : []));
+  const [optional, setOptional] = useState<string[]>(() => (initial ? w.attendees.filter((a) => a.eventId === initial.id && a.optional).map((a) => a.userId) : []));
   const [who, setWho] = useState('');
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -71,7 +79,9 @@ export function EventEditor({ open, onClose, initial, date, roomId, onDone }: { 
     const input: EventInput = {
       title, allDay, startsAt: startsAt!, endsAt: endsAt!, place: place.trim() || undefined, memo: memo.trim() || undefined,
       scope, dept: scope === 'dept' ? me.dept : undefined, roomId: scope === 'room' ? room : undefined, resourceId: resource,
-      recurrence: repeat, recurrenceUntil: repeat !== 'none' && until ? until : undefined, attendeeIds: attendees,
+      recurrence: repeat, recurrenceUntil: repeat !== 'none' && until ? until : undefined, attendeeIds: attendees, optionalIds: optional.filter((id) => attendees.includes(id)),
+      recurrenceDays: repeat === 'weekly' && days.length ? days : undefined, recurrenceInterval: repeat !== 'none' ? interval : 1, recurrenceExdates: initial?.recurrenceExdates,
+      reminders, private: priv,
     };
     const r = initial ? await work.updateEvent(initial.id, input) : await work.createEvent(input);
     setBusy(false);
@@ -88,6 +98,7 @@ export function EventEditor({ open, onClose, initial, date, roomId, onDone }: { 
         <Input placeholder="제목" value={title} onChangeText={setTitle} autoFocus />
         <Chips>
           <Chip label="종일" active={allDay} onPress={() => setAllDay((v) => !v)} />
+          <Chip label="비공개" active={priv} onPress={() => setPriv((v) => !v)} />
           <Chip label="오늘" active={day === todayStr} onPress={() => setDay(todayStr)} />
           <Chip label="내일" onPress={() => setDay(new Date(new Date(`${todayStr}T00:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10))} />
         </Chips>
@@ -122,7 +133,10 @@ export function EventEditor({ open, onClose, initial, date, roomId, onDone }: { 
         <Sub>참석자</Sub>
         <View style={{ height: 6 }} />
         {attendees.length ? (
-          <Chips>{attendees.map((id) => { const u = s.users.find((x) => x.id === id); return <Chip key={id} label={`${u?.nickname ?? id} ×`} active onPress={() => setAttendees((a) => a.filter((x) => x !== id))} />; })}</Chips>
+          <>
+            <Chips>{attendees.map((id) => { const u = s.users.find((x) => x.id === id); return <Chip key={id} label={`${u?.nickname ?? id}${optional.includes(id) ? ' (선택)' : ''} ×`} active onPress={() => setAttendees((a) => a.filter((x) => x !== id))} />; })}</Chips>
+            <Text style={{ ...family.regular, fontSize: 12, color: c.faint, marginTop: -4, marginBottom: 6 }}>선택 참석으로 바꾸기: {attendees.map((id) => { const u = s.users.find((x) => x.id === id); return <Text key={id} onPress={() => setOptional((o) => (o.includes(id) ? o.filter((x) => x !== id) : [...o, id]))} style={{ color: c.accent, ...family.semibold }}>{u?.nickname ?? id}{optional.includes(id) ? ' ✓' : ''}  </Text>; })}</Text>
+          </>
         ) : null}
         <Input placeholder="이름·부서로 찾아 초대" value={who} onChangeText={setWho} />
         {hits.length ? (
@@ -139,7 +153,24 @@ export function EventEditor({ open, onClose, initial, date, roomId, onDone }: { 
         <Sub>반복</Sub>
         <View style={{ height: 6 }} />
         <Chips>{REPEATS.map(([k, l]) => <Chip key={k} label={l} active={repeat === k} onPress={() => setRepeat(k)} />)}</Chips>
-        {repeat !== 'none' ? <Input label="반복 종료일 (비우면 계속)" placeholder="2026-12-31" value={until} onChangeText={setUntil} autoCapitalize="none" /> : null}
+        {repeat === 'weekly' ? (
+          <>
+            <Text style={{ ...family.regular, fontSize: 12, color: c.faint, marginBottom: 4 }}>요일 (안 고르면 시작일 요일)</Text>
+            <Chips>{DOW.map((l, i) => <Chip key={i} label={l} active={days.includes(i)} onPress={() => setDays((d) => (d.includes(i) ? d.filter((x) => x !== i) : [...d, i].sort()))} />)}</Chips>
+          </>
+        ) : null}
+        {repeat !== 'none' ? (
+          <>
+            <Chips>{[1, 2, 3, 4].map((n) => <Chip key={n} label={n === 1 ? (repeat === 'daily' ? '매일' : repeat === 'weekly' ? '매주' : '매월') : `${n}${repeat === 'daily' ? '일' : repeat === 'weekly' ? '주' : '달'}마다`} active={interval === n} onPress={() => setInterval(n)} />)}</Chips>
+            <Input label="반복 종료일 (비우면 계속)" placeholder="2026-12-31" value={until} onChangeText={setUntil} autoCapitalize="none" />
+          </>
+        ) : null}
+        <Sub>미리 알림</Sub>
+        <View style={{ height: 6 }} />
+        <Chips>
+          <Chip label="없음" active={!reminders.length} onPress={() => setReminders([])} />
+          {REMINDERS.map(([m, l]) => <Chip key={m} label={l} active={reminders.includes(m)} onPress={() => setReminders((r) => (r.includes(m) ? r.filter((x) => x !== m) : [...r, m].sort((a, b) => a - b)))} />)}
+        </Chips>
         <Input placeholder="메모 (선택)" value={memo} onChangeText={setMemo} multiline />
       </ScrollView>
       {error ? <Notice text={error} /> : null}
@@ -166,6 +197,8 @@ export function EventDetail({ event, onClose, onEdit }: { event?: WorkEvent; onC
   const isOwner = event.ownerId === me.id;
   const scopeLabel = SCOPES.find(([k]) => k === event.scope)?.[1];
   const when = event.allDay ? `${kstDate(event.startsAt)} 종일` : `${kstDate(event.startsAt)} ${timeLabel(kstTime(event.startsAt))} ~ ${timeLabel(kstTime(event.endsAt))}`;
+  const hidden = event.private && !isOwner && !mine;
+  const repeatText = event.recurrence === 'none' ? '' : ` · ${event.recurrenceInterval && event.recurrenceInterval > 1 ? `${event.recurrenceInterval}${event.recurrence === 'daily' ? '일' : event.recurrence === 'weekly' ? '주' : '달'}마다` : REPEATS.find(([k]) => k === event.recurrence)?.[1]}${event.recurrence === 'weekly' && event.recurrenceDays?.length ? ` ${event.recurrenceDays.map((d) => DOW[d]).join('·')}` : ''}`;
   const act = async (fn: () => Promise<{ ok: boolean; reason?: string }>) => {
     const r = await fn();
     if (!r.ok) setError((r as { reason: string }).reason);
@@ -175,15 +208,16 @@ export function EventDetail({ event, onClose, onEdit }: { event?: WorkEvent; onC
     <Sheet open={!!event} onClose={onClose}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.sm }}>
         <View style={{ flex: 1 }}>
-          <T size="h3" bold>{event.title}</T>
-          <Sub>{when}{event.recurrence !== 'none' ? ` · ${REPEATS.find(([k]) => k === event.recurrence)?.[1]}` : ''}</Sub>
+          <T size="h3" bold>{hidden ? '바쁨 (비공개 일정)' : event.title}</T>
+          <Sub>{when}{repeatText}</Sub>
         </View>
         <Badge label={scopeLabel ?? ''} tone="plain" />
       </View>
       <View style={{ gap: 6, marginTop: space.sm }}>
-        {resource ? <Line icon="map" text={`회의실 · ${resource.name}${resource.capacity ? ` (${resource.capacity}명)` : ''}`} /> : event.place ? <Line icon="map" text={event.place} /> : null}
+        {resource ? <Line icon="map" text={`회의실 · ${resource.name}${resource.capacity ? ` (${resource.capacity}명)` : ''}`} /> : event.place && !hidden ? <Line icon="map" text={event.place} /> : null}
         <Line icon="me" text={`만든 사람 · ${owner?.nickname ?? ''}`} />
-        {event.memo ? <Line icon="board" text={event.memo} /> : null}
+        {event.memo && !hidden ? <Line icon="board" text={event.memo} /> : null}
+        {event.reminders?.length ? <Line icon="board" text={`미리 알림 · ${event.reminders.map(reminderLabel).join(', ')}`} /> : null}
       </View>
       {att.length ? (
         <View style={{ marginTop: space.md }}>
@@ -192,7 +226,8 @@ export function EventDetail({ event, onClose, onEdit }: { event?: WorkEvent; onC
             {att.map((a) => {
               const u = s.users.find((x) => x.id === a.userId);
               const tone = a.status === 'accepted' ? 'secure' : a.status === 'declined' ? 'warn' : 'plain';
-              return <Badge key={a.userId} label={`${u?.nickname ?? a.userId} · ${a.status === 'accepted' ? '참석' : a.status === 'declined' ? '불참' : '미정'}`} tone={tone} />;
+              const st = a.status === 'accepted' ? '참석' : a.status === 'declined' ? '불참' : a.status === 'tentative' ? '미정' : '응답 없음';
+              return <Badge key={a.userId} label={`${u?.nickname ?? a.userId}${a.optional ? '(선택)' : ''} · ${st}`} tone={tone} />;
             })}
           </View>
         </View>
@@ -201,12 +236,14 @@ export function EventDetail({ event, onClose, onEdit }: { event?: WorkEvent; onC
       {mine ? (
         <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md }}>
           <View style={{ flex: 1 }}><Button label={mine.status === 'accepted' ? '참석 ✓' : '참석'} kind={mine.status === 'accepted' ? 'primary' : 'plain'} onPress={() => void act(() => work.respond(base, 'accepted'))} /></View>
+          <View style={{ flex: 1 }}><Button label={mine.status === 'tentative' ? '미정 ✓' : '미정'} kind={mine.status === 'tentative' ? 'soft' : 'plain'} onPress={() => void act(() => work.respond(base, 'tentative'))} /></View>
           <View style={{ flex: 1 }}><Button label={mine.status === 'declined' ? '불참 ✓' : '불참'} kind={mine.status === 'declined' ? 'dark' : 'plain'} onPress={() => void act(() => work.respond(base, 'declined'))} /></View>
         </View>
       ) : null}
       {isOwner ? (
         <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md }}>
           <View style={{ flex: 1 }}><Button label="지우기" kind="plain" onPress={() => void act(() => work.deleteEvent(base))} /></View>
+          {event.recurrence !== 'none' ? <View style={{ flex: 1 }}><Button label="이 회차 건너뛰기" kind="soft" onPress={() => void act(() => work.skipOccurrence(event.id))} /></View> : null}
           <View style={{ flex: 2 }}><Button label="고치기" onPress={() => { const e = w.events.find((x) => x.id === base); if (e) onEdit(e); }} /></View>
         </View>
       ) : null}

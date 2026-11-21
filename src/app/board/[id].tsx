@@ -33,7 +33,9 @@ export default function PostScreen() {
     if (isNotice && id) actions.markNoticesSeen([id]);
     if (visible && id) actions.markPostRead(id);
   }, [isNotice, visible, id]);
-  const [readers, setReaders] = useState<{ userId: string; nickname: string; dept?: string; readAt: string }[]>();
+  const [status, setStatus] = useState<{ userId: string; nickname: string; dept?: string; isRead: boolean; readAt?: string }[]>();
+  const readers = status?.filter((r) => r.isRead);
+  const unread = status?.filter((r) => !r.isRead) ?? [];
   // 변호사 게시판 글은 변호사 계정만 엽니다.
   if (!post || !visible) return <Screen title="게시판" back><Empty text="글을 찾을 수 없습니다." /></Screen>;
   const realName = boardOf(post) !== 'anon';
@@ -108,26 +110,26 @@ export default function PostScreen() {
         {post.mustReadUntil ? <Badge label={`필독 · ${post.mustReadUntil.slice(5).replace('-', '/')}까지`} tone="warn" /> : null}
         {post.field ? <Badge label={post.field} tone="plain" /> : null}
         {realName && (post.authorId === user.id || admin) && typeof post.readCount === 'number' ? (
-          <Pressable onPress={() => void actions.postReaders(post.id).then(setReaders)} hitSlop={6}><Badge label={`읽음 ${post.readCount}명 · 목록`} tone="plain" /></Pressable>
+          <Pressable onPress={() => void actions.postReadStatus(post.id).then(setStatus)} hitSlop={6}><Badge label={`읽음 ${post.readCount}명 · 목록`} tone="plain" /></Pressable>
         ) : realName && typeof post.readCount === 'number' ? <Badge label={`읽음 ${post.readCount}`} tone="plain" /> : null}
       </View>
       {readers ? (
-        <Sheet open onClose={() => setReaders(undefined)}>
-          <Text style={{ ...family.bold, fontSize: 17, color: c.text }}>읽은 사람 {readers.length}명</Text>
-          {post.mustReadUntil ? <Text style={{ ...family.regular, fontSize: 13, color: c.sub, marginTop: 2 }}>필독 기한 {post.mustReadUntil} · 안 읽은 사람 {Math.max(0, s.users.filter((u) => u.role !== 'client' && u.firm === user.firm).length - readers.length)}명</Text> : null}
+        <Sheet open onClose={() => setStatus(undefined)}>
+          <Text style={{ ...family.bold, fontSize: 17, color: c.text }}>읽은 사람 {readers.length}명 <Text style={{ ...family.regular, color: c.sub }}>/ 대상 {status!.length}명</Text></Text>
+          {post.mustReadUntil ? <Text style={{ ...family.regular, fontSize: 13, color: c.sub, marginTop: 2 }}>필독 기한 {post.mustReadUntil} · 안 읽은 사람 {unread.length}명</Text> : null}
           <ScrollView style={{ maxHeight: 360, marginTop: space.sm }}>
             {readers.length ? readers.map((r) => (
               <View key={r.userId} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 6 }}>
                 <Avatar name={r.nickname} size={28} />
                 <Text style={{ flex: 1, ...family.semibold, fontSize: 14, color: c.text }}>{r.nickname}<Text style={{ ...family.regular, color: c.sub }}>{r.dept ? ` · ${r.dept}` : ''}</Text></Text>
-                <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{timeAgo(r.readAt)}</Text>
+                <Text style={{ ...family.regular, fontSize: 12, color: c.faint }}>{r.readAt ? timeAgo(r.readAt) : ''}</Text>
               </View>
             )) : <Text style={{ ...family.regular, fontSize: 14, color: c.sub, paddingVertical: space.md }}>아직 읽은 사람이 없습니다.</Text>}
           </ScrollView>
-          {post.mustReadUntil && readers.length < s.users.filter((u) => u.role !== 'client' && u.firm === user.firm).length ? (
+          {unread.length ? (
             <>
-              <Text style={{ ...family.bold, fontSize: 14, color: c.warn, marginTop: space.md }}>안 읽은 사람</Text>
-              <Text style={{ ...family.regular, fontSize: 13, color: c.sub, marginTop: 4, lineHeight: 19 }}>{s.users.filter((u) => u.role !== 'client' && u.firm === user.firm && !readers.some((r) => r.userId === u.id)).map((u) => u.nickname).slice(0, 60).join(', ')}{s.users.filter((u) => u.role !== 'client' && u.firm === user.firm && !readers.some((r) => r.userId === u.id)).length > 60 ? ' …' : ''}</Text>
+              <Text style={{ ...family.bold, fontSize: 14, color: c.warn, marginTop: space.md }}>안 읽은 사람 {unread.length}명</Text>
+              <Text style={{ ...family.regular, fontSize: 13, color: c.sub, marginTop: 4, lineHeight: 19 }}>{unread.slice(0, 80).map((u) => u.dept ? `${u.nickname}(${u.dept})` : u.nickname).join(', ')}{unread.length > 80 ? ` 외 ${unread.length - 80}명` : ''}</Text>
             </>
           ) : null}
         </Sheet>

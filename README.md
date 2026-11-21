@@ -145,7 +145,9 @@ DAERYUNTOP_DB_URL='postgresql://계정:비밀번호@호스트:5432/디비' bash 
 | 파일함 (`drive_files`, 버킷 `drive`) | 게시판 상단 📁, 방 메뉴 「이 방 파일함」 | 폴더는 이름표(`서식/소송`), 50MB, 올린 사람만 이름·폴더 변경·삭제. 방 탭은 대화에서 보낸 파일도 함께 |
 | 조직도 (`profiles.duty/job/rank_order/dept_order`) | 대화 → 주소록 → 조직도 | 지점별/부서별 보기, 사람은 직급 순. 직책(소장·책임사무원)·직군(변호사·법률사무원)은 대륜탑 `admin_position` 에서 동기화 |
 | 감사 기록 (`audit_log`) | 백오피스 → 감사 기록 (최고 관리자) | 계정·방·게시글·봇 변경 이력, 방 대화 CSV 내보내기(내보낸 것도 기록) |
-서버에 올리기: 마이그레이션 `20261120000000`~`20261126000000` 을 순서대로 적용하고, 함수 `bot-send` 를 복사한 뒤 `docker compose restart functions`. 테스트는 `npx jest`(규칙·목업 동작)와 `bash supabase/tests/run.sh`(RLS) 로 돕니다.
+네이버웍스 대비 보강 10건 (`20261127000000_works_gaps.sql`, 2026-11-27): 파일함 휴지통(30일 뒤 자동 삭제, `drive-trash-purge` 예약) · 일정 미리 알림(`enqueue_event_reminders`, 분 단위 푸시)·초대/응답 알림·비공개 일정·참석 미정/선택 · 반복 요일 지정·n주 간격·회차 건너뛰기 · 필독 30일 상한과 안 읽은 사람 명단(`post_read_status`) · 감사 범위 확대(로그인, 파일 열람·내려받기 `log_file_download`, 일정·할 일·노트·연락처·파일함 변경) · 할 일 담당자 여러 명(`task_assignees`)과 완료 조건(한 명/모두) · 봇 링크 버튼(`messages.buttons`)과 1:1 보내기(`bot_direct_room`, `login_id`) · 파일 외부 링크(`drive_links`, 함수 `drive-link`: 누구나/구성원만, 보기/내려받기, 만료, 비밀번호, 열람 기록) · 연락처 전화·메일 여러 개와 특정 부서 공유·공동 편집 · 조직도 임원 표시(`profiles.officer`, 동기화)와 겸직 부서(`extra_depts`, 어드민 입력).
+
+서버에 올리기: 마이그레이션 `20261120000000`~`20261127000000` 을 순서대로 적용하고, 함수 `bot-send`·`drive-link`·`daeryuntop-sync` 를 복사한 뒤 `docker compose restart functions`. 테스트는 `npx jest`(규칙·목업 동작)와 `bash supabase/tests/run.sh`(RLS) 로 돕니다.
 ## 서버(Supabase) 운영 — 회사 AWS 계정 안에 직접 설치
 
 2026-11-16부터 Supabase 클라우드 대신 **공식 Supabase 셀프 호스팅(Docker Compose)** 을 회사 AWS 에 올려 씁니다. 앱 코드와 DB 설계는 그대로이고 주소만 다릅니다.

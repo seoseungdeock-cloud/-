@@ -101,6 +101,9 @@ async function readDaeryuntop(): Promise<TopMember[]> {
 }
 
 const isLawyer = (position: string | null) => !!position && /변호사/.test(position);
+/** 임원 직급 이름표 (네이버웍스 Level.executive 에 해당). 환경변수 DAERYUNTOP_OFFICER_RANKS 로 바꿀 수 있음 */
+const OFFICER_RANKS = new Set((Deno.env.get('DAERYUNTOP_OFFICER_RANKS') ?? '대표,부대표,의장,글로벌의장,한국경영대표,글로벌경영대표,최고총괄변호사').split(',').map((x) => x.trim()).filter(Boolean));
+const isOfficer = (position: string | null) => !!position && OFFICER_RANKS.has(position.trim());
 const clean = (v: string | null | undefined, max = 60) => {
   const t = (v ?? '').trim();
   return t ? t.slice(0, max) : null;
@@ -147,7 +150,7 @@ Deno.serve(async (req) => {
   }
 
   // 3) 스카이넷 쪽 현재 상태
-  const { data: profiles, error: pe } = await admin.from('profiles').select('id, login_id, nickname, role, title, dept, branch, phone, email, active, source, duty, job, rank_order, dept_order');
+  const { data: profiles, error: pe } = await admin.from('profiles').select('id, login_id, nickname, role, title, dept, branch, phone, email, active, source, duty, job, rank_order, dept_order, officer');
   if (pe) return fail('db', pe.message, 500);
   const have = new Map((profiles ?? []).map((p) => [p.login_id as string, p]));
 
@@ -168,6 +171,7 @@ Deno.serve(async (req) => {
       phone: clean(m.admin_tel, 30), email: clean(m.admin_email, 120),
       // 조직도용 — 직책·직군·표시 순서도 대륜탑이 기준이라 비면 비웁니다
       duty: clean(m.duty, 80), job: clean(m.job, 40), rank_order: m.rank_order ?? null, dept_order: m.dept_order ?? null,
+      officer: isOfficer(m.position_name),
     };
     try {
       if (!prof) {

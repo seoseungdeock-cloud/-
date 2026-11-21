@@ -33,7 +33,7 @@ import { digestPosts, LAW_BOT, type LawUpdate } from './law-digest';
 import { deadlineCasesFrom, dueLimitPosts, LIMIT_BOT, limitLawyers, limitPost, limitPushText, type LimitSlot } from './deadlines';
 import { classify, type DtHearing, type DtResult } from './daeryuntop';
 import { alertText, CHANGE_LABEL, recipientsOf, whenLabel } from './hearings';
-import { isSelfRoom, SELF_ROOM_TITLE } from './calendar';
+import { isSelfRoom, SELF_ROOM_TITLE, todayKst } from './calendar';
 import { desktopNotifyMessage } from './desktop';
 import { boardOf, canSeeBoard, canWriteBoard, formatUntil, MAX_ATTACHMENTS, needsField, reportTarget, restrictedUntil, toggleVote } from './board';
 import { demoMessages, demoReads, demoRooms, demoUsers } from './demo';
@@ -1479,6 +1479,16 @@ export const actions = {
   },
 
   /** 어드민: 여러 사람의 직책을 한 번에 정합니다. 빈 값이면 직책을 지웁니다. */
+  /** 겸직 부서 (어드민). 대륜탑에 원천이 없어 손으로 넣습니다 — 조직도에서 그 부서에도 함께 보임 */
+  setExtraDepts(userId: string, depts: string[]): RoomCheck {
+    if (me().role !== 'admin') return { ok: false, reason: '어드민만 겸직 부서를 정할 수 있습니다.' };
+    const u = userById(userId);
+    if (!u) return { ok: false, reason: '사람을 찾을 수 없습니다.' };
+    const list = [...new Set(depts.map((d) => d.trim()).filter((d) => d && d !== u.dept))].slice(0, 5);
+    set((s) => ({ users: s.users.map((x) => (x.id === userId ? { ...x, extraDepts: list.length ? list : undefined } : x)) }));
+    mirror((r) => r.setExtraDepts(userId, list));
+    return { ok: true };
+  },
   setTitles(userIds: string[], title: string): RoomCheck {
     if (me().role !== 'admin') return { ok: false, reason: '어드민만 직책을 정할 수 있습니다.' };
     const ids = userIds.filter((id) => userById(id));
@@ -2189,6 +2199,13 @@ export const actions = {
     if (attachments.some((a) => (a.size ?? 0) > 50 * 1024 * 1024)) return { ok: false, reason: '파일은 50MB까지 올릴 수 있습니다.' };
     if (input.mustReadUntil && board === 'anon') return { ok: false, reason: '익명 게시판에는 필독을 걸 수 없습니다.' };
     if (input.mustReadUntil && !/^\d{4}-\d{2}-\d{2}$/.test(input.mustReadUntil)) return { ok: false, reason: '필독 기한은 2026-11-30 처럼 적어 주세요.' };
+    if (input.mustReadUntil) {
+      // 네이버웍스와 같은 규칙: 오늘 이후, 최대 30일
+      const today = todayKst();
+      const max = new Date(new Date(`${today}T00:00:00Z`).getTime() + 30 * 86_400_000).toISOString().slice(0, 10);
+      if (input.mustReadUntil < today) return { ok: false, reason: '필독 기한은 오늘 이후여야 합니다.' };
+      if (input.mustReadUntil > max) return { ok: false, reason: '필독 기한은 최대 30일까지입니다.' };
+    }
     const post: BoardPost = {
       id: newId('p'), authorId: me().id, field: input.field, title: input.title.trim(), body: input.body.trim(), at: nowIso(), votes: {}, comments: [],
       ...(board !== 'anon' ? { board } : {}), ...(attachments.length ? { attachments } : {}),
@@ -2208,16 +2225,21 @@ export const actions = {
   },
   /** 읽은 사람 목록 (글쓴이·어드민). 목업에서는 나만. */
   async postReaders(postId: string): Promise<{ userId: string; nickname: string; dept?: string; readAt: string }[]> {
+    return (await actions.postReadStatus(postId)).filter((r) => r.isRead).map(({ userId, nickname, dept, readAt }) => ({ userId, nickname, dept, readAt: readAt ?? '' }));
+  },
+  /** 대상자 전체의 읽음 여부 (안 읽은 사람 포함). 서버가 있으면 post_read_status, 없으면 구성원 명단에서 계산 */
+  async postReadStatus(postId: string): Promise<{ userId: string; nickname: string; dept?: string; isRead: boolean; readAt?: string }[]> {
     if (remote) {
       try {
-        const rows = await remote.postReaders(postId);
-        return rows.map((r) => ({ userId: r.user_id, nickname: r.nickname, dept: r.dept ?? undefined, readAt: r.read_at }));
+        const rows = await remote.postReadStatus(postId);
+        return rows.map((r) => ({ userId: r.user_id, nickname: r.nickname, dept: r.dept ?? undefined, isRead: r.is_read, readAt: r.read_at ?? undefined }));
       } catch {
         return [];
       }
     }
     const p = state.posts.find((x) => x.id === postId);
-    return p?.readByMe ? [{ userId: me().id, nickname: me().nickname, dept: me().dept, readAt: nowIso() }] : [];
+    const my = me();
+    return state.users.filter((u) => u.role === 'lawyer' || u.role === 'admin').map((u) => ({ userId: u.id, nickname: u.nickname, dept: u.dept, isRead: u.id === my.id && !!p?.readByMe, readAt: u.id === my.id && p?.readByMe ? nowIso() : undefined }));
   },
 
   /** 게시판 공지 팝업에서 확인한 공지 */

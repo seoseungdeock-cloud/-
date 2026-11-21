@@ -1,11 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
 import { Linking, Pressable, Text, View } from 'react-native';
 
 import { contactsFor } from '@/core/contacts';
 import { displayName, externalContacts, presenceOf } from '@/core/messenger';
 import { actions } from '@/core/store';
+import type { User } from '@/core/types';
 import { Icon, type IconName } from '@/ui/icons';
-import { Avatar, Empty, Screen } from '@/ui/kit';
+import { Avatar, Button, Empty, Input, Screen } from '@/ui/kit';
 import { usePresenceBadge } from '@/ui/presence';
 import { family, space, useColors } from '@/ui/theme';
 import { useApp, useMe } from '@/ui/use-app';
@@ -38,8 +40,9 @@ export default function ContactScreen() {
     { icon: 'mail', label: '메일', onPress: showPrivate && u.email ? () => Linking.openURL(`mailto:${u.email}`) : undefined },
   ];
   const rows: [string, string | undefined][] = [
-    ['직급', u.title],
+    ['직급', u.officer ? `${u.title ?? ''} · 임원`.replace(/^ · /, '') : u.title],
     ['직책', u.duty],
+    ['겸직', u.extraDepts?.join(', ')],
     ['직군', u.job && u.job !== u.title ? u.job : undefined],
     ['전화', showPrivate ? u.phone : undefined],
     ['메일', showPrivate ? u.email : undefined],
@@ -88,6 +91,7 @@ export default function ContactScreen() {
         </View>
       ) : null}
 
+      {me.role === 'admin' && u.role !== 'client' ? <ExtraDeptsEditor u={u} /> : null}
       {rows.filter(([, v]) => v).map(([label, v]) => (
         <View key={label} style={{ paddingVertical: space.lg, borderBottomWidth: 1, borderBottomColor: c.line, gap: space.xs }}>
           <Text style={{ ...family.regular, fontSize: 13, color: c.faint }}>{label}</Text>
@@ -95,5 +99,24 @@ export default function ContactScreen() {
         </View>
       ))}
     </Screen>
+  );
+}
+
+/** 어드민: 겸직 부서 넣기 (쉼표로 여러 개) */
+function ExtraDeptsEditor({ u }: { u: User }) {
+  const c = useColors();
+  const [open, setOpen] = useState(false);
+  const [v, setV] = useState(u.extraDepts?.join(', ') ?? '');
+  const [err, setErr] = useState<string>();
+  if (!open) return <Pressable onPress={() => setOpen(true)} style={{ paddingVertical: space.sm }}><Text style={{ ...family.semibold, fontSize: 13, color: c.accent }}>겸직 부서 {u.extraDepts?.length ? '고치기' : '넣기'} (어드민)</Text></Pressable>;
+  return (
+    <View style={{ paddingVertical: space.md, gap: space.sm, borderBottomWidth: 1, borderBottomColor: c.line }}>
+      <Input label="겸직 부서 — 쉼표로 여러 개 (조직도에서 그 부서에도 함께 보입니다)" value={v} onChangeText={setV} placeholder="예: 경영본부, 상담팀" />
+      {err ? <Text style={{ ...family.regular, fontSize: 13, color: c.warn }}>{err}</Text> : null}
+      <View style={{ flexDirection: 'row', gap: space.sm }}>
+        <View style={{ flex: 1 }}><Button label="취소" kind="plain" onPress={() => setOpen(false)} /></View>
+        <View style={{ flex: 2 }}><Button label="저장" onPress={() => { const r = actions.setExtraDepts(u.id, v.split(',')); if (!r.ok) setErr(r.reason); else setOpen(false); }} /></View>
+      </View>
+    </View>
   );
 }

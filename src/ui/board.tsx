@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Image, Linking, Platform, Pressable, Text, View } from 'react-native';
 
 import { REPORT_REASONS, score, type AuthorView } from '@/core/board';
+import { work } from '@/core/work';
 import type { Attachment, Votes } from '@/core/types';
 import { Icon, type IconName } from '@/ui/icons';
 import { openViewer } from '@/ui/image-viewer';
@@ -94,6 +95,8 @@ export const viewable = (a: Attachment) =>
 /** 열 수 있는 형식은 새 창으로, 나머지는 내려받기 */
 export const openFile = (a: Attachment) => {
   if (!canOpen(a)) return;
+  // 서버 파일이면 「누가 어떤 파일을 열었나」 감사 기록 (대화 첨부·게시판 첨부)
+  if (a.path) work.logDownload(a.path.includes('/') && a.path.split('/').length >= 3 ? 'room' : 'board', a.path, a.name);
   if (viewable(a)) void WebBrowser.openBrowserAsync(a.uri);
   else downloadFile(a);
 };

@@ -166,8 +166,8 @@ export function byRank(a: User, b: User): number {
 export function orgGroups(users: User[]): { dept: string; members: User[] }[] {
   const map = new Map<string, User[]>();
   for (const u of users) {
-    const d = u.dept ?? NO_DEPT;
-    map.set(d, [...(map.get(d) ?? []), u]);
+    // 겸직 부서에도 같은 사람이 들어감
+    for (const d of [u.dept ?? NO_DEPT, ...(u.extraDepts ?? []).filter((x) => x && x !== u.dept)]) map.set(d, [...(map.get(d) ?? []), u]);
   }
   const order = (members: User[]) => Math.min(...members.map((m) => m.deptOrder ?? Number.MAX_SAFE_INTEGER));
   return [...map.entries()]
@@ -192,9 +192,10 @@ export function branchGroups(users: User[]): { branch: string; members: User[]; 
     .map(([branch, members]) => ({ branch, members: members.sort(byRank), depts: orgGroups(members) }));
 }
 
-/** 조직도 한 줄 설명: 부서 · 직책 · 직군 (있는 것만). 직급은 이름 옆에 이미 있어 뺍니다 */
+/** 조직도 한 줄 설명: 부서(겸직 포함) · 직책 · 직군 (있는 것만). 직급은 이름 옆에 이미 있어 뺍니다 */
 export function orgLine(u: User, omitDept = false): string {
-  return [omitDept ? undefined : u.dept, u.duty, u.job && u.job !== u.title ? u.job : undefined].filter(Boolean).join(' · ');
+  const depts = omitDept ? (u.extraDepts?.length ? `겸직 ${u.extraDepts.join('·')}` : undefined) : [u.dept, ...(u.extraDepts ?? [])].filter(Boolean).join('·');
+  return [depts, u.duty, u.job && u.job !== u.title ? u.job : undefined].filter(Boolean).join(' · ');
 }
 
 /** 외부 연락처: 같은 방에 있지만 우리 조직이 아닌 사람 (예: 사건방의 의뢰인) */

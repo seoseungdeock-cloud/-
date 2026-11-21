@@ -42,7 +42,9 @@ export default function CalendarScreen() {
     const scopeLabel = { personal: '내 일정', dept: '부서', firm: '회사', room: '대화방' } as const;
     return occ.map((e): CalEvent & { source: WorkEvent } => ({
       id: e.id, date: kstDate(e.startsAt), time: e.allDay ? undefined : kstTime(e.startsAt), endTime: e.allDay ? undefined : kstTime(e.endsAt),
-      label: e.title, kind: 'event', roomId: e.roomId ?? '', caseTitle: '', place: e.place ?? w.resources.find((r) => r.id === e.resourceId)?.name, scopeLabel: scopeLabel[e.scope], source: e,
+      // 비공개 일정은 주인·참석자 외에는 「바쁨」으로만
+      label: e.private && e.ownerId !== user.id && !w.attendees.some((a) => a.eventId === e.id.split('@')[0] && a.userId === user.id) ? '바쁨' : e.title,
+      kind: 'event', roomId: e.roomId ?? '', caseTitle: '', place: e.private && e.ownerId !== user.id ? undefined : (e.place ?? w.resources.find((r) => r.id === e.resourceId)?.name), scopeLabel: scopeLabel[e.scope], source: e,
     }));
   }, [w, s.rooms, user, ym, today]);
   const events = useMemo(() => [...calendarEvents(user, s.rooms), ...workItems].sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? '')), [user, s.rooms, workItems]);

@@ -139,6 +139,7 @@ export function messageFromRow(m: Row, meId: string, reactions: Row[] | undefine
     id: m.id, roomId: m.room_id, senderId: m.sender_kind === 'user' ? m.sender_id ?? '' : m.sender_kind, kind: m.kind, text: m.text, at: m.created_at,
     ...(m.reply_to ? { replyTo: m.reply_to } : {}),
     ...(m.bot_name ? { botName: m.bot_name } : {}),
+    ...(Array.isArray(m.buttons) && m.buttons.length ? { buttons: m.buttons } : {}),
     ...(m.forward_of ? { forwardOf: m.forward_of } : {}),
     ...(m.bundle ? { bundle: m.bundle } : {}),
     ...(m.recalled ? { recalled: true } : {}),
@@ -224,6 +225,7 @@ export async function loadAll(sb: SupabaseClient, meId: string, withMessages = t
     id: p.id, nickname: p.nickname, role: p.role, agentAccess: p.agent_access, membership: p.membership,
     officeId: opt(p.office_id), firm: opt(p.firm), title: opt(p.title), dept: opt(p.dept), branch: opt(p.branch),
     duty: opt(p.duty), job: opt(p.job), ...(p.rank_order == null ? {} : { rankOrder: p.rank_order }), ...(p.dept_order == null ? {} : { deptOrder: p.dept_order }),
+    ...(p.officer ? { officer: true } : {}), ...(Array.isArray(p.extra_depts) && p.extra_depts.length ? { extraDepts: p.extra_depts } : {}),
     phone: opt(p.phone), email: opt(p.email), birthday: opt(p.birthday), joinedAt: opt(p.joined_at),
     status: opt(p.status), presence: p.presence, ...(p.photo_path && photos.get(p.photo_path) ? { photo: photos.get(p.photo_path) } : {}), ...(p.super_admin ? { superAdmin: true } : {}), ...(p.is_executive ? { executive: true } : {}),
   }));
@@ -430,6 +432,7 @@ export function remoteOps(sb: SupabaseClient) {
     setTitles: (ids: string[], title: string) => rpc(sb, 'admin_set_titles', { p_users: ids, p_title: title }),
     setSuperAdmin: (u: string, on: boolean) => rpc(sb, 'admin_set_super_admin', { p_user: u, p_on: on }),
     updateProfile: async (patch: Row) => check(sb.from('profiles').update(patch).eq('id', await me())),
+    setExtraDepts: (userId: string, depts: string[]) => check(sb.from('profiles').update({ extra_depts: depts }).eq('id', userId)),
     /** 프로필 사진: '내 id/새 id.확장자'로 올리고 예전 사진은 지웁니다. uri가 없으면 사진 삭제. */
     setProfilePhoto: async (uri: string | null) => {
       const uid = await me();
@@ -573,6 +576,7 @@ export function remoteOps(sb: SupabaseClient) {
     // 건의사항·인증코드
     markPostRead: (id: string) => rpc(sb, 'mark_post_read', { p_post: id }),
     postReaders: (id: string) => rpc<{ user_id: string; nickname: string; dept: string | null; read_at: string }[]>(sb, 'post_readers', { p_post: id }),
+    postReadStatus: (id: string) => rpc<{ user_id: string; nickname: string; dept: string | null; is_read: boolean; read_at: string | null }[]>(sb, 'post_read_status', { p_post: id }),
     submitSuggestion: (s: Suggestion) => check(sb.from('suggestions').insert({ id: s.id, author_id: s.authorId, body: s.body })),
     answerSuggestion: (id: string, status: string, answer: string) => rpc(sb, 'answer_suggestion', { p_id: id, p_status: status, p_answer: answer }),
     readAuthCodes: async () => check(sb.from('auth_codes').update({ read: true }).eq('user_id', await me()).eq('read', false)),

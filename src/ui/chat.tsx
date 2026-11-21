@@ -1,7 +1,7 @@
 // 대화방 화면 조각 (웍스 대화방 구성: 읽음 수, 답장 인용, 전달, 회수, 공감, 멘션, 공지, 방 메뉴)
 import { router } from 'expo-router';
 import { createElement, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, Text, TextInput, Vibration, View } from 'react-native';
+import { Animated, Easing, Image, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, Vibration, View } from 'react-native';
 
 import { canConfirmGreeting, greetingDue, lawyerName, parseAssignText, type AssignNotice } from '@/core/assign';
 import { dayLabel, displayName, isMaster, markParts, notifyLevel, reactionGroups, readCount, readers, roomLinks, splitMentions, type Reads } from '@/core/messenger';
@@ -240,6 +240,15 @@ export function Bubble({
               <>
                 {m.attachments?.length ? <MessageFiles items={m.attachments} mine={mine} title={room.title} boxed={bare} /> : null}
                 {m.text ? <Body text={m.text} names={names} color={fg} mention={c.accent} mark={mark} /> : null}
+                {m.buttons?.length ? (
+                  <View style={{ gap: 6, marginTop: 6 }}>
+                    {m.buttons.slice(0, 3).map((b, i) => (
+                      <Pressable key={i} accessibilityRole="link" onPress={() => void Linking.openURL(b.url)} style={({ pressed }) => ({ alignItems: 'center', paddingVertical: 9, borderRadius: radius.md, backgroundColor: c.bg, borderWidth: 1, borderColor: c.lineStrong, opacity: pressed ? 0.6 : 1 })}>
+                        <Text numberOfLines={1} style={{ ...family.semibold, fontSize: 14, color: c.accent }}>{b.label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
               </>
             )}
           </Pressable>

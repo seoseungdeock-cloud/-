@@ -10,7 +10,7 @@ import { supabase } from './supabase';
 export const DRIVE_BUCKET = 'drive';
 
 export type EventScope = 'personal' | 'dept' | 'firm' | 'room';
-export type AttendStatus = 'pending' | 'accepted' | 'declined';
+export type AttendStatus = 'pending' | 'accepted' | 'declined' | 'tentative';
 export type Recurrence = 'none' | 'daily' | 'weekly' | 'monthly';
 
 export type WorkEvent = {
@@ -30,14 +30,29 @@ export type WorkEvent = {
   recurrence: Recurrence;
   /** YYYY-MM-DD. 없으면 끝없이 반복 (화면은 1년까지만 펼침) */
   recurrenceUntil?: string;
+  /** 매주 반복일 때 요일 (0=일 … 6=토). 비면 시작일 요일 */
+  recurrenceDays?: number[];
+  /** n주/n일/n달마다 (기본 1) */
+  recurrenceInterval?: number;
+  /** 건너뛰는 회차 (한국 날짜) */
+  recurrenceExdates?: string[];
+  /** 시작 n분 전 미리 알림 (여러 개) */
+  reminders?: number[];
+  /** 비공개: 주인·참석자 외에는 「바쁨」만 보임 */
+  private?: boolean;
   createdAt: string;
 };
-export type Attendee = { eventId: string; userId: string; status: AttendStatus };
+export type Attendee = { eventId: string; userId: string; status: AttendStatus; optional?: boolean };
 export type Resource = { id: string; name: string; kind: 'room' | 'equipment'; branch?: string; capacity?: number; active: boolean };
 export type Task = {
   id: string;
   ownerId: string;
+  /** 첫 담당자 (옛 열). 담당자 전체는 assignees */
   assigneeId?: string;
+  /** 담당자 여러 명과 각자 끝낸 시각 */
+  assignees?: { userId: string; doneAt?: string }[];
+  /** any = 한 명만 끝내도 완료, all = 모두 끝내야 완료 */
+  completion?: 'any' | 'all';
   title: string;
   detail?: string;
   dueDate?: string;
@@ -57,15 +72,29 @@ export type SharedNote = {
   authorId: string; updatedBy?: string; createdAt: string; updatedAt: string;
 };
 /** 고객·거래처 연락처 */
+export type PhoneKind = 'cell' | 'work' | 'home' | 'fax' | 'other';
 export type Contact = {
   id: string; ownerId: string; shared: boolean; name: string; company?: string; title?: string;
-  phone?: string; email?: string; memo?: string; tags: string[]; createdAt: string; updatedAt: string;
+  /** 대표 전화·메일 (phones/emails 의 primary). 옛 열과 호환 */
+  phone?: string; email?: string;
+  phones?: { type: PhoneKind; value: string; primary?: boolean }[];
+  emails?: { value: string; primary?: boolean }[];
+  address?: string; website?: string;
+  /** shared=false 여도 이 부서 사람은 봄 */
+  shareDepts?: string[];
+  /** 공유 대상이 고칠 수 있나 (기본 참) */
+  coEdit?: boolean;
+  memo?: string; tags: string[]; createdAt: string; updatedAt: string;
 };
+/** 파일 외부 링크 */
+export type DriveLink = { id: string; fileId: string; access: 'anyone' | 'firm'; permission: 'preview' | 'download'; expiresAt?: string; hasPassword: boolean; createdBy: string; createdAt: string; hits: number; lastHitAt?: string; revokedAt?: string };
 
 /** 파일함 한 칸. folder 는 '서식/민사' 처럼 '/' 로 이은 이름표 */
 export type DriveFile = {
   id: string; scope: 'dept' | 'firm' | 'room'; dept?: string; roomId?: string; folder: string;
   name: string; size: number; mime?: string; path: string; uploaderId: string; createdAt: string;
+  /** 휴지통에 들어간 시각 (30일 뒤 삭제) */
+  deletedAt?: string;
   /** 목업·막 올린 파일의 기기 안 주소 */
   uri?: string;
 };
@@ -80,6 +109,7 @@ export type WorkState = {
   notes: SharedNote[];
   contacts: Contact[];
   files: DriveFile[];
+  links: DriveLink[];
   error?: string;
 };
 
@@ -119,18 +149,44 @@ export function occurrences(e: WorkEvent, from: string, to: string): WorkEvent[]
   const span = new Date(e.endsAt).getTime() - new Date(e.startsAt).getTime();
   if (e.recurrence === 'none') return startDate >= from && startDate <= to ? [e] : kstDate(e.endsAt) >= from && startDate <= to ? [e] : [];
   const until = e.recurrenceUntil && e.recurrenceUntil < to ? e.recurrenceUntil : to;
+  const step = Math.max(1, e.recurrenceInterval ?? 1);
+  const skip = new Set(e.recurrenceExdates ?? []);
   const out: WorkEvent[] = [];
-  let d = startDate;
+  const push = (d: string) => {
+    if (d < from || d < startDate || skip.has(d)) return;
+    const startsAt = new Date(new Date(e.startsAt).getTime() + (new Date(`${d}T00:00:00Z`).getTime() - new Date(`${startDate}T00:00:00Z`).getTime())).toISOString();
+    const endsAt = new Date(new Date(startsAt).getTime() + span).toISOString();
+    out.push({ ...e, id: d === startDate ? e.id : `${e.id}@${d}`, startsAt, endsAt });
+  };
   let guard = 0;
-  while (d <= until && guard++ < 400) {
-    if (d >= from) {
-      const startsAt = new Date(new Date(e.startsAt).getTime() + (new Date(`${d}T00:00:00Z`).getTime() - new Date(`${startDate}T00:00:00Z`).getTime())).toISOString();
-      const endsAt = new Date(new Date(startsAt).getTime() + span).toISOString();
-      out.push({ ...e, id: d === startDate ? e.id : `${e.id}@${d}`, startsAt, endsAt });
+  if (e.recurrence === 'weekly' && e.recurrenceDays?.length) {
+    // 시작일이 든 주(일요일부터)에서 지정 요일마다, step 주 간격
+    let week = addDays(startDate, -new Date(`${startDate}T00:00:00Z`).getUTCDay());
+    while (week <= until && guard++ < 400) {
+      for (const dow of [...e.recurrenceDays].sort()) { const d = addDays(week, dow); if (d <= until) push(d); }
+      week = addDays(week, 7 * step);
     }
-    d = e.recurrence === 'daily' ? addDays(d, 1) : e.recurrence === 'weekly' ? addDays(d, 7) : addMonths(d, 1);
+    return out.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  }
+  let d = startDate;
+  while (d <= until && guard++ < 400) {
+    push(d);
+    d = e.recurrence === 'daily' ? addDays(d, step) : e.recurrence === 'weekly' ? addDays(d, 7 * step) : addMonths(d, step);
   }
   return out;
+}
+/** 할 일이 끝났는지: 담당자가 여럿이면 완료 조건으로 판단 */
+export function taskDone(t: Task): boolean {
+  if (!t.assignees?.length) return !!t.doneAt;
+  const done = t.assignees.filter((a) => a.doneAt).length;
+  return t.completion === 'all' ? done === t.assignees.length : done > 0;
+}
+/** 연락처의 대표 전화·메일 */
+export const primaryPhone = (c: Contact) => c.phones?.find((p) => p.primary)?.value ?? c.phones?.[0]?.value ?? c.phone;
+export const primaryEmail = (c: Contact) => c.emails?.find((p) => p.primary)?.value ?? c.emails?.[0]?.value ?? c.email;
+/** 연락처를 볼 수 있나: 내 것 · 회사 공용 · 내 부서에 공유 */
+export function canSeeContact(c: Contact, me: { id: string; dept?: string; firm?: boolean }): boolean {
+  return c.ownerId === me.id || (!!me.firm && (c.shared || (!!me.dept && (c.shareDepts ?? []).includes(me.dept))));
 }
 /** 회차 id 에서 원본 id */
 export const baseId = (id: string) => id.split('@')[0];
@@ -152,8 +208,13 @@ export function visibleNotes(notes: SharedNote[], me: { id: string; dept?: strin
 /** 연락처 검색: 이름·회사·직함·전화·이메일·태그 */
 /** 파일함: 내가 볼 수 있는 파일 (노트와 같은 규칙) */
 export function visibleFiles(files: DriveFile[], me: { id: string; dept?: string; firm?: boolean }, myRoomIds: Set<string>): DriveFile[] {
-  return files.filter((f) => f.uploaderId === me.id || (f.scope === 'firm' && me.firm) || (f.scope === 'dept' && me.firm && f.dept === me.dept) || (f.scope === 'room' && !!f.roomId && myRoomIds.has(f.roomId)));
+  return files.filter((f) => !f.deletedAt && (f.uploaderId === me.id || (f.scope === 'firm' && me.firm) || (f.scope === 'dept' && me.firm && f.dept === me.dept) || (f.scope === 'room' && !!f.roomId && myRoomIds.has(f.roomId))));
 }
+/** 휴지통: 내가 지운(올린) 파일. 30일 뒤 자동 삭제 */
+export function trashFiles(files: DriveFile[], meId: string, admin = false): DriveFile[] {
+  return files.filter((f) => f.deletedAt && (admin || f.uploaderId === meId)).sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''));
+}
+export const TRASH_DAYS = 30;
 /** 폴더 이름표 정리: 앞뒤 '/'·공백 제거, 빈 조각 삭제 */
 export function cleanFolder(folder: string): string {
   return folder.split('/').map((x) => x.trim()).filter(Boolean).join('/');
@@ -178,7 +239,7 @@ export function fileSizeText(n: number): string {
 
 export function searchContacts(contacts: Contact[], q: string, tag?: string): Contact[] {
   const k = q.trim().toLowerCase();
-  return contacts.filter((c) => (!tag || c.tags.includes(tag)) && (!k || [c.name, c.company, c.title, c.phone, c.email, c.memo, ...c.tags].some((v) => v?.toLowerCase().includes(k))));
+  return contacts.filter((c) => (!tag || c.tags.includes(tag)) && (!k || [c.name, c.company, c.title, c.phone, c.email, c.memo, c.address, ...(c.phones ?? []).map((p) => p.value), ...(c.emails ?? []).map((p) => p.value), ...c.tags].some((v) => v?.toLowerCase().includes(k))));
 }
 
 /** 회의실 겹침: 같은 회의실에 시간이 겹치는 다른 일정 */
@@ -212,7 +273,7 @@ export function dueState(t: Task, today: string): 'overdue' | 'today' | 'soon' |
 
 // ───────────────────────── 상태 ─────────────────────────
 const listeners = new Set<() => void>();
-const EMPTY: WorkState = { loaded: false, events: [], attendees: [], resources: [], tasks: [], categories: [], notes: [], contacts: [], files: [] };
+const EMPTY: WorkState = { loaded: false, events: [], attendees: [], resources: [], tasks: [], categories: [], notes: [], contacts: [], files: [], links: [] };
 let state: WorkState = EMPTY;
 function set(patch: Partial<WorkState> | ((s: WorkState) => Partial<WorkState>)) {
   state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) };
@@ -233,7 +294,9 @@ function mockSeed(meId: string): Partial<WorkState> {
     { id: 'rs_3', name: '부산 회의실', kind: 'room', branch: '부산', capacity: 10, active: true },
   ];
   const events: WorkEvent[] = [
-    { id: 'ev_1', ownerId: 'u_admin', title: '주간 경영회의', startsAt: kstIso(kstDay(1), '09:30'), endsAt: kstIso(kstDay(1), '10:30'), allDay: false, place: '본사 대회의실', scope: 'firm', resourceId: 'rs_1', recurrence: 'weekly', createdAt: ago(200) },
+    { id: 'ev_1', ownerId: 'u_admin', title: '주간 경영회의', startsAt: kstIso(kstDay(1), '09:30'), endsAt: kstIso(kstDay(1), '10:30'), allDay: false, place: '본사 대회의실', scope: 'firm', resourceId: 'rs_1', recurrence: 'weekly', reminders: [10, 1440], createdAt: ago(200) },
+    { id: 'ev_5', ownerId: 'u_lawyer', title: '상담팀 스탠드업', startsAt: kstIso(kstDay(0), '09:00'), endsAt: kstIso(kstDay(0), '09:15'), allDay: false, scope: 'dept', dept: '부산총괄본부', recurrence: 'weekly', recurrenceDays: [1, 3, 5], reminders: [0], createdAt: ago(500) },
+    { id: 'ev_6', ownerId: 'u_m1', title: '개인 일정', startsAt: kstIso(kstDay(3), '13:00'), endsAt: kstIso(kstDay(3), '14:00'), allDay: false, scope: 'dept', dept: '부산총괄본부', recurrence: 'none', private: true, createdAt: ago(10) },
     { id: 'ev_2', ownerId: 'u_m1', title: '상담팀 월례 교육', startsAt: kstIso(kstDay(4), '14:00'), endsAt: kstIso(kstDay(4), '16:00'), allDay: false, place: '부산 회의실', memo: '신규 상담 절차 안내', scope: 'dept', dept: '부산총괄본부', resourceId: 'rs_3', recurrence: 'monthly', createdAt: ago(300) },
     { id: 'ev_3', ownerId: meId, title: '의뢰인 미팅 — 임대차 사건', startsAt: kstIso(kstDay(2), '11:00'), endsAt: kstIso(kstDay(2), '12:00'), allDay: false, place: '본사 소회의실 A', scope: 'personal', resourceId: 'rs_2', recurrence: 'none', createdAt: ago(20) },
     { id: 'ev_4', ownerId: 'u_admin', title: '창립기념일 (휴무)', startsAt: kstIso(kstDay(12)), endsAt: kstIso(kstDay(12), '23:59'), allDay: true, scope: 'firm', recurrence: 'none', createdAt: ago(900) },
@@ -245,7 +308,7 @@ function mockSeed(meId: string): Partial<WorkState> {
   const tasks: Task[] = [
     { id: 'tk_1', ownerId: meId, assigneeId: meId, title: '임대차보증금 사건 소장 초안', dueDate: kstDay(1), priority: 2, createdAt: ago(30) },
     { id: 'tk_2', ownerId: 'u_admin', assigneeId: meId, title: '조정기일 출석 안내문 발송 확인', detail: '민준 의뢰인 등기 발송 여부', dueDate: kstDay(0), dueTime: '15:00', priority: 1, roomId: 'r_case2', createdAt: ago(10) },
-    { id: 'tk_3', ownerId: meId, assigneeId: 'u_staff', title: '증거자료 사본 정리', dueDate: kstDay(5), priority: 0, createdAt: ago(50) },
+    { id: 'tk_3', ownerId: meId, assigneeId: 'u_staff', assignees: [{ userId: 'u_staff' }, { userId: 'u_m1', doneAt: ago(1) }], completion: 'all', title: '증거자료 사본 정리', dueDate: kstDay(5), priority: 0, createdAt: ago(50) },
     { id: 'tk_4', ownerId: meId, assigneeId: meId, title: '상담 일정표 확인', dueDate: kstDay(-1), priority: 0, doneAt: ago(2), createdAt: ago(80) },
   ];
   const notes: SharedNote[] = [
@@ -254,7 +317,8 @@ function mockSeed(meId: string): Partial<WorkState> {
     { id: 'nt_3', scope: 'room', roomId: 'r_case2', title: '교통사고 사건 쟁점 정리', body: '· 과실비율 70:30 주장\n· 후유장해 진단 대기\n· 보험사 제시액 1,200만 원 → 조정기일에서 조율', pinned: false, allowEdit: true, authorId: meId, createdAt: ago(60), updatedAt: ago(5) },
   ];
   const contacts: Contact[] = [
-    { id: 'ct_1', ownerId: meId, shared: true, name: '김보험', company: '○○화재 보상팀', title: '대리', phone: '02-000-1111', email: 'claims@example.com', tags: ['보험사', '교통사고'], createdAt: ago(500), updatedAt: ago(500) },
+    { id: 'ct_1', ownerId: meId, shared: true, name: '김보험', company: '○○화재 보상팀', title: '대리', phone: '02-000-1111', email: 'claims@example.com', phones: [{ type: 'work', value: '02-000-1111', primary: true }, { type: 'cell', value: '010-0000-1111' }], emails: [{ value: 'claims@example.com', primary: true }], tags: ['보험사', '교통사고'], createdAt: ago(500), updatedAt: ago(500) },
+    { id: 'ct_4', ownerId: 'u_m1', shared: false, shareDepts: ['부산총괄본부'], name: '최배달', company: '부산 퀵서비스', phones: [{ type: 'cell', value: '010-0000-4444', primary: true }], tags: ['배송'], createdAt: ago(100), updatedAt: ago(100) },
     { id: 'ct_2', ownerId: 'u_staff', shared: true, name: '박서기', company: '예시지방법원 민사3단독', title: '참여관', phone: '02-000-2222', tags: ['법원'], createdAt: ago(900), updatedAt: ago(900) },
     { id: 'ct_3', ownerId: meId, shared: false, name: '이감정', company: '한국감정평가', title: '평가사', phone: '010-0000-3333', memo: '부동산 시가 감정 의뢰처', tags: ['감정'], createdAt: ago(200), updatedAt: ago(200) },
   ];
@@ -267,8 +331,9 @@ function mockSeed(meId: string): Partial<WorkState> {
     { id: 'df_6', scope: 'dept', dept: '부산총괄본부', folder: '', name: '상담 응대 매뉴얼 v3.pdf', size: 2_300_000, mime: 'application/pdf', path: 'df_6/매뉴얼.pdf', uploaderId: 'u_m1', createdAt: ago(300) },
     { id: 'df_7', scope: 'dept', dept: '부산총괄본부', folder: '당직', name: '11월 당직표.xlsx', size: 22_000, path: 'df_7/당직표.xlsx', uploaderId: 'u_m1', createdAt: ago(120) },
     { id: 'df_8', scope: 'room', roomId: 'r_case2', folder: '', name: '교통사고 사실확인원.pdf', size: 410_000, mime: 'application/pdf', path: 'df_8/사실확인원.pdf', uploaderId: meId, createdAt: ago(40) },
+    { id: 'df_9', scope: 'firm', folder: '서식/소송', name: '(구) 소장 서식 2024.docx', size: 61_000, path: 'df_9/old.docx', uploaderId: meId, createdAt: ago(3000), deletedAt: ago(48) },
   ];
-  return { events, attendees, resources, tasks, notes, contacts, files, categories: [{ id: 'tc_1', userId: meId, name: '사건', sort: 0 }, { id: 'tc_2', userId: meId, name: '사무', sort: 1 }] };
+  return { events, attendees, resources, tasks, notes, contacts, files, links: [], categories: [{ id: 'tc_1', userId: meId, name: '사건', sort: 0 }, { id: 'tc_2', userId: meId, name: '사무', sort: 1 }] };
 }
 
 // ---- 서버 ----
@@ -277,25 +342,36 @@ const opt = (v: unknown) => (v === null || v === undefined ? undefined : (v as s
 const rowEvent = (r: Row): WorkEvent => ({
   id: r.id, ownerId: r.owner_id, title: r.title, startsAt: r.starts_at, endsAt: r.ends_at, allDay: !!r.all_day, place: opt(r.place), memo: opt(r.memo),
   scope: r.scope, dept: opt(r.dept), roomId: opt(r.room_id), resourceId: opt(r.resource_id), recurrence: r.recurrence, recurrenceUntil: opt(r.recurrence_until), createdAt: r.created_at,
+  recurrenceDays: r.recurrence_days?.length ? r.recurrence_days : undefined, recurrenceInterval: r.recurrence_interval ?? 1, recurrenceExdates: r.recurrence_exdates?.length ? r.recurrence_exdates : undefined,
+  reminders: r.reminders?.length ? r.reminders : undefined, private: !!r.private,
 });
 const eventRow = (e: WorkEvent): Row => ({
   id: e.id, owner_id: e.ownerId, title: e.title, starts_at: e.startsAt, ends_at: e.endsAt, all_day: e.allDay, place: e.place ?? null, memo: e.memo ?? null,
   scope: e.scope, dept: e.dept ?? null, room_id: e.roomId ?? null, resource_id: e.resourceId ?? null, recurrence: e.recurrence, recurrence_until: e.recurrenceUntil ?? null,
+  recurrence_days: e.recurrenceDays ?? [], recurrence_interval: e.recurrenceInterval ?? 1, recurrence_exdates: e.recurrenceExdates ?? [], reminders: e.reminders ?? [], private: !!e.private,
 });
 const rowTask = (r: Row): Task => ({
   id: r.id, ownerId: r.owner_id, assigneeId: opt(r.assignee_id), title: r.title, detail: opt(r.detail), dueDate: opt(r.due_date), dueTime: r.due_time ? String(r.due_time).slice(0, 5) : undefined,
-  priority: r.priority ?? 0, categoryId: opt(r.category_id), roomId: opt(r.room_id), doneAt: opt(r.done_at), createdAt: r.created_at,
+  priority: r.priority ?? 0, categoryId: opt(r.category_id), roomId: opt(r.room_id), doneAt: opt(r.done_at), createdAt: r.created_at, completion: r.completion ?? 'any',
 });
 const taskRow = (t: Task): Row => ({
   id: t.id, owner_id: t.ownerId, assignee_id: t.assigneeId ?? null, title: t.title, detail: t.detail ?? null, due_date: t.dueDate ?? null, due_time: t.dueTime ?? null,
-  priority: t.priority, category_id: t.categoryId ?? null, room_id: t.roomId ?? null, done_at: t.doneAt ?? null,
+  priority: t.priority, category_id: t.categoryId ?? null, room_id: t.roomId ?? null, done_at: t.doneAt ?? null, completion: t.completion ?? 'any',
 });
 
 const rowNote = (r: Row): SharedNote => ({ id: r.id, scope: r.scope, dept: opt(r.dept), roomId: opt(r.room_id), title: r.title, body: r.body ?? '', pinned: !!r.pinned, allowEdit: !!r.allow_edit, authorId: r.author_id, updatedBy: opt(r.updated_by), createdAt: r.created_at, updatedAt: r.updated_at });
 const noteRow = (n: SharedNote): Row => ({ id: n.id, scope: n.scope, dept: n.dept ?? null, room_id: n.roomId ?? null, title: n.title, body: n.body, pinned: n.pinned, allow_edit: n.allowEdit, author_id: n.authorId });
-const rowContact = (r: Row): Contact => ({ id: r.id, ownerId: r.owner_id, shared: !!r.shared, name: r.name, company: opt(r.company), title: opt(r.title), phone: opt(r.phone), email: opt(r.email), memo: opt(r.memo), tags: r.tags ?? [], createdAt: r.created_at, updatedAt: r.updated_at });
-const rowFile = (r: Row): DriveFile => ({ id: r.id, scope: r.scope, dept: opt(r.dept), roomId: opt(r.room_id), folder: r.folder ?? '', name: r.name, size: Number(r.size ?? 0), mime: opt(r.mime), path: r.path, uploaderId: r.uploader_id, createdAt: r.created_at });
-const contactRow = (c: Contact): Row => ({ id: c.id, owner_id: c.ownerId, shared: c.shared, name: c.name, company: c.company ?? null, title: c.title ?? null, phone: c.phone ?? null, email: c.email ?? null, memo: c.memo ?? null, tags: c.tags });
+const rowContact = (r: Row): Contact => ({
+  id: r.id, ownerId: r.owner_id, shared: !!r.shared, name: r.name, company: opt(r.company), title: opt(r.title), phone: opt(r.phone), email: opt(r.email), memo: opt(r.memo), tags: r.tags ?? [], createdAt: r.created_at, updatedAt: r.updated_at,
+  phones: Array.isArray(r.phones) && r.phones.length ? r.phones : undefined, emails: Array.isArray(r.emails) && r.emails.length ? r.emails : undefined,
+  address: opt(r.address), website: opt(r.website), shareDepts: r.share_depts?.length ? r.share_depts : undefined, coEdit: r.co_edit !== false,
+});
+const rowLink = (r: Row): DriveLink => ({ id: r.id, fileId: r.file_id, access: r.access, permission: r.permission, expiresAt: opt(r.expires_at), hasPassword: !!r.password_hash, createdBy: r.created_by, createdAt: r.created_at, hits: r.hits ?? 0, lastHitAt: opt(r.last_hit_at), revokedAt: opt(r.revoked_at) });
+const rowFile = (r: Row): DriveFile => ({ id: r.id, scope: r.scope, dept: opt(r.dept), roomId: opt(r.room_id), folder: r.folder ?? '', name: r.name, size: Number(r.size ?? 0), mime: opt(r.mime), path: r.path, uploaderId: r.uploader_id, createdAt: r.created_at, deletedAt: opt(r.deleted_at) });
+const contactRow = (c: Contact): Row => ({
+  id: c.id, owner_id: c.ownerId, shared: c.shared, name: c.name, company: c.company ?? null, title: c.title ?? null, phone: primaryPhone(c) ?? null, email: primaryEmail(c) ?? null, memo: c.memo ?? null, tags: c.tags,
+  phones: c.phones ?? [], emails: c.emails ?? [], address: c.address ?? null, website: c.website ?? null, share_depts: c.shareDepts ?? [], co_edit: c.coEdit !== false,
+});
 
 let live: RealtimeChannel | null = null;
 let reloadTimer: ReturnType<typeof setTimeout> | undefined;
@@ -303,7 +379,7 @@ let currentUser: string | null = null;
 
 async function loadServer(): Promise<void> {
   const sb = supabase!;
-  const [ev, at, rs, tk, tc, nt, ct, df] = await Promise.all([
+  const [ev, at, rs, tk, tc, nt, ct, df, ta, dl] = await Promise.all([
     sb.from('events').select('*').order('starts_at'),
     sb.from('event_attendees').select('*'),
     sb.from('resources').select('*').order('name'),
@@ -312,19 +388,24 @@ async function loadServer(): Promise<void> {
     sb.from('shared_notes').select('*').order('updated_at', { ascending: false }),
     sb.from('contacts').select('*').order('name'),
     sb.from('drive_files').select('*').order('created_at', { ascending: false }),
+    sb.from('task_assignees').select('*'),
+    sb.from('drive_links').select('id, file_id, access, permission, expires_at, password_hash, created_by, created_at, hits, last_hit_at, revoked_at'),
   ]);
-  const err = [ev, at, rs, tk, tc, nt, ct, df].find((r) => r.error)?.error;
+  const err = [ev, at, rs, tk, tc, nt, ct, df, ta, dl].find((r) => r.error)?.error;
+  const byTask = new Map<string, { userId: string; doneAt?: string }[]>();
+  for (const a of (ta.data ?? []) as Row[]) byTask.set(a.task_id, [...(byTask.get(a.task_id) ?? []), { userId: a.user_id, doneAt: opt(a.done_at) }]);
   if (err) throw err;
   set({
     loaded: true, error: undefined,
     events: (ev.data ?? []).map(rowEvent),
-    attendees: (at.data ?? []).map((r: Row) => ({ eventId: r.event_id, userId: r.user_id, status: r.status })),
+    attendees: (at.data ?? []).map((r: Row) => ({ eventId: r.event_id, userId: r.user_id, status: r.status, optional: !!r.optional })),
     resources: (rs.data ?? []).map((r: Row) => ({ id: r.id, name: r.name, kind: r.kind, branch: opt(r.branch), capacity: r.capacity ?? undefined, active: !!r.active })),
-    tasks: (tk.data ?? []).map(rowTask),
+    tasks: (tk.data ?? []).map((r: Row) => ({ ...rowTask(r), assignees: byTask.get(r.id) })),
     categories: (tc.data ?? []).map((r: Row) => ({ id: r.id, userId: r.user_id, name: r.name, sort: r.sort })),
     notes: (nt.data ?? []).map(rowNote),
     contacts: (ct.data ?? []).map(rowContact),
     files: (df.data ?? []).map(rowFile),
+    links: (dl.data ?? []).map(rowLink),
   });
 }
 function scheduleReload() {
@@ -354,7 +435,7 @@ export async function startWork(userId: string | null): Promise<void> {
     const token = (await sb.auth.getSession()).data.session?.access_token;
     if (token) await sb.realtime.setAuth(token);
     const ch = sb.channel('skynet-work');
-    for (const t of ['events', 'event_attendees', 'tasks', 'resources', 'task_categories', 'shared_notes', 'contacts', 'drive_files']) ch.on('postgres_changes', { event: '*', schema: 'public', table: t }, scheduleReload);
+    for (const t of ['events', 'event_attendees', 'tasks', 'resources', 'task_categories', 'shared_notes', 'contacts', 'drive_files', 'task_assignees', 'drive_links']) ch.on('postgres_changes', { event: '*', schema: 'public', table: t }, scheduleReload);
     live = ch.subscribe((st) => { if (st === 'SUBSCRIBED') scheduleReload(); });
   }
 }
@@ -375,7 +456,7 @@ function me(): string {
 }
 
 // ───────────────────────── 동작 ─────────────────────────
-export type EventInput = Omit<WorkEvent, 'id' | 'ownerId' | 'createdAt'> & { attendeeIds?: string[] };
+export type EventInput = Omit<WorkEvent, 'id' | 'ownerId' | 'createdAt'> & { attendeeIds?: string[]; optionalIds?: string[] };
 
 export const work = {
   async createEvent(input: EventInput): Promise<Check & { id?: string }> {
@@ -385,12 +466,12 @@ export const work = {
     if (input.resourceId && resourceConflicts(state.events, input.resourceId, input.startsAt, input.endsAt).length) return { ok: false, reason: '그 시간에 이미 예약된 회의실입니다.' };
     const e: WorkEvent = { ...input, title: input.title.trim(), id: newId('ev'), ownerId: uid, createdAt: nowIso() };
     const ids = (input.attendeeIds ?? []).filter((x) => x !== uid);
-    const att: Attendee[] = ids.map((userId) => ({ eventId: e.id, userId, status: 'pending' }));
+    const att: Attendee[] = ids.map((userId) => ({ eventId: e.id, userId, status: 'pending', optional: input.optionalIds?.includes(userId) }));
     set((s) => ({ events: [...s.events, e], attendees: [...s.attendees, ...att] }));
     const r = await write(async () => {
       const { error } = await supabase!.from('events').insert(eventRow(e));
       if (error || !att.length) return { error };
-      return supabase!.from('event_attendees').insert(att.map((a) => ({ event_id: a.eventId, user_id: a.userId, status: a.status })));
+      return supabase!.from('event_attendees').insert(att.map((a) => ({ event_id: a.eventId, user_id: a.userId, status: a.status, optional: !!a.optional })));
     });
     return r.ok ? { ok: true, id: e.id } : r;
   },
@@ -404,15 +485,23 @@ export const work = {
     const ids = patch.attendeeIds?.filter((x) => x !== uid);
     set((s) => ({
       events: s.events.map((e) => (e.id === cur.id ? next : e)),
-      attendees: ids ? [...s.attendees.filter((a) => a.eventId !== cur.id), ...ids.map((userId) => ({ eventId: cur.id, userId, status: s.attendees.find((a) => a.eventId === cur.id && a.userId === userId)?.status ?? 'pending' as AttendStatus }))] : s.attendees,
+      attendees: ids ? [...s.attendees.filter((a) => a.eventId !== cur.id), ...ids.map((userId) => ({ eventId: cur.id, userId, status: s.attendees.find((a) => a.eventId === cur.id && a.userId === userId)?.status ?? 'pending' as AttendStatus, optional: patch.optionalIds?.includes(userId) }))] : s.attendees,
     }));
     return write(async () => {
       const { error } = await supabase!.from('events').update(eventRow(next)).eq('id', cur.id);
       if (error || !ids) return { error };
       const { error: de } = await supabase!.from('event_attendees').delete().eq('event_id', cur.id);
       if (de || !ids.length) return { error: de };
-      return supabase!.from('event_attendees').insert(ids.map((userId) => ({ event_id: cur.id, user_id: userId })));
+      return supabase!.from('event_attendees').insert(ids.map((userId) => ({ event_id: cur.id, user_id: userId, status: state.attendees.find((a) => a.eventId === cur.id && a.userId === userId)?.status ?? 'pending', optional: !!patch.optionalIds?.includes(userId) })));
     });
+  },
+  /** 반복 일정의 이 회차만 건너뛰기 (주인) */
+  async skipOccurrence(occurrenceId: string): Promise<Check> {
+    const cur = state.events.find((e) => e.id === baseId(occurrenceId));
+    if (!cur) return { ok: false, reason: '일정을 찾을 수 없습니다.' };
+    if (cur.recurrence === 'none') return { ok: false, reason: '반복 일정이 아닙니다.' };
+    const day = occurrenceId.includes('@') ? occurrenceId.split('@')[1] : kstDate(cur.startsAt);
+    return work.updateEvent(cur.id, { recurrenceExdates: [...new Set([...(cur.recurrenceExdates ?? []), day])] });
   },
   async deleteEvent(id: string): Promise<Check> {
     const uid = me();
@@ -438,26 +527,71 @@ export const work = {
     return write(() => supabase!.from('resources').upsert({ id: res.id, name: res.name, kind: res.kind, branch: res.branch ?? null, capacity: res.capacity ?? null, active: res.active }));
   },
   // 할 일
-  async createTask(input: Omit<Task, 'id' | 'ownerId' | 'createdAt' | 'doneAt'>): Promise<Check & { id?: string }> {
+  async createTask(input: Omit<Task, 'id' | 'ownerId' | 'createdAt' | 'doneAt'> & { assigneeIds?: string[] }): Promise<Check & { id?: string }> {
     const uid = me();
     if (!input.title.trim()) return { ok: false, reason: '할 일을 적어 주세요.' };
-    const t: Task = { ...input, title: input.title.trim(), id: newId('tk'), ownerId: uid, assigneeId: input.assigneeId ?? uid, createdAt: nowIso() };
+    const ids = [...new Set((input.assigneeIds?.length ? input.assigneeIds : [input.assigneeId ?? uid]).filter(Boolean) as string[])];
+    const { assigneeIds: _ids, ...rest } = input;
+    const t: Task = { ...rest, title: input.title.trim(), id: newId('tk'), ownerId: uid, assigneeId: ids[0], assignees: ids.map((userId) => ({ userId })), completion: input.completion ?? 'any', createdAt: nowIso() };
     set((s) => ({ tasks: [...s.tasks, t] }));
-    const r = await write(() => supabase!.from('tasks').insert(taskRow(t)));
+    const r = await write(async () => {
+      const { error } = await supabase!.from('tasks').insert(taskRow(t));
+      if (error) return { error };
+      return supabase!.from('task_assignees').insert(ids.map((userId) => ({ task_id: t.id, user_id: userId })));
+    });
     return r.ok ? { ok: true, id: t.id } : r;
+  },
+  /** 담당자 바꾸기 (만든 사람) */
+  async setAssignees(id: string, ids: string[]): Promise<Check> {
+    const uid = me();
+    const cur = state.tasks.find((t) => t.id === id);
+    if (!cur) return { ok: false, reason: '할 일을 찾을 수 없습니다.' };
+    if (cur.ownerId !== uid) return { ok: false, reason: '만든 사람만 담당자를 바꿀 수 있습니다.' };
+    const uniq = [...new Set(ids)];
+    if (!uniq.length) return { ok: false, reason: '담당자를 한 명 이상 골라 주세요.' };
+    const assignees = uniq.map((userId) => ({ userId, doneAt: cur.assignees?.find((a) => a.userId === userId)?.doneAt }));
+    const next: Task = { ...cur, assigneeId: uniq[0], assignees };
+    set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? next : t)) }));
+    return write(async () => {
+      const { error } = await supabase!.from('tasks').update({ assignee_id: uniq[0] }).eq('id', id);
+      if (error) return { error };
+      const { error: de } = await supabase!.from('task_assignees').delete().eq('task_id', id).not('user_id', 'in', `(${uniq.join(',')})`);
+      if (de) return { error: de };
+      return supabase!.from('task_assignees').upsert(uniq.map((userId) => ({ task_id: id, user_id: userId })), { onConflict: 'task_id,user_id', ignoreDuplicates: true });
+    });
+  },
+  /** 내 몫 끝내기/되돌리기 (담당자). 완료 조건에 따라 전체 완료가 정해짐 */
+  async toggleMine(id: string): Promise<Check> {
+    const uid = me();
+    const cur = state.tasks.find((t) => t.id === id);
+    if (!cur) return { ok: false, reason: '할 일을 찾을 수 없습니다.' };
+    const mine = cur.assignees?.find((a) => a.userId === uid);
+    if (!mine) return work.toggleTask(id);
+    const doneAt = mine.doneAt ? undefined : nowIso();
+    const assignees = cur.assignees!.map((a) => (a.userId === uid ? { ...a, doneAt } : a));
+    const next: Task = { ...cur, assignees };
+    next.doneAt = taskDone(next) ? (cur.doneAt ?? nowIso()) : undefined;
+    set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? next : t)) }));
+    return write(() => supabase!.from('task_assignees').update({ done_at: doneAt ?? null }).eq('task_id', id).eq('user_id', uid));
   },
   async updateTask(id: string, patch: Partial<Omit<Task, 'id' | 'ownerId' | 'createdAt'>>): Promise<Check> {
     const uid = me();
     const cur = state.tasks.find((t) => t.id === id);
     if (!cur) return { ok: false, reason: '할 일을 찾을 수 없습니다.' };
-    if (cur.ownerId !== uid && cur.assigneeId !== uid) return { ok: false, reason: '만든 사람이나 담당자만 고칠 수 있습니다.' };
+    if (cur.ownerId !== uid && cur.assigneeId !== uid && !cur.assignees?.some((a) => a.userId === uid)) return { ok: false, reason: '만든 사람이나 담당자만 고칠 수 있습니다.' };
     const next = { ...cur, ...patch };
     set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? next : t)) }));
     return write(() => supabase!.from('tasks').update(taskRow(next)).eq('id', id));
   },
   toggleTask(id: string): Promise<Check> {
     const cur = state.tasks.find((t) => t.id === id);
-    return work.updateTask(id, { doneAt: cur?.doneAt ? undefined : nowIso() });
+    const doneAt = cur?.doneAt ? undefined : nowIso();
+    // 담당자 몫도 함께 맞춤 (만든 사람이 한 번에 끝내는 경우)
+    if (cur?.assignees?.length) {
+      set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? { ...t, assignees: t.assignees!.map((a) => ({ ...a, doneAt })) } : t)) }));
+      if (supabase) void supabase.from('task_assignees').update({ done_at: doneAt ?? null }).eq('task_id', id);
+    }
+    return work.updateTask(id, { doneAt });
   },
   async deleteTask(id: string): Promise<Check> {
     const uid = me();
@@ -496,10 +630,15 @@ export const work = {
   async saveContact(input: Omit<Contact, 'id' | 'ownerId' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<Check & { id?: string }> {
     const uid = me();
     if (!input.name.trim()) return { ok: false, reason: '이름을 적어 주세요.' };
-    if (!input.phone?.trim() && !input.email?.trim()) return { ok: false, reason: '전화번호나 이메일 중 하나는 적어 주세요.' };
+    const phones = (input.phones ?? []).map((p) => ({ ...p, value: p.value.trim() })).filter((p) => p.value);
+    const emails = (input.emails ?? []).map((p) => ({ ...p, value: p.value.trim() })).filter((p) => p.value);
+    if (phones.length && !phones.some((p) => p.primary)) phones[0].primary = true;
+    if (emails.length && !emails.some((p) => p.primary)) emails[0].primary = true;
+    if (!phones.length && !emails.length && !input.phone?.trim() && !input.email?.trim()) return { ok: false, reason: '전화번호나 이메일 중 하나는 적어 주세요.' };
+    input = { ...input, phones: phones.length ? phones : undefined, emails: emails.length ? emails : undefined, shareDepts: input.shareDepts?.filter(Boolean) };
     const cur = input.id ? state.contacts.find((c) => c.id === input.id) : undefined;
     if (input.id && !cur) return { ok: false, reason: '연락처를 찾을 수 없습니다.' };
-    if (cur && cur.ownerId !== uid && !cur.shared) return { ok: false, reason: '만든 사람만 고칠 수 있습니다.' };
+    if (cur && cur.ownerId !== uid && (!(cur.shared || cur.shareDepts?.length) || cur.coEdit === false)) return { ok: false, reason: '만든 사람만 고칠 수 있습니다.' };
     const now = nowIso();
     const tags = [...new Set(input.tags.map((t) => t.trim()).filter(Boolean))];
     const c: Contact = cur ? { ...cur, ...input, tags, id: cur.id, name: input.name.trim(), updatedAt: now } : { ...input, tags, id: newId('ct'), name: input.name.trim(), ownerId: uid, createdAt: now, updatedAt: now };
@@ -555,13 +694,58 @@ export const work = {
     set((s) => ({ files: s.files.map((f) => (f.id === id ? next : f)) }));
     return write(() => supabase!.from('drive_files').update({ name: next.name, folder: next.folder }).eq('id', id));
   },
+  /** 휴지통으로 (올린 사람). 30일 뒤 자동 삭제 */
   async deleteFile(id: string): Promise<Check> {
     const uid = me();
     const cur = state.files.find((f) => f.id === id);
     if (!cur) return { ok: false, reason: '파일을 찾을 수 없습니다.' };
     if (cur.uploaderId !== uid) return { ok: false, reason: '올린 사람만 지울 수 있습니다.' };
+    const deletedAt = nowIso();
+    set((s) => ({ files: s.files.map((f) => (f.id === id ? { ...f, deletedAt } : f)) }));
+    return write(() => supabase!.from('drive_files').update({ deleted_at: deletedAt, deleted_by: uid }).eq('id', id));
+  },
+  async restoreFile(id: string): Promise<Check> {
+    me();
+    const cur = state.files.find((f) => f.id === id);
+    if (!cur?.deletedAt) return { ok: false, reason: '휴지통에 없는 파일입니다.' };
+    set((s) => ({ files: s.files.map((f) => (f.id === id ? { ...f, deletedAt: undefined } : f)) }));
+    return write(() => supabase!.from('drive_files').update({ deleted_at: null, deleted_by: null }).eq('id', id));
+  },
+  /** 휴지통에서 바로 지우기 (되살릴 수 없음) */
+  async purgeFile(id: string): Promise<Check> {
+    me();
+    const cur = state.files.find((f) => f.id === id);
+    if (!cur?.deletedAt) return { ok: false, reason: '휴지통에 없는 파일입니다.' };
     set((s) => ({ files: s.files.filter((f) => f.id !== id) }));
     return write(() => supabase!.from('drive_files').delete().eq('id', id));
+  },
+  /** 외부 링크 만들기 — 토큰은 이때 한 번만 받음 */
+  async createLink(fileId: string, opts: { access?: 'anyone' | 'firm'; permission?: 'preview' | 'download'; expiresAt?: string; password?: string }): Promise<Check & { url?: string }> {
+    const uid = me();
+    const cur = state.files.find((f) => f.id === fileId);
+    if (!cur) return { ok: false, reason: '파일을 찾을 수 없습니다.' };
+    if (opts.password && (opts.password.length < 4 || opts.password.length > 16)) return { ok: false, reason: '비밀번호는 4~16자입니다.' };
+    if (!supabase) {
+      const l: DriveLink = { id: newId('dl'), fileId, access: opts.access ?? 'anyone', permission: opts.permission ?? 'download', expiresAt: opts.expiresAt, hasPassword: !!opts.password, createdBy: uid, createdAt: nowIso(), hits: 0 };
+      set((s) => ({ links: [l, ...s.links] }));
+      return { ok: true, url: `https://example.invalid/drive-link?t=skl_demo_${l.id}` };
+    }
+    const { data, error } = await supabase.rpc('create_drive_link', { p_file: fileId, p_access: opts.access ?? 'anyone', p_permission: opts.permission ?? 'download', p_expires_at: opts.expiresAt ?? null, p_password: opts.password ?? null });
+    if (error) return { ok: false, reason: error.message };
+    const row = Array.isArray(data) ? data[0] : data;
+    scheduleReload();
+    return { ok: true, url: `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/drive-link?t=${row.token}` };
+  },
+  async revokeLink(id: string): Promise<Check> {
+    me();
+    const at = nowIso();
+    set((s) => ({ links: s.links.map((l) => (l.id === id ? { ...l, revokedAt: at } : l)) }));
+    return write(() => supabase!.from('drive_links').update({ revoked_at: at }).eq('id', id));
+  },
+  /** 파일을 열거나 내려받았다고 감사 기록에 신고 (서버가 있을 때만) */
+  logDownload(source: 'drive' | 'room' | 'board', path: string | undefined, name: string, roomId?: string): void {
+    if (!supabase || !path) return;
+    void supabase.rpc('log_file_download', { p_kind: source, p_path: path, p_name: name, p_room: roomId ?? null });
   },
   /** 내려받기 주소 (1시간짜리). 목업은 기기 안 주소 */
   async fileUrl(id: string): Promise<string | undefined> {
@@ -569,6 +753,7 @@ export const work = {
     if (!cur) return undefined;
     if (!supabase) return cur.uri;
     if (cur.uri) return cur.uri;
+    work.logDownload('drive', cur.path, cur.name, cur.roomId);
     const { data } = await supabase.storage.from(DRIVE_BUCKET).createSignedUrl(cur.path, 3600, { download: cur.name });
     return data?.signedUrl;
   },

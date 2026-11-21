@@ -1,4 +1,4 @@
-import { _setWorkState, cleanFolder, dueState, folderView, visibleFiles, type DriveFile, kstDate, kstIso, kstTime, occurrences, resourceConflicts, searchContacts, sortTasks, visibleEvents, visibleNotes, work, workState, type Task, type WorkEvent } from '../work';
+import { _setWorkState, canSeeContact, cleanFolder, dueState, folderView, primaryPhone, taskDone, trashFiles, visibleFiles, type Contact, type DriveFile, kstDate, kstIso, kstTime, occurrences, resourceConflicts, searchContacts, sortTasks, visibleEvents, visibleNotes, work, workState, type Task, type WorkEvent } from '../work';
 
 const ev = (p: Partial<WorkEvent> & Pick<WorkEvent, 'id' | 'startsAt' | 'endsAt'>): WorkEvent => ({
   ownerId: 'u1', title: p.id, allDay: false, scope: 'personal', recurrence: 'none', createdAt: '2026-01-01T00:00:00Z', ...p,
@@ -169,6 +169,74 @@ describe('파일함', () => {
     expect((await work.deleteFile(saved.id)).ok).toBe(false);
     _setWorkState({ files: workState().files }, 'me');
     expect((await work.deleteFile(saved.id)).ok).toBe(true);
+    // 지우기 = 휴지통. 목록에서는 사라지고 파일은 남음
+    expect(workState().files[0].deletedAt).toBeTruthy();
+    expect(visibleFiles(workState().files, { id: 'me', firm: true }, new Set())).toHaveLength(0);
+  });
+});
+
+describe('보강 10건 (2026-11-27)', () => {
+  it('반복: 매주 화·목 + 예외일 + 2주 간격', () => {
+    const e = ev({ id: 'tt', startsAt: kstIso('2026-11-03', '10:00'), endsAt: kstIso('2026-11-03', '11:00'), recurrence: 'weekly', recurrenceDays: [2, 4], recurrenceExdates: ['2026-11-05'] });
+    expect(occurrences(e, '2026-11-01', '2026-11-13').map((o) => kstDate(o.startsAt))).toEqual(['2026-11-03', '2026-11-10', '2026-11-12']);
+    const bi = ev({ id: 'bw', startsAt: kstIso('2026-11-02', '10:00'), endsAt: kstIso('2026-11-02', '11:00'), recurrence: 'weekly', recurrenceInterval: 2 });
+    expect(occurrences(bi, '2026-11-01', '2026-11-30').map((o) => kstDate(o.startsAt))).toEqual(['2026-11-02', '2026-11-16', '2026-11-30']);
+  });
+  it('회차 건너뛰기 (목업)', async () => {
+    const e = ev({ id: 'sk', ownerId: 'me', startsAt: kstIso('2026-11-02', '10:00'), endsAt: kstIso('2026-11-02', '11:00'), recurrence: 'daily' });
+    _setWorkState({ events: [e] }, 'me');
+    expect((await work.skipOccurrence('sk@2026-11-04')).ok).toBe(true);
+    expect(workState().events[0].recurrenceExdates).toEqual(['2026-11-04']);
+    expect(occurrences(workState().events[0], '2026-11-02', '2026-11-05')).toHaveLength(3);
+  });
+  it('할 일 완료 조건: 한 명만 / 모두', () => {
+    const base: Task = { id: 't', ownerId: 'o', title: 't', priority: 0, createdAt: '', assignees: [{ userId: 'a', doneAt: 'x' }, { userId: 'b' }] };
+    expect(taskDone({ ...base, completion: 'any' })).toBe(true);
+    expect(taskDone({ ...base, completion: 'all' })).toBe(false);
+    expect(taskDone({ ...base, completion: 'all', assignees: [{ userId: 'a', doneAt: 'x' }, { userId: 'b', doneAt: 'y' }] })).toBe(true);
+  });
+  it('담당자 여러 명: 내 몫 끝내기 → 완료 조건 반영 (목업)', async () => {
+    _setWorkState({}, 'me');
+    const r = await work.createTask({ title: '팀 과제', priority: 0, assigneeIds: ['me', 'you'], completion: 'all' });
+    expect(r.ok).toBe(true);
+    const id = r.id!;
+    expect(workState().tasks[0].assignees).toHaveLength(2);
+    await work.toggleMine(id);
+    expect(workState().tasks[0].assignees![0].doneAt).toBeTruthy();
+    expect(workState().tasks[0].doneAt).toBeUndefined();
+    await work.setAssignees(id, ['me']);
+    expect(workState().tasks[0].doneAt).toBeUndefined();
+    await work.toggleMine(id); await work.toggleMine(id);
+    expect(workState().tasks[0].doneAt).toBeTruthy();
+  });
+  it('연락처: 대표 전화·부서 공유 범위', () => {
+    const c: Contact = { id: 'c', ownerId: 'o', shared: false, name: 'n', tags: [], createdAt: '', updatedAt: '', phones: [{ type: 'cell', value: '010' }, { type: 'work', value: '02', primary: true }], shareDepts: ['송무'] };
+    expect(primaryPhone(c)).toBe('02');
+    expect(canSeeContact(c, { id: 'x', dept: '송무', firm: true })).toBe(true);
+    expect(canSeeContact(c, { id: 'x', dept: '경영', firm: true })).toBe(false);
+    expect(canSeeContact(c, { id: 'o', firm: true })).toBe(true);
+  });
+  it('휴지통: 지우면 목록에서 빠지고 휴지통에 보임, 되살리기', async () => {
+    _setWorkState({ files: [] }, 'me');
+    const up = await work.uploadFile({ scope: 'firm', folder: '', name: 'a.pdf', uri: 'blob:a', size: 1 });
+    await work.deleteFile(up.id!);
+    const me = { id: 'me', firm: true };
+    expect(visibleFiles(workState().files, me, new Set())).toHaveLength(0);
+    expect(trashFiles(workState().files, 'me')).toHaveLength(1);
+    expect(trashFiles(workState().files, 'other')).toHaveLength(0);
+    await work.restoreFile(up.id!);
+    expect(visibleFiles(workState().files, me, new Set())).toHaveLength(1);
+    await work.deleteFile(up.id!); await work.purgeFile(up.id!);
     expect(workState().files).toHaveLength(0);
+  });
+  it('외부 링크 (목업): 비밀번호 길이 검사·끄기', async () => {
+    _setWorkState({ files: [] }, 'me');
+    const up = await work.uploadFile({ scope: 'firm', folder: '', name: 'a.pdf', uri: 'blob:a', size: 1 });
+    expect((await work.createLink(up.id!, { password: '12' })).ok).toBe(false);
+    const r = await work.createLink(up.id!, { password: '1234', expiresAt: '2030-01-01T00:00:00Z' });
+    expect(r.ok && r.url?.includes('drive-link?t=')).toBe(true);
+    expect(workState().links[0].hasPassword).toBe(true);
+    await work.revokeLink(workState().links[0].id);
+    expect(workState().links[0].revokedAt).toBeTruthy();
   });
 });

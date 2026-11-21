@@ -29,7 +29,10 @@ export function ContactRow({ u, left, onPress, me, omitDept }: { u: User; left?:
       {left}
       <Avatar name={u.nickname} size={38} uri={u.photo} badge={u.role === 'client' ? undefined : dot(u)} />
       <View style={{ flex: 1 }}>
-        <Text numberOfLines={1} style={{ ...family.bold, fontSize: 14, color: c.text }}>{displayName(u)}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text numberOfLines={1} style={{ flexShrink: 1, ...family.bold, fontSize: 14, color: c.text }}>{displayName(u)}</Text>
+          {u.officer ? <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, backgroundColor: c.accentSoft }}><Text style={{ ...family.bold, fontSize: 10, color: c.accent }}>임원</Text></View> : null}
+        </View>
         <Text numberOfLines={1} style={{ ...family.regular, fontSize: 12, color: c.sub, marginTop: 1 }}>
           {me ? '나 · ' : ''}
           {orgLine(u, omitDept) || ROLE_LABEL[u.role]}

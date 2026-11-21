@@ -12,6 +12,10 @@ const ACTION_LABEL: Record<string, string> = {
   'message.send': '메시지 보냄', 'message.recall': '메시지 회수', 'room.join': '방 입장', 'room.leave': '방 퇴장', 'room.create': '방 만듦', 'room.rename': '방 이름 변경',
   'post.create': '글 작성', 'post.delete': '글 삭제', 'account.enable': '계정 재개', 'account.disable': '계정 중지', 'account.role': '역할 변경', login: '로그인',
   'bot.create': '봇 발급', 'bot.enable': '봇 재개', 'bot.disable': '봇 중지', 'bot.rotate': '봇 토큰 재발급', 'export.messages': '대화 내보내기',
+  'auth.login': '로그인', 'file.download': '파일 열람·내려받기', 'file.upload': '파일 올림', 'file.move': '파일 이름·폴더 변경', 'file.trash': '파일 휴지통', 'file.restore': '파일 복원', 'file.purge': '파일 영구 삭제',
+  'file.link_create': '외부 링크 만듦', 'file.link_open': '외부 링크로 열람',
+  'events.create': '일정 만듦', 'events.update': '일정 고침', 'events.delete': '일정 지움', 'tasks.create': '할 일 만듦', 'tasks.update': '할 일 고침', 'tasks.done': '할 일 완료', 'tasks.reopen': '할 일 되돌림', 'tasks.delete': '할 일 지움',
+  'shared_notes.create': '노트 만듦', 'shared_notes.update': '노트 고침', 'shared_notes.delete': '노트 지움', 'contacts.create': '연락처 만듦', 'contacts.update': '연락처 고침', 'contacts.delete': '연락처 지움',
 };
 const FILTERS: [string, string][] = [['', '전체'], ['message', '메시지'], ['room', '방'], ['post', '게시판'], ['account', '계정'], ['login', '로그인'], ['bot', '봇'], ['export', '내보내기']];
 
@@ -85,6 +89,10 @@ export function AuditSection({ report }: { report: (r: { ok: boolean; reason?: s
       case 'account.role': return `${d.from} → ${d.to}`;
       case 'account.enable': case 'account.disable': return d.login_id ?? '';
       case 'export.messages': return `${d.from ? String(d.from).slice(0, 10) : '처음'} ~ ${d.to ? String(d.to).slice(0, 10) : '지금'}`;
+      case 'auth.login': return String(d.login_id ?? '');
+      case 'file.download': return `${d.source === 'drive' ? '파일함' : d.source === 'room' ? '대화 첨부' : '게시판 첨부'} · ${d.name ?? ''}`;
+      case 'file.link_create': return `${d.name ?? ''} · ${d.access === 'firm' ? '구성원만' : '누구나'} · ${d.permission === 'preview' ? '보기만' : '내려받기'}${d.expires_at ? ` · ${String(d.expires_at).slice(0, 10)}까지` : ''}${d.password ? ' · 비밀번호' : ''}`;
+      case 'file.link_open': return `${d.name ?? ''} (바깥에서 링크로)`;
       default: return d.name ?? '';
     }
   };
@@ -121,7 +129,7 @@ export function AuditSection({ report }: { report: (r: { ok: boolean; reason?: s
           <View style={{ flex: 1, gap: 2 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <Text style={{ ...family.semibold, fontSize: 13.5, color: c.text }}>{e.actorName ?? '(시스템)'}</Text>
-              <Badge label={ACTION_LABEL[e.action] ?? e.action} tone={/recall|disable|delete|export/.test(e.action) ? 'warn' : 'plain'} />
+              <Badge label={ACTION_LABEL[e.action] ?? e.action} tone={/recall|disable|delete|export|purge|link_open/.test(e.action) ? 'warn' : 'plain'} />
               {e.roomTitle ? <Text style={{ ...family.regular, fontSize: 12.5, color: c.sub }}>{e.roomTitle}</Text> : null}
             </View>
             {detailText(e) ? <Text style={{ ...family.regular, fontSize: 12.5, color: c.sub }}>{detailText(e)}</Text> : null}

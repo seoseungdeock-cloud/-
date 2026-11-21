@@ -72,7 +72,7 @@ export default function NewPostScreen() {
             <Chip label="필독 · 1주" active={!!mustRead && mustRead === plusDays(7)} onPress={() => setMustRead(plusDays(7))} />
             <Chip label="필독 · 한 달" active={!!mustRead && mustRead === plusDays(30)} onPress={() => setMustRead(plusDays(30))} />
           </Chips>
-          {mustRead ? <Input label="필독 기한 — 이 날까지 읽어야 하며, 누가 읽었는지 볼 수 있습니다" value={mustRead} onChangeText={setMustRead} autoCapitalize="none" /> : null}
+          {mustRead ? <Input label="필독 기한 (최대 30일) — 이 날까지 읽어야 하며, 누가 읽었는지 볼 수 있습니다" value={mustRead} onChangeText={setMustRead} autoCapitalize="none" /> : null}
         </View>
       ) : null}
       <Input label="제목" value={title} onChangeText={setTitle} />
