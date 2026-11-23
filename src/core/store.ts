@@ -37,6 +37,7 @@ import { isSelfRoom, SELF_ROOM_TITLE, todayKst } from './calendar';
 import { desktopNotifyMessage } from './desktop';
 import { boardOf, canSeeBoard, canWriteBoard, formatUntil, MAX_ATTACHMENTS, needsField, reportTarget, restrictedUntil, toggleVote } from './board';
 import { demoMessages, demoReads, demoRooms, demoUsers } from './demo';
+import { moreMessages, morePosts, moreReads, moreRooms, moreUsers } from './demo-more';
 import { startWork } from './work';
 import { displayName, isMaster, parseMentions, previewText, roomMasters, type Reads } from './messenger';
 import { findLawyer } from './offices';
@@ -197,9 +198,9 @@ export function initialState(): State {
     { id: 'mt5', roomId: 'r_team', senderId: 'u_l2', kind: 'text', text: '@승덕 대표님 확인 부탁드립니다.', at: ago(0.5), mentions: ['u_admin'] },
   ];
   if (DEMO) {
-    users.push(...demoUsers);
-    rooms.push(...demoRooms);
-    messages.push(...demoMessages);
+    users.push(...demoUsers, ...moreUsers);
+    rooms.push(...demoRooms, ...moreRooms);
+    messages.push(...demoMessages, ...moreMessages);
   }
   const s: State = {
     booted: true,
@@ -311,6 +312,7 @@ export function initialState(): State {
         votes: Object.fromEntries(Array.from({ length: 23 }, (_, i) => [`seed_${i}`, 1 as const])),
         comments: [],
       },
+      ...(DEMO ? morePosts : []),
     ],
     notes: [],
     noticeSeen: {},
@@ -330,7 +332,7 @@ export function initialState(): State {
     ],
     reports: [{ id: 'rp1', postId: 'p2', reporterId: 'u_lawyer', reason: '개인정보 노출', at: ago(1), status: 'open' }],
     boardBans: {},
-    reads: { r_team: { u_lawyer: ago(26.95), u_staff: ago(26.9), u_m1: ago(1), u_l2: ago(0.5), u_admin: ago(28) }, ...(DEMO ? demoReads : {}) },
+    reads: { r_team: { u_lawyer: ago(26.95), u_staff: ago(26.9), u_m1: ago(1), u_l2: ago(0.5), u_admin: ago(28) }, ...(DEMO ? { ...demoReads, ...moreReads } : {}) },
     favorites: { u_lawyer: ['u_staff'], u_admin: ['u_lawyer'] },
     openRooms: [
       {
