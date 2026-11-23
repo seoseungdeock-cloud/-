@@ -123,6 +123,13 @@ export function storageName(id: string, name: string): string {
   return `${id.replace(/[^\w-]/g, '').slice(0, 40) || 'file'}${ext}`;
 }
 
+/** 1:1 방 이름은 저장된 글자가 아니라 상대 이름으로. (SKYZAI 다리처럼 이름 없이 만든 방이 '새 대화' 로 남는 것 방지) */
+function directTitle(r: Row, ms: Row[], meId: string, users: User[]): string {
+  if (r.kind !== 'direct') return r.title;
+  const other = ms.map((m) => m.user_id as string).find((id) => id !== meId);
+  const u = other ? users.find((x) => x.id === other) : undefined;
+  return u ? u.nickname : r.title;
+}
 const pathsIn = (rows: Row[]) => rows.flatMap((r) => (Array.isArray(r.attachments) ? r.attachments.map((a: Row) => a?.path).filter(Boolean) : []));
 
 function attachmentsOf(raw: unknown, urls: Map<string, string>): Attachment[] {
@@ -268,7 +275,7 @@ export async function loadAll(sb: SupabaseClient, meId: string, withMessages = t
     const by = (f: (m: Row) => boolean) => ms.filter(f).map((m) => m.user_id as string);
     const info = caseInfo(r.id);
     return {
-      id: r.id, kind: r.kind, mode: r.mode, title: r.title, createdBy: r.created_by ?? '', createdAt: r.created_at,
+      id: r.id, kind: r.kind, mode: r.mode, title: directTitle(r, ms, meId, users), createdBy: r.created_by ?? '', createdAt: r.created_at,
       memberIds: ms.map((m) => m.user_id), masters: by((m) => m.is_master),
       ...(r.photo_path && roomPhotos.get(r.photo_path) ? { photo: roomPhotos.get(r.photo_path) } : {}),
       officeId: opt(r.office_id), lawyerId: opt(r.lawyer_id), ...(info ? { caseInfo: info } : {}),
