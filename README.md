@@ -155,7 +155,7 @@ DAERYUNTOP_DB_URL='postgresql://계정:비밀번호@호스트:5432/디비' bash 
 | 항목 | 값 |
 |---|---|
 | 주소 | `https://skynet-api.skyzkorea.net` (Route53 `skyzkorea.net` 영역의 A 레코드 → 고정 IP 13.209.254.132) |
-| 서버 | EC2 `skynet-supabase` (t3.large, Ubuntu 24.04, 80GB 암호화 gp3, 리전 ap-northeast-2, 기본 VPC) |
+| 서버 | EC2 `skynet-supabase` (Ubuntu 24.04, 리전 ap-northeast-2, 기본 VPC). 크기는 아래 「서버 크기」 참고 — 2026-11-21 현재 t3.large·80GB 이며 사용자 없는 동안 t4g.small·30GB 로 내릴 예정 |
 | 설치 위치 | 서버의 `/opt/skynet` (공식 `supabase/docker` 사본 + 우리 파일: `.env`, `docker-compose.skynet.yml`, `volumes/functions/*`, `migrations/`) |
 | 구성 | Postgres 17(pg_cron·pg_net·vault 포함), GoTrue(인증), PostgREST, Realtime, Storage(파일은 서버 디스크 `volumes/storage`), Edge Runtime(함수), Studio, Envoy, Caddy(TLS 자동 발급) |
 | 관리 화면 | `https://skynet-api.skyzkorea.net/` — 아이디·비밀번호는 Secrets Manager `skynet/supabase` 의 `DASHBOARD_USERNAME/PASSWORD` |
@@ -163,6 +163,19 @@ DAERYUNTOP_DB_URL='postgresql://계정:비밀번호@호스트:5432/디비' bash 
 | 방화벽 | 보안 그룹 `skynet-supabase-sg`: 80·443 만 열림. DB 포트는 바깥에 안 열림 |
 | 백업 | DLM 정책이 매일 03:00(KST) 디스크 스냅샷, 7일 보관 |
 | 만든 자원 목록 | 저장소의 `aws_resources.txt` |
+
+### 서버 크기 — 지금은 최저 사양, 사용자가 늘면 키울 것 (2026-11-21 메모)
+아직 실제 사용자가 없어 **비용을 최소로 맞춰 둔 상태**입니다. 이 표는 "현재 최저 사양 → 언제 → 무엇으로 키울지"의 기준이며, 사용자가 붙기 시작하면 가장 먼저 다시 봐야 하는 항목입니다.
+| 항목 | 지금(최저) | 월 비용(추정) | 키우는 기준 | 다음 단계 |
+|---|---|---|---|---|
+| EC2 | t4g.small (2vCPU · 2GB, ARM) | ~$14 | 동시 접속 50명 이상 또는 메모리 사용 80% 지속 (`docker stats`) | t4g.medium 4GB ~$28 (200~300명) → t4g.large 8GB ~$56 (600명+) |
+| 디스크 | 30GB gp3 | ~$3 | 사용률 70% (`df -h /opt/skynet`) — 파일함·대화 첨부가 쌓이면 가장 먼저 찬다 | 100GB 단위로 즉시 확장 가능 (+$8/100GB). 줄이기는 안 되므로 넉넉히 말고 단계적으로 |
+| 스냅샷 백업 | 매일 03:00 KST, 3일 보관 | ~$1 | 실제 의뢰인 자료가 들어가기 시작하면 | 7일 보관 + 주 1회 장기 보관 |
+| 고정 IP · Route53 · Secrets | 그대로 | ~$5 | — | — |
+| **합계** | | **~$23~25/월** | | 풀 사양(t3.large 80GB)은 ~$75~80/월 |
+- 2GB 는 Supabase 셀프 호스팅(컨테이너 ~10개)의 하한선입니다. 그 아래로 내리면 DB·Realtime 이 메모리 부족으로 죽습니다.
+- 서버 타입 변경은 30분 정도 중단이 생기므로 업무 시간 밖에 합니다. 디스크 확장은 중단 없이 됩니다.
+- 사양을 바꾸면 이 표와 위의 「서버」 행을 함께 고쳐 둡니다.
 
 **서버에 들어가기** (AWS 자격 증명 + Session Manager 플러그인 필요)
 
