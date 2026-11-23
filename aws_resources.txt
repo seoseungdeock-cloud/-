@@ -7,3 +7,10 @@
 - 2026-11-16 13:03 | Secrets Manager | skynet/supabase (arn:aws:secretsmanager:ap-northeast-2:219028344147:secret:skynet/supabase-RVX61u) | 서버 .env 비밀값 전체 사본 (DB 비밀번호, JWT, anon/service 키, 대시보드 로그인, 푸시 키)
 - 2026-11-16 13:03 | DLM Lifecycle Policy | policy-0ac2ccf6219a58be8 (태그 Name=skynet-supabase 인스턴스, 매일 03:00 KST, 7일 보관) | 서버 디스크 자동 백업
 - 2026-11-16 13:04 | EC2 Instance | skynet-supabase / i-00e5148840f434793 (t3.large, Ubuntu 24.04, gp3 80GB 암호화, subnet ap-northeast-2a) | Supabase 전체 스택(Docker Compose: Postgres·Auth·PostgREST·Realtime·Storage·Functions·Studio·Caddy)
+
+## 2026-11-23 — 새 기능 배포 + 최저 사양으로 축소 (사용자 없는 동안)
+- 2026-11-23 | 배포 | 마이그레이션 20261120~20261127 (업무 도구 전체 + 보강 10건), 함수 bot-send·drive-link·daeryuntop-sync | SSM Run Command, S3 deploy/works-*
+- 2026-11-23 | EBS Snapshot | snap-0c05cd9265f63710e (vol-0936b19d4a3534e72, 축소 전 보관) | 되돌리기용
+- 2026-11-23 | EC2 Instance type | i-00e5148840f434793 t3.large → t3.small, 서버 안에 /swapfile 2GB 추가 | 월 ~$60 → ~$19
+- 2026-11-23 | DLM 보관 | policy-0ac2ccf6219a58be8 7일 → 3일 | 월 ~$4 → ~$1
+- (하지 않음) 디스크 80→30GB 축소 — OS 디스크라 새 서버 구성이 필요, 절감 ~$5/월로 보류
