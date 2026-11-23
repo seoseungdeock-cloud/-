@@ -151,12 +151,11 @@ function BrandPanel() {
           <Wordmark height={26} color="#FFFFFF" />
         </Reveal>
         <Reveal delay={120}>
-          <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 15, ...family.semibold, marginBottom: 14 }}>업무 메신저</Text>
-          <Text style={{ color: '#FFFFFF', fontSize: 40, lineHeight: 50, letterSpacing: tracking.title, ...family.heavy }}>모든 대화,{'\n'}한 곳에서.</Text>
-          <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 15, lineHeight: 24, marginTop: 20, ...family.regular }}>사건방·기일 알림·배당 안내·게시판까지.{'\n'}의뢰인과 구성원이 같은 자리에서 일합니다.</Text>
+          <Text style={{ color: '#FFFFFF', fontSize: 40, lineHeight: 50, letterSpacing: tracking.title, ...family.heavy }}>일은 여기서{'\n'}이야기합니다.</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 15, lineHeight: 24, marginTop: 20, ...family.regular }}>대화, 사건, 기일, 할 일, 파일.{'\n'}흩어져 있던 업무를 한 화면에 모았습니다.</Text>
         </Reveal>
         <Reveal delay={240}>
-          <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, ...family.regular }}>© SKYNET · 임직원 전용</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, ...family.regular }}>© SKYNET · 구성원 전용</Text>
         </Reveal>
       </View>
     </View>
@@ -234,8 +233,8 @@ export default function LoginScreen() {
                   <AppMark width={34} color="#FFFFFF" />
                 </View>
               )}
-              <Text style={{ marginTop: split ? 0 : space.xl, color: c.sub, fontSize: font.small + 1, ...family.semibold }}>{split ? '대륜탑 사번으로 로그인' : '업무 메신저'}</Text>
-              <Text style={{ marginTop: space.xs, color: c.text, fontSize: 32, lineHeight: 42, letterSpacing: tracking.title, ...family.heavy }}>{split ? '안녕하세요,\n다시 만나 반가워요' : '스카이넷에\n로그인하세요'}</Text>
+              <Text style={{ marginTop: split ? 0 : space.xl, color: c.sub, fontSize: font.small + 1, ...family.semibold }}>{split ? '대륜탑 계정으로 로그인' : 'SKYNET'}</Text>
+              <Text style={{ marginTop: space.xs, color: c.text, fontSize: 32, lineHeight: 42, letterSpacing: tracking.title, ...family.heavy }}>{split ? '로그인' : '로그인'}</Text>
             </Reveal>
 
             <Animated.View style={{ transform: [{ translateX: shake }] }}>
@@ -315,13 +314,13 @@ export default function LoginScreen() {
 
             {__DEV__ && !serverEnabled ? (
               <View style={{ marginTop: space.lg }}>
-                <Sub>개발용: admin / admin1234 · staff / staff1234 · lawyer / lawyer1234 · client / client1234</Sub>
+                <Sub>체험 계정 — admin / admin1234 · lawyer / lawyer1234 · staff / staff1234 · client / client1234</Sub>
               </View>
             ) : null}
           </View>
           {split ? null : (
             <Reveal delay={420}>
-              <Text style={{ textAlign: 'center', color: c.faint, fontSize: font.tiny, ...family.regular, paddingBottom: space.lg }}>© SKYNET · 임직원 전용</Text>
+              <Text style={{ textAlign: 'center', color: c.faint, fontSize: font.tiny, ...family.regular, paddingBottom: space.lg }}>© SKYNET · 구성원 전용</Text>
             </Reveal>
           )}
         </ScrollView>
