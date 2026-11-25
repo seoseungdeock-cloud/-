@@ -645,6 +645,30 @@ select tst.check('링크: 열람 횟수·감사 기록', (select hits = 1 from d
 update public.profiles set last_login_at = now() where login_id = 'lawyer';
 select tst.check('감사: 로그인이 기록됨', exists (select 1 from audit_log where action = 'auth.login' and target_id = '00000000-0000-0000-0000-00000000000c'));
 reset role;
+-- ── SKYZAI 어드민 메신저 모니터링 (skyzai_monitor_*, 2026-11-29) ──
+reset role;
+set role authenticated;
+select tst.as_user('00000000-0000-0000-0000-00000000000a'); -- 스카이넷 최고 관리자여도 로그인 사용자는 못 부름
+select tst.throws('모니터링: 로그인 사용자는 못 부름(관리자 포함)', $$select skyzai_monitor_stats(now() - interval '1 day')$$, 'permission denied');
+select tst.throws('모니터링: 로그인 사용자는 방 목록 못 부름', $$select skyzai_monitor_rooms()$$, 'permission denied');
+select tst.throws('모니터링: 로그인 사용자는 대화 못 부름', $$select skyzai_monitor_messages((select id from tst_dm))$$, 'permission denied');
+reset role;
+grant select on tst_dm to service_role;
+set role service_role;
+select tst.check('모니터링: 사용 현황 합계(사람 글만)', (select (s -> 'totals' ->> 'messages')::int >= 2 and (s -> 'totals' ->> 'senders')::int >= 1 and jsonb_array_length(s -> 'daily') >= 1
+  and exists (select 1 from jsonb_array_elements(s -> 'people') p where p ->> 'login' = 'staff' and (p ->> 'messages')::int >= 2)
+  from skyzai_monitor_stats(now() - interval '1 day', null) s));
+select tst.check('모니터링: 방 목록에 1:1 방·구성원·마지막 글', (select j ->> 'kind' = 'direct' and j -> 'members' @> '[{"login":"lawyer"}]' and (j ->> 'messages')::int = 2 and j ->> 'last_preview' like '둘째 글%'
+  from jsonb_array_elements(skyzai_monitor_rooms()) j where (j ->> 'id')::uuid = (select id from tst_dm)));
+select tst.check('모니터링: 방 목록 검색(구성원 이름)', exists (select 1 from jsonb_array_elements(skyzai_monitor_rooms('김변호')) j where (j ->> 'id')::uuid = (select id from tst_dm)));
+select tst.check('모니터링: 방 목록 검색(없는 이름)', jsonb_array_length(skyzai_monitor_rooms('없는사람zz')) = 0);
+select tst.check('모니터링: 대화 원문(순번 순·보낸이 사번)', (select (r -> 'items' -> 0 ->> 'text', r -> 'items' -> 0 ->> 'sender', r -> 'items' -> 1 ->> 'edited', (r ->> 'more')::boolean, r -> 'room' ->> 'kind') = ('첫 글', 'staff', 'true', false, 'direct')
+  from skyzai_monitor_messages((select id from tst_dm)) r));
+select tst.check('모니터링: 대화 한 쪽씩(more)', (select jsonb_array_length(r -> 'items') = 1 and (r ->> 'more')::boolean and r -> 'items' -> 0 ->> 'text' like '둘째 글%' from skyzai_monitor_messages((select id from tst_dm), null, 1) r));
+select tst.throws('모니터링: 없는 방', $$select skyzai_monitor_messages(gen_random_uuid())$$, '방을 찾을 수 없습니다');
+select skyzai_monitor_log('twdong', (select id from tst_dm), '{"before": null}');
+reset role;
+select tst.check('모니터링: 열람이 감사 기록에 남음', exists (select 1 from audit_log where action = 'monitor.messages' and room_id = (select id from tst_dm) and detail ->> 'actor_login' = 'twdong' and detail ->> 'via' = 'skyzai'));
 -- ── 로그인 안 한 사람 ──
 reset role;
 set role anon;

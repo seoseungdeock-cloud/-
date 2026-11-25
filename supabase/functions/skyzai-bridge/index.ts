@@ -12,6 +12,11 @@
 //     → { ok, user_id, login_id, access_token, expires_at }
 //   { action: 'ensure', members: [{ admin_id, name?, ... }] }   사번들의 계정을 만들어 두고 id 를 돌려준다(초대·그룹 만들기용)
 //     → { ok, users: { [admin_id]: user_id } }
+//   { action: 'monitor', what: 'stats' | 'rooms' | 'messages', actor: 사번, ...인자 }   SKYZAI 어드민 「메신저」 탭 (2026-11-29)
+//     stats    { from, to? }                   → { ok, data: skyzai_monitor_stats }
+//     rooms    { q?, from?, limit? }           → { ok, data: skyzai_monitor_rooms }
+//     messages { room, before?, limit? }       → { ok, data: skyzai_monitor_messages }   대화 원문 — audit_log 에 'monitor.messages' 로 남긴다
+//     행 보안 밖(service_role)에서 읽는다. 누가 볼 수 있는지는 SKYZAI 어드민 콘솔 명단이 정하고, 여기는 키만 확인한다.
 //
 // 배포: index.ts 를 서버 /opt/skynet/volumes/functions/skyzai-bridge/ 에 복사하고 docker compose restart functions.
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -100,7 +105,8 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (!authorized(req)) return reply({ error: 'not found' }, 404);
   if (req.method !== 'POST') return fail('method', '허용되지 않는 요청입니다.', 405);
-  let body: { action?: string; member?: Member; members?: Member[] };
+  let body: { action?: string; member?: Member; members?: Member[]; what?: string; actor?: string;
+              from?: string; to?: string; q?: string; limit?: number; room?: string; before?: number };
   try { body = await req.json(); } catch { return fail('bad_request', '요청을 읽을 수 없습니다.'); }
 
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
@@ -122,6 +128,36 @@ Deno.serve(async (req) => {
       if (!('error' in r)) users[(m.admin_id ?? '').trim()] = r.id;
     }
     return reply({ ok: true, users });
+  }
+
+  if (body.action === 'monitor') {
+    const actor = (body.actor ?? '').trim();
+    if (!ID_RE.test(actor)) return fail('bad_request', '요청한 사람의 사번이 없습니다.');
+    const ts = (v?: string) => (v && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : null);
+    const lim = (v: number | undefined, d: number) => Math.max(1, Math.min(Number(v) || d, 500));
+    let r;
+    if (body.what === 'stats') {
+      r = await admin.rpc('skyzai_monitor_stats', { p_from: ts(body.from), p_to: ts(body.to) });
+    } else if (body.what === 'rooms') {
+      r = await admin.rpc('skyzai_monitor_rooms', { p_q: (body.q ?? '').toString().slice(0, 60) || null, p_from: ts(body.from), p_limit: lim(body.limit, 100) });
+    } else if (body.what === 'messages') {
+      const room = (body.room ?? '').toString();
+      if (!/^[0-9a-f-]{36}$/i.test(room)) return fail('bad_request', '방을 찾을 수 없습니다.');
+      r = await admin.rpc('skyzai_monitor_messages', { p_room: room, p_before: body.before ? Number(body.before) : null, p_limit: lim(body.limit, 100) });
+      if (!r.error) {
+        const { error: le } = await admin.rpc('skyzai_monitor_log', { p_actor_login: actor.toLowerCase(), p_room: room, p_detail: { before: body.before ?? null } });
+        if (le) console.error('[skyzai-bridge] monitor log', le.message);
+      }
+    } else {
+      return fail('bad_request', '알 수 없는 요청입니다.');
+    }
+    if (r.error) {
+      console.error('[skyzai-bridge] monitor', body.what, r.error.message);
+      // 함수가 아직 없으면(마이그레이션 전) SKYZAI 가 '제공 전' 으로 안내할 수 있게 구분해 돌려준다.
+      const missing = /could not find the function|does not exist/i.test(r.error.message ?? '');
+      return fail(missing ? 'not_ready' : 'monitor', missing ? '스카이넷에 모니터링 함수가 아직 없습니다.' : (r.error.message || '조회하지 못했습니다.'));
+    }
+    return reply({ ok: true, data: r.data });
   }
 
   return fail('bad_request', '알 수 없는 요청입니다.');

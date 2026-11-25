@@ -50,6 +50,7 @@
 | 푸시(폰 Expo 푸시, PC 웹 푸시), 08:30 요약 | `supabase/functions/push-send`, `src/core/push.ts`, `src/core/web-push.ts` |
 | 캘린더, 사무소·담당 변호사 목록(백오피스·배당 안내용) | `src/app/(tabs)/calendar.tsx`, `src/core/calendar.ts`, `src/core/offices.ts` |
 | SKYZAI(song_mu) 메신저 연결 — SKYZAI 의 메신저 화면이 이 서버의 방·글·파일을 그대로 쓴다 (2026-11-18) | `supabase/migrations/20261118000000_skyzai_messenger.sql`, `supabase/functions/skyzai-bridge` |
+| SKYZAI 어드민 메신저 모니터링 — 사용 현황·방 목록·대화 원문을 SKYZAI 어드민 콘솔에서 본다, 원문 열람은 감사 기록에 남김 (2026-11-29) | `supabase/migrations/20261129000000_skyzai_monitor.sql`, `supabase/functions/skyzai-bridge` (`action: monitor`) |
 | 업무 도구(네이버웍스 대체, 2026-11-20~26): 일정·회의실 예약, 할 일, 필독 공지, 봇 알림, 노트, 고객 연락처, 파일함, 조직도(지점>부서>직급), 감사 기록 | `src/core/work.ts`, `src/app/(tabs)/tasks.tsx`, `src/app/notes.tsx`, `src/app/drive.tsx`, `src/ui/event-sheet.tsx`, `src/ui/*-panel.tsx`, `supabase/functions/bot-send`, 마이그레이션 `20261120`~`20261126` |
 
 ## 폴더
@@ -229,6 +230,11 @@ SKYZAI(송무 플랫폼, `AI-SERVICE/song_mu`)의 메신저 화면은 그대로 
 - SKYZAI 가 올린 파일은 `room-files/<방 id>/skyzai/<첨부 id>.<확장자>`. 공지·초대·나가기·이름 바꾸기는 방에 `system` 글 한 줄을 남겨 두 앱 모두에 보입니다.
 - SKYZAI 쪽 코드: `build/integrated/services/skynet.py`(연결), `services/messenger.py`(화면 모양), 환경변수 `SKYNET_URL`·`SKYNET_ANON_KEY`·`SKYNET_BRIDGE_KEY`.
 배포 순서: (1) 위 마이그레이션을 서버 DB 에 적용 (2) `skyzai-bridge/index.ts` 를 `/opt/skynet/volumes/functions/skyzai-bridge/` 에 복사하고 `docker compose restart functions` (3) SKYZAI 에 환경변수 3개 넣고 재배포.
+
+**어드민 모니터링 (2026-11-29)**: SKYZAI 어드민 콘솔(`/admin` → 메신저 탭)이 사용 현황(날짜별·사람별 글 수, 방 종류), 방 목록(구성원·마지막 글), 방 대화 원문을 봅니다.
+- 함수 `skyzai-bridge` 의 `action: 'monitor'`(what = `stats` · `rooms` · `messages`)가 service_role 로 `skyzai_monitor_*` 를 부릅니다. 이 함수들은 로그인 사용자(스카이넷 최고 관리자 포함)에게 실행 권한이 없습니다 — 누가 볼 수 있는지는 SKYZAI 어드민 콘솔 명단(`ADMIN_CONSOLE_IDS`)이 정합니다.
+- 대화 원문을 꺼낼 때마다 `audit_log` 에 `monitor.messages`(actor = 그 사번의 스카이넷 계정, detail.actor_login·via=skyzai)로 남아 백오피스 「감사 기록」에서 보입니다. 사용 현황·방 목록 조회는 남기지 않습니다. 첨부는 이름·크기만 보이고 내려받기 주소는 주지 않습니다.
+- 올리기: 마이그레이션 `20261129000000_skyzai_monitor.sql` 적용 → `skyzai-bridge/index.ts` 복사 → `docker compose restart functions`. 마이그레이션 전에 함수만 올라가면 SKYZAI 탭에 '제공 전' 안내가 뜹니다(`code: not_ready`).
 
 ## 꼭 지킬 것
 
